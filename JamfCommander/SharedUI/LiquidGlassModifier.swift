@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-// The "macOS 26" Liquid Glass Aesthetic
 struct LiquidGlassStyle: ViewModifier {
     var type: GlassType
     
@@ -15,13 +14,14 @@ struct LiquidGlassStyle: ViewModifier {
         case sidebar    // Darker/frosted, sharp edges on one side
         case content    // Floating, rounded, lighter
         case panel      // Pop-up sheets, thick material
+        case card       // NEW: For list items inside the dashboard
     }
     
     func body(content: Content) -> some View {
         content
             .background(backgroundMaterial)
             .cornerRadius(cornerRadius)
-            .shadow(color: shadowColor, radius: 10, x: 0, y: 5)
+            .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: yOffset)
             .overlay(
                 // The "Glass" Stroke Effect
                 RoundedRectangle(cornerRadius: cornerRadius)
@@ -29,7 +29,7 @@ struct LiquidGlassStyle: ViewModifier {
                         LinearGradient(
                             colors: [
                                 .white.opacity(0.4),
-                                .white.opacity(0.05)
+                                .white.opacity(0.1)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -46,9 +46,11 @@ struct LiquidGlassStyle: ViewModifier {
         case .sidebar:
             return 0 // Sidebars usually connect flush to the window edge
         case .content:
-            return 16 // Floating content looks better rounded
+            return 0 // Main content fills the pane
         case .panel:
-            return 12
+            return 16
+        case .card:
+            return 12 // Cards are rounded
         }
     }
     
@@ -60,16 +62,33 @@ struct LiquidGlassStyle: ViewModifier {
             return .regularMaterial   // Standard window feel
         case .panel:
             return .thickMaterial     // Solid pop-up feel
+        case .card:
+            return .thickMaterial     // Cards need to be distinct from the background
         }
     }
     
     var shadowColor: Color {
-        // Sidebars usually don't cast a shadow in split views, but content does
         switch type {
         case .sidebar:
             return Color.clear
+        case .card:
+            return Color.black.opacity(0.1) // Cards cast a shadow
         default:
-            return Color.black.opacity(0.1)
+            return Color.clear
+        }
+    }
+    
+    var shadowRadius: CGFloat {
+        switch type {
+        case .card: return 4
+        default: return 0
+        }
+    }
+    
+    var yOffset: CGFloat {
+        switch type {
+        case .card: return 2
+        default: return 0
         }
     }
 }

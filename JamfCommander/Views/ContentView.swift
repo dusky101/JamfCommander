@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-// FIX: A safe wrapper for the sheet so we don't need to extend Int
 struct InspectorSelection: Identifiable {
     let id: Int
 }
@@ -15,94 +14,68 @@ struct InspectorSelection: Identifiable {
 struct ContentView: View {
     @StateObject private var api = JamfAPIService()
     
+    // Navigation State
+    @State private var currentModule: AppModule = .profiles
+    
     // App State
     @State private var isLoggedIn = false
     @State private var isBusy = false
     @State private var showConfigSheet = false
     @State private var statusMessage = "Please initialise connection."
     
-    // Data State
+    // Data
     @State private var profiles: [ConfigProfile] = []
     @State private var categories: [Category] = []
     @State private var selectedProfileIDs = Set<ConfigProfile.ID>()
-    
-    // Inspector State (Updated to use the wrapper)
-    @State private var inspectorSelection: InspectorSelection?
     
     var body: some View {
         NavigationSplitView {
             // MARK: - SIDEBAR
             ZStack {
-                // Frosted glass background
-                Color.clear
-                    .background(.ultraThinMaterial)
-                    .ignoresSafeArea()
+                Color.clear.background(.ultraThinMaterial).ignoresSafeArea()
                 
-                VStack(alignment: .leading, spacing: 20) {
-                    // Header
+                VStack(spacing: 0) {
+                    // Brand Header
                     HStack {
-                        Label("Jamf Commander", systemImage: "command.circle.fill")
+                        Image(systemName: "command.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.blue)
+                        Text("Commander")
                             .font(.headline)
-                            .imageScale(.large)
                         Spacer()
-                        Button(action: { showConfigSheet = true }) {
-                            Image(systemName: "gearshape.fill")
-                                .foregroundColor(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Settings")
                     }
-                    .padding(.top)
+                    .padding()
                     
-                    Divider()
-                        .opacity(0.5)
-                    
-                    // Sidebar Content
-                    if !isLoggedIn {
-                        LoginView(
-                            api: api,
-                            isLoggedIn: $isLoggedIn,
-                            statusMessage: $statusMessage,
-                            isBusy: $isBusy,
-                            onLoginSuccess: refreshAllData
-                        )
-                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    if isLoggedIn {
+                        SidebarView(currentModule: $currentModule, showConfigSheet: $showConfigSheet)
                     } else {
-                        ActionPanelView(
-                            api: api,
-                            categories: categories,
-                            selectedProfileIDs: $selectedProfileIDs,
-                            isBusy: $isBusy,
-                            statusMessage: $statusMessage,
-                            onRefresh: refreshAllData
-                        )
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                    
-                    Spacer()
-                    
-                    // Status Footer
-                    HStack {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 8, height: 8)
-                            .shadow(color: statusColor.opacity(0.5), radius: 4)
-                        Text(statusMessage)
+                        Spacer()
+                        Text("Please Log In")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                            .lineLimit(1)
+                        Spacer()
                     }
-                    .padding(.bottom)
+                    
+                    // Connection Status Footer
+                    HStack {
+                        Circle()
+                            .fill(isLoggedIn ? Color.green : Color.orange)
+                            .frame(width: 8, height: 8)
+                        Text(statusMessage)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding()
+                    .background(Color.black.opacity(0.05))
                 }
-                .padding(.horizontal)
             }
-            .liquidGlass(.sidebar) // Apply styling
-            .frame(minWidth: 260)
+            .frame(minWidth: 220)
             
         } detail: {
             // MARK: - MAIN CONTENT
             ZStack {
-                // Subtle gradient background
+                // Main Background
                 LinearGradient(
                     colors: [Color(nsColor: .windowBackgroundColor), Color.blue.opacity(0.03)],
                     startPoint: .top,
@@ -110,54 +83,38 @@ struct ContentView: View {
                 )
                 .ignoresSafeArea()
                 
-                if isLoggedIn {
-                    ProfileTableView(
-                        profiles: profiles,
-                        categories: categories,
-                        selectedProfileIDs: $selectedProfileIDs
+                if !isLoggedIn {
+                    LoginView(
+                        api: api,
+                        isLoggedIn: $isLoggedIn,
+                        statusMessage: $statusMessage,
+                        isBusy: $isBusy,
+                        onLoginSuccess: refreshAllData
                     )
-                    // Context Menu
-                    .contextMenu(forSelectionType: ConfigProfile.ID.self) { selectedIDs in
-                        if selectedIDs.count == 1, let id = selectedIDs.first {
-                            Button {
-                                // FIX: Use the wrapper struct
-                                inspectorSelection = InspectorSelection(id: id)
-                            } label: {
-                                Label("Inspect Profile Source", systemImage: "doc.text.magnifyingglass")
-                            }
-                        }
-                    }
+                    .frame(maxWidth: 400)
                 } else {
-                    ContentUnavailableView {
-                        Label("Jamf Commander", systemImage: "lock.shield")
-                    } description: {
-                        Text("Please sign in securely to manage your fleet.")
+                    // Module Switcher
+                    switch currentModule {
+                    case .dashboard:
+                        Text("Dashboard Coming Soon").font(.largeTitle).foregroundColor(.secondary)
+                    case .profiles:
+                        ProfileDashboardView(
+                            profiles: profiles,
+                            categories: categories,
+                            api: api,
+                            selectedProfileIDs: $selectedProfileIDs
+                        )
+                    case .computers:
+                        Text("Computer Module Coming Soon").font(.largeTitle).foregroundColor(.secondary)
+                    case .policies:
+                        Text("Policy Module Coming Soon").font(.largeTitle).foregroundColor(.secondary)
                     }
                 }
             }
-            .liquidGlass(.content)
         }
-        // Configuration Sheet
         .sheet(isPresented: $showConfigSheet) {
             ConfigurationView()
         }
-        // Inspector Sheet (FIX: Uses the wrapper)
-        .sheet(item: $inspectorSelection) { selection in
-            ProfileDetailView(profileId: selection.id, api: api)
-        }
-        // Animations
-        .animation(.default, value: isLoggedIn)
-    }
-}
-
-// MARK: - Logic Extension
-
-extension ContentView {
-    var statusColor: Color {
-        if isBusy { return .blue }
-        if statusMessage.lowercased().contains("failed") || statusMessage.lowercased().contains("error") { return .red }
-        if !isLoggedIn { return .gray }
-        return .green
     }
     
     func refreshAllData() async {
@@ -170,7 +127,7 @@ extension ContentView {
             await MainActor.run {
                 self.profiles = p.sorted { $0.name < $1.name }
                 self.categories = c.sorted { $0.name < $1.name }
-                self.statusMessage = "Ready."
+                self.statusMessage = "Connected to \(categories.count) categories."
             }
         } catch {
             await MainActor.run {
@@ -178,8 +135,4 @@ extension ContentView {
             }
         }
     }
-}
-
-#Preview {
-    ContentView()
 }
