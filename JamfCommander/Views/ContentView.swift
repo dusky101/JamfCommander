@@ -7,9 +7,6 @@
 
 import SwiftUI
 
-struct InspectorSelection: Identifiable {
-    let id: Int
-}
 
 struct ContentView: View {
     @StateObject private var api = JamfAPIService()
@@ -105,7 +102,7 @@ struct ContentView: View {
                             selectedProfileIDs: $selectedProfileIDs
                         )
                     case .computers:
-                        Text("Computer Module Coming Soon").font(.largeTitle).foregroundColor(.secondary)
+                        ComputersDashboardView(api: api)
                     case .policies:
                         Text("Policy Module Coming Soon").font(.largeTitle).foregroundColor(.secondary)
                     }

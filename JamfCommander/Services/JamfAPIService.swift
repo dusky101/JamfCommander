@@ -112,6 +112,34 @@ class JamfAPIService: ObservableObject {
         return try await genericFetch(endpoint: "JSSResource/categories", responseType: CategoryListResponse.self).categories
     }
     
+    // MARK: - Computer Functions
+        
+    // Pro API (v1) - Returns detailed inventory records for the Dashboard
+    func fetchComputers() async throws -> [ComputerInventoryRecord] {
+        // We MUST request specific sections (GENERAL, HARDWARE) to get Name, Serial, and Managed Status.
+        // We also add page-size=2000 to ensure we get the whole fleet in one go.
+        let endpoint = "api/v1/computers-inventory?section=GENERAL&section=HARDWARE&page-size=2000"
+        
+        let response = try await genericFetch(
+            endpoint: endpoint,
+            responseType: JamfProComputerListResponse.self
+        )
+        // Sort by name for a nice list
+        return response.results.sorted { ($0.general?.name ?? "") < ($1.general?.name ?? "") }
+    }
+    
+    // Pro API (v1) - Fetch single computer detail for the Inspector
+    func fetchComputerDetail(id: Int) async throws -> ComputerInventoryRecord {
+        // We MUST request CONFIGURATION_PROFILES to populate the "Profiles" tab.
+        // We also request OS and Hardware for the "Info" tab.
+        let endpoint = "api/v1/computers-inventory/\(id)?section=GENERAL&section=HARDWARE&section=OPERATING_SYSTEM&section=CONFIGURATION_PROFILES"
+        
+        return try await genericFetch(
+            endpoint: endpoint,
+            responseType: ComputerInventoryRecord.self
+        )
+    }
+    
     // Fetch Raw JSON for the Editor
     func fetchProfileJSON(id: Int) async throws -> String {
         guard let token = token, !baseURL.isEmpty else { throw APIError.authFailed }

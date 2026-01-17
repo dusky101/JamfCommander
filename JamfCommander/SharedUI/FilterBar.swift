@@ -13,7 +13,7 @@ struct FilterBar: View {
     var categories: [Category]
     @Binding var selectedCategory: Category?
     
-    // NEW: We pass profiles so we can show counts on the chips
+    // We pass profiles so we can show counts on the chips
     var profiles: [ConfigProfile] = []
     
     var onRefresh: (() -> Void)?
@@ -58,7 +58,6 @@ struct FilterBar: View {
             }
             
             // --- ROW 2: Filter Chips (Flow Layout) ---
-            // This replaces the horizontal scroll with the "Center Grid" look
             FlowLayout(spacing: 8) {
                 // "All" Chip
                 FilterChip(
@@ -84,12 +83,10 @@ struct FilterBar: View {
                             isSelected: selectedCategory?.id == category.id,
                             count: count
                         ) {
-                            // Command-Click Logic (from DataReviewView)
+                            // Command-Click Logic
                             if NSEvent.modifierFlags.contains(.command) {
-                                // Just select this one (already default behavior here, but kept for logic consistency)
                                 withAnimation { selectedCategory = category }
                             } else {
-                                // Toggle behavior
                                 withAnimation {
                                     if selectedCategory?.id == category.id {
                                         selectedCategory = nil
@@ -117,6 +114,12 @@ struct FilterBar: View {
 struct FilterChip: View {
     let title: String
     let icon: String
+    
+    // NEW: Optional override for the selected icon.
+    // If this is nil, we default to adding ".fill" to the 'icon' string.
+    // Use this for symbols like 'desktopcomputer.and.macbook' that don't have a fill variant.
+    var selectedIcon: String? = nil
+    
     let color: Color
     let isSelected: Bool
     let count: Int
@@ -125,7 +128,8 @@ struct FilterChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: isSelected ? icon + ".fill" : icon)
+                // Logic: If selected, use selectedIcon. If that's nil, try icon + ".fill".
+                Image(systemName: isSelected ? (selectedIcon ?? icon + ".fill") : icon)
                     .font(.caption)
                 
                 Text(title)
@@ -161,7 +165,6 @@ struct FilterChip: View {
 }
 
 // MARK: - Flow Layout Helper
-// Copied from your DataReviewView.swift to enable the grid look
 struct FlowLayout: Layout {
     var spacing: CGFloat
     
