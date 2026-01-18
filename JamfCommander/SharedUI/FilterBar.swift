@@ -13,8 +13,9 @@ struct FilterBar: View {
     var categories: [Category]
     @Binding var selectedCategory: Category?
     
-    // We pass profiles so we can show counts on the chips
+    // Data Sources: Pass one or the other (or both) to populate counts
     var profiles: [ConfigProfile] = []
+    var policies: [Policy] = [] // Added for Policy Dashboard support
     
     var onRefresh: (() -> Void)?
     
@@ -26,7 +27,7 @@ struct FilterBar: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.secondary)
                     
-                    TextField("Search profiles, IDs, or scopes...", text: $searchText)
+                    TextField("Search names, IDs, or scopes...", text: $searchText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
                     
@@ -65,14 +66,17 @@ struct FilterBar: View {
                     icon: "square.grid.2x2",
                     color: .blue,
                     isSelected: selectedCategory == nil,
-                    count: profiles.count
+                    count: profiles.count + policies.count // Sum of all items
                 ) {
                     withAnimation { selectedCategory = nil }
                 }
                 
                 // Category Chips
                 ForEach(categories) { category in
-                    let count = profiles.filter { $0.categoryName == category.name }.count
+                    // Calculate count dynamically based on what data is present
+                    let profileCount = profiles.filter { $0.categoryName == category.name }.count
+                    let policyCount = policies.filter { ($0.categoryName ?? "No Category") == category.name }.count
+                    let count = profileCount + policyCount
                     
                     // Only show categories that have items (Clean up the view)
                     if count > 0 {
@@ -83,10 +87,11 @@ struct FilterBar: View {
                             isSelected: selectedCategory?.id == category.id,
                             count: count
                         ) {
-                            // Command-Click Logic
+                            // Command-Click Logic (Select purely this one)
                             if NSEvent.modifierFlags.contains(.command) {
                                 withAnimation { selectedCategory = category }
                             } else {
+                                // Toggle Logic
                                 withAnimation {
                                     if selectedCategory?.id == category.id {
                                         selectedCategory = nil
@@ -115,9 +120,7 @@ struct FilterChip: View {
     let title: String
     let icon: String
     
-    // NEW: Optional override for the selected icon.
-    // If this is nil, we default to adding ".fill" to the 'icon' string.
-    // Use this for symbols like 'desktopcomputer.and.macbook' that don't have a fill variant.
+    // Optional override for the selected icon.
     var selectedIcon: String? = nil
     
     let color: Color

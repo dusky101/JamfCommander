@@ -112,6 +112,97 @@ class JamfAPIService: ObservableObject {
         return try await genericFetch(endpoint: "JSSResource/categories", responseType: CategoryListResponse.self).categories
     }
     
+    // MARK: - Script Functions (Pro API)
+        
+    func fetchScripts() async throws -> [ScriptRecord] {
+        // We request specific fields to ensure we get Category and Contents for the inspector
+        // Using page-size=2000 to get all scripts in one request
+        let endpoint = "api/v1/scripts?page-size=2000&sort=name:asc"
+        
+        let response = try await genericFetch(
+            endpoint: endpoint,
+            responseType: ScriptListResponse.self
+        )
+        return response.results
+    }
+    
+    func deleteScript(id: String) async throws {
+        // Pro API delete endpoint
+        try await genericRequest(method: "DELETE", endpoint: "api/v1/scripts/\(id)")
+    }
+    
+    // MARK: - Policy Functions (Classic API)
+        
+        func fetchPolicies() async throws -> [Policy] {
+            // 1. Fetch Basic List
+            let endpoint = "JSSResource/policies"
+            let listResponse = try await genericFetch(endpoint: endpoint, responseType: PolicyListResponse.self)
+            
+            // 2. Hydrate Details (to get Categories & Enabled State)
+            // We limit concurrency to avoid overwhelming the server
+            var detailedPolicies: [Policy] = []
+            
+            await withTaskGroup(of: Policy?.self) { group in
+                for item in listResponse.policies {
+                    group.addTask {
+                        do {
+                            // Fetch full detail for this policy
+                            let detail = try await self.fetchPolicyDetail(id: item.id)
+                            return Policy(
+                                id: detail.general.id,
+                                name: detail.general.name,
+                                categoryId: detail.general.category?.id,
+                                categoryName: detail.general.category?.name,
+                                enabled: detail.general.enabled,
+                                scope: detail.scope
+                            )
+                        } catch {
+                            print("Failed to hydrate policy \(item.id): \(error)")
+                            return nil
+                        }
+                    }
+                }
+                
+                for await result in group {
+                    if let policy = result {
+                        detailedPolicies.append(policy)
+                    }
+                }
+            }
+            
+            return detailedPolicies.sorted { $0.name < $1.name }
+        }
+        
+        func fetchPolicyDetail(id: Int) async throws -> PolicyDetailXML {
+            let response = try await genericFetch(
+                endpoint: "JSSResource/policies/id/\(id)",
+                responseType: PolicyDetailResponse.self
+            )
+            return response.policy
+        }
+        
+        // Fetch Raw JSON for the Inspector Code View
+        func fetchPolicyJSON(id: Int) async throws -> String {
+            return try await fetchRawJSON(endpoint: "JSSResource/policies/id/\(id)")
+        }
+        
+        func deletePolicy(id: Int) async throws {
+            try await genericRequest(method: "DELETE", endpoint: "JSSResource/policies/id/\(id)")
+        }
+        
+        func movePolicy(id: Int, toCategoryID: Int) async throws {
+            let xml = """
+            <policy>
+                <general>
+                    <category>
+                        <id>\(toCategoryID)</id>
+                    </category>
+                </general>
+            </policy>
+            """
+            try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
+        }
+    
     // MARK: - Computer Functions
         
     // Pro API (v1) - Returns detailed inventory records for the Dashboard
@@ -200,6 +291,26 @@ class JamfAPIService: ObservableObject {
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else { throw APIError.requestFailed }
         
         return try JSONDecoder().decode(T.self, from: data)
+    }
+    
+    private func fetchRawJSON(endpoint: String) async throws -> String {
+        guard let token = token, !baseURL.isEmpty else { throw APIError.authFailed }
+        guard let url = URL(string: "\(baseURL)/\(endpoint)") else { throw APIError.invalidURL }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { throw APIError.requestFailed }
+        
+        if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
+           let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
+           let prettyString = String(data: prettyData, encoding: .utf8) {
+            return prettyString
+        }
+        return String(data: data, encoding: .utf8) ?? "{}"
     }
     
     private func genericRequest(method: String, endpoint: String, body: String? = nil) async throws {

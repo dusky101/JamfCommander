@@ -2,7 +2,7 @@
 //  ComputerCardView.swift
 //  JamfCommander
 //
-//  Created by Marc Oliff on 17/01/2026.
+//  Created by Marc Oliff on 18/01/2026.
 //
 
 import SwiftUI

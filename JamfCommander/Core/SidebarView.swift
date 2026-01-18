@@ -11,6 +11,7 @@ enum AppModule: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case profiles = "Profiles"
     case computers = "Computers"
+    case scripts = "Scripts" // Added Scripts
     case policies = "Policies"
     
     var id: String { rawValue }
@@ -20,6 +21,7 @@ enum AppModule: String, CaseIterable, Identifiable {
         case .dashboard: return "square.grid.2x2.fill"
         case .profiles: return "doc.text.fill"
         case .computers: return "desktopcomputer"
+        case .scripts: return "applescript.fill" // Requested icon
         case .policies: return "scroll.fill"
         }
     }
@@ -31,6 +33,7 @@ struct SidebarView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            // Main Navigation
             ForEach(AppModule.allCases) { module in
                 Button(action: { currentModule = module }) {
                     HStack(spacing: 12) {
@@ -56,6 +59,7 @@ struct SidebarView: View {
             
             Divider()
             
+            // Settings Button
             Button(action: { showConfigSheet = true }) {
                 HStack {
                     Image(systemName: "gearshape")

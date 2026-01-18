@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-
 struct ContentView: View {
     @StateObject private var api = JamfAPIService()
     
@@ -20,10 +19,15 @@ struct ContentView: View {
     @State private var showConfigSheet = false
     @State private var statusMessage = "Please initialise connection."
     
-    // Data
+    // Data (For Profile Dashboard Only - Old Pattern)
     @State private var profiles: [ConfigProfile] = []
     @State private var categories: [Category] = []
     @State private var selectedProfileIDs = Set<ConfigProfile.ID>()
+    
+    // MARK: - Auto-Login Storage
+    @AppStorage("jamfInstanceURL") private var storedURL = ""
+    @AppStorage("clientId") private var storedClientId = ""
+    @AppStorage("clientSecret") private var storedClientSecret = ""
     
     var body: some View {
         NavigationSplitView {
@@ -47,9 +51,18 @@ struct ContentView: View {
                         SidebarView(currentModule: $currentModule, showConfigSheet: $showConfigSheet)
                     } else {
                         Spacer()
-                        Text("Please Log In")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        if isBusy {
+                            ProgressView()
+                                .controlSize(.small)
+                                .padding(.bottom, 8)
+                            Text("Restoring session...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("Please Initialise.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                         Spacer()
                     }
                     
@@ -94,23 +107,68 @@ struct ContentView: View {
                     switch currentModule {
                     case .dashboard:
                         Text("Dashboard Coming Soon").font(.largeTitle).foregroundColor(.secondary)
+                        
                     case .profiles:
                         ProfileDashboardView(
                             profiles: profiles,
                             categories: categories,
                             api: api,
-                            selectedProfileIDs: $selectedProfileIDs
+                            selectedProfileIDs: $selectedProfileIDs,
+                            refreshAction: refreshAllData
                         )
+                        
                     case .computers:
                         ComputersDashboardView(api: api)
+                        
                     case .policies:
-                        Text("Policy Module Coming Soon").font(.largeTitle).foregroundColor(.secondary)
+                        PoliciesDashboardView(api: api) // <--- UPDATED
+                        
+                    case .scripts:
+                        ScriptsDashboardView(api: api)
                     }
                 }
             }
         }
         .sheet(isPresented: $showConfigSheet) {
             ConfigurationView()
+        }
+        // MARK: - AUTO LOGIN TRIGGER
+        .task {
+            // Check if we have saved credentials
+            if !isLoggedIn && !storedURL.isEmpty && !storedClientId.isEmpty && !storedClientSecret.isEmpty {
+                await performAutoLogin()
+            }
+        }
+    }
+    
+    // MARK: - Functions
+    
+    func performAutoLogin() async {
+        isBusy = true
+        statusMessage = "Auto-connecting..."
+        
+        do {
+            // Attempt to authenticate using stored credentials
+            try await api.authenticate(
+                url: storedURL,
+                clientId: storedClientId,
+                clientSecret: storedClientSecret
+            )
+            
+            // If successful, refresh data (for profiles)
+            await refreshAllData()
+            
+            await MainActor.run {
+                self.isLoggedIn = true
+                self.isBusy = false
+                self.statusMessage = "Ready."
+            }
+        } catch {
+            print("Auto-login failed: \(error)")
+            await MainActor.run {
+                self.statusMessage = "Auto-login failed. Please verify settings."
+                self.isBusy = false
+            }
         }
     }
     

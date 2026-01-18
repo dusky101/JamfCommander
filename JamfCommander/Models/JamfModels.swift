@@ -86,6 +86,7 @@ struct ScopeInfo: Codable {
 
 enum JamfItemStatus: String, CaseIterable, Identifiable {
     case active = "Active"
+    case inactive = "Inactive" // Added
     case pending = "Pending"
     case failed = "Failed"
     case unknown = "Unknown"
@@ -95,15 +96,17 @@ enum JamfItemStatus: String, CaseIterable, Identifiable {
     var color: Color {
         switch self {
         case .active: return .green
+        case .inactive: return .gray // Added
         case .pending: return .orange
         case .failed: return .red
-        case .unknown: return .gray
+        case .unknown: return .secondary
         }
     }
     
     var icon: String {
         switch self {
         case .active: return "checkmark.circle.fill"
+        case .inactive: return "xmark.circle" // Added
         case .pending: return "clock.fill"
         case .failed: return "exclamationmark.triangle.fill"
         case .unknown: return "questionmark.circle"

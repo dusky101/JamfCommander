@@ -15,7 +15,6 @@ struct ScriptsDashboardView: View {
     @State private var isLoading = true
     @State private var inspectorSelection: InspectorSelection?
     
-    // Grouping Logic
     var groupedScripts: [(key: String, value: [ScriptRecord])] {
         let filtered = scripts.filter { script in
             searchText.isEmpty ||
@@ -78,7 +77,7 @@ struct ScriptsDashboardView: View {
     }
 }
 
-// Local Section Component (Similar to Profiles, adapted for Scripts)
+// Local Section Component
 struct ScriptCategorySection: View {
     let title: String
     let scripts: [ScriptRecord]
@@ -111,13 +110,18 @@ struct ScriptCategorySection: View {
             if isExpanded {
                 VStack(spacing: 8) {
                     ForEach(scripts) { script in
-                        ScriptCardView(script: script, categoryName: title)
-                            .onTapGesture {
-                                onInspect(script.intId)
-                            }
-                            .contextMenu {
-                                Button("Inspect") { onInspect(script.intId) }
-                            }
+                        // FIX: Pass osRequirements here
+                        ScriptCardView(
+                            script: script,
+                            categoryName: title,
+                            osRequirements: script.osRequirements ?? "Any"
+                        )
+                        .onTapGesture {
+                            onInspect(script.intId)
+                        }
+                        .contextMenu {
+                            Button("Inspect") { onInspect(script.intId) }
+                        }
                     }
                 }
                 .padding(.top, 8)

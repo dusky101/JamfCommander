@@ -85,3 +85,4 @@ struct InspectorShell<Content: View>: View {
         .liquidGlass(.panel)
     }
 }
+

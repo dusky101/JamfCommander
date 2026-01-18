@@ -12,191 +12,347 @@ struct ComputerInspectorView: View {
     @ObservedObject var api: JamfAPIService
     @Environment(\.dismiss) var dismiss
     
-    // Use the Pro API Record Model
+    // Data
     @State private var detail: ComputerInventoryRecord?
+    @State private var scripts: [ScriptRecord] = [] // Real Script Data
     @State private var isLoading = true
     
     // View State
-    @State private var selectedTab = 0 // 0 = Info, 1 = Profiles
+    @State private var selectedTab = 0 // 0=Info, 1=Profiles, 2=Scripts, 3=Policies
     @State private var profileSearch = ""
+    @State private var scriptSearch = ""
+    @State private var policySearch = ""
     
-    // For Inspecting a Profile from the List
+    // Inspection Sheets
     @State private var profileToInspect: InspectorSelection?
+    @State private var scriptToInspect: InspectorSelection?
     
     var body: some View {
-        VStack(spacing: 0) {
-            // --- HEADER ---
-            VStack(spacing: 12) {
-                // Top Bar
-                ZStack {
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text("DEVICE")
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.secondary)
-                            Text("#\(computerId)")
-                                .font(.caption)
-                                .fontDesign(.monospaced)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                    }
-                    
-                    Text(detail?.general?.name ?? "Loading...")
-                        .font(.headline)
-                    
-                    HStack {
-                        Spacer()
-                        Button("Close") { dismiss() }.buttonStyle(.bordered)
-                    }
-                }
-                
-                // Segmented Picker
+        InspectorShell(
+            title: "DEVICE",
+            id: "#\(computerId)",
+            headerText: detail?.general?.name ?? "Loading...",
+            icon: nil,
+            isLoading: isLoading,
+            onClose: { dismiss() }
+        ) {
+            // --- TAB PICKER ---
+            VStack(spacing: 0) {
                 Picker("View", selection: $selectedTab) {
                     Text("Info").tag(0)
                     Text("Profiles").tag(1)
+                    Text("Scripts").tag(2)
+                    Text("Policies").tag(3)
                 }
                 .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .disabled(isLoading)
+                .labelsHidden()
+                .padding()
+                .background(.ultraThinMaterial)
+                
+                Divider()
+                
+                // --- TABS ---
+                switch selectedTab {
+                case 0: infoTab
+                case 1: profilesTab
+                case 2: scriptsTab
+                case 3: policiesTab
+                default: EmptyView()
+                }
+            }
+        }
+        .task {
+            await loadData()
+        }
+        // Sheets
+        .sheet(item: $profileToInspect) { selection in
+            ProfileInspectorView(profileId: selection.id, api: api)
+        }
+        .sheet(item: $scriptToInspect) { selection in
+            ScriptInspectorView(scriptId: selection.id, api: api)
+        }
+    }
+    
+    func loadData() async {
+        do {
+            // Fetch Computer Detail AND Scripts in parallel
+            async let detailCall = api.fetchComputerDetail(id: computerId)
+            async let scriptsCall = api.fetchScripts()
+            
+            let (fetchedDetail, fetchedScripts) = try await (detailCall, scriptsCall)
+            
+            self.detail = fetchedDetail
+            self.scripts = fetchedScripts
+            self.isLoading = false
+        } catch {
+            print("Error loading inspector data: \(error)")
+            self.isLoading = false
+        }
+    }
+    
+    // MARK: - 1. Info Tab
+    var infoTab: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Hardware
+                InfoSection(title: "Hardware", icon: "cpu") {
+                    if let hardware = detail?.hardware {
+                        InfoRow(label: "Model", value: hardware.model ?? "Unknown")
+                        InfoRow(label: "Processor", value: hardware.processorType ?? "Unknown")
+                        InfoRow(label: "Memory", value: "\(hardware.totalRamMegabytes ?? 0) MB")
+                        InfoRow(label: "Serial", value: hardware.serialNumber ?? "N/A")
+                    } else {
+                        Text("No hardware details.")
+                    }
+                }
+                
+                // OS & Security
+                InfoSection(title: "OS & Security", icon: "lock.shield") {
+                    if let os = detail?.operatingSystem {
+                        InfoRow(label: "OS Version", value: "\(os.name ?? "macOS") \(os.version ?? "")")
+                        InfoRow(label: "Build", value: os.build ?? "Unknown")
+                        InfoRow(label: "FileVault", value: os.fileVault2Status ?? "Unknown")
+                    }
+                }
+                
+                // Status
+                InfoSection(title: "Status", icon: "antenna.radiowaves.left.and.right") {
+                    if let general = detail?.general {
+                        InfoRow(label: "IP Address", value: general.lastReportedIp ?? "Unknown")
+                        InfoRow(label: "Last Contact", value: general.lastContactTime ?? "Never")
+                        InfoRow(label: "Managed", value: (general.remoteManagement?.managed ?? false) ? "Yes" : "No")
+                        if let user = general.remoteManagement?.managementUsername {
+                            InfoRow(label: "Mgmt Account", value: user)
+                        }
+                    }
+                }
             }
             .padding()
-            .background(.ultraThinMaterial)
+        }
+    }
+    
+    // MARK: - 2. Profiles Tab
+    var profilesTab: some View {
+        VStack(spacing: 0) {
+            // Search
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                TextField("Search installed profiles...", text: $profileSearch)
+                    .textFieldStyle(.plain)
+                if !profileSearch.isEmpty {
+                    Button(action: { profileSearch = "" }) {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                    }.buttonStyle(.plain)
+                }
+            }
+            .padding(8)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .overlay(Rectangle().frame(height: 1).foregroundColor(Color.gray.opacity(0.1)), alignment: .bottom)
             
-            Divider()
-            
-            // --- CONTENT ---
-            if isLoading {
-                ProgressView()
-                    .frame(maxHeight: .infinity)
-            } else if let detail = detail {
-                if selectedTab == 0 {
-                    // INFO TAB
-                    ScrollView {
-                        VStack(spacing: 20) {
-                            // Hardware
-                            InfoSection(title: "Hardware", icon: "cpu") {
-                                if let hardware = detail.hardware {
-                                    InfoRow(label: "Model", value: hardware.model ?? "Unknown")
-                                    InfoRow(label: "Processor", value: hardware.processorType ?? "Unknown")
-                                    InfoRow(label: "Memory", value: "\(hardware.totalRamMegabytes ?? 0) MB")
-                                    InfoRow(label: "Serial", value: hardware.serialNumber ?? "N/A")
-                                } else {
-                                    Text("No hardware details.")
-                                }
+            // List
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    if let profiles = detail?.configurationProfiles, !profiles.isEmpty {
+                        let filtered = profiles.filter {
+                            profileSearch.isEmpty ||
+                            ($0.displayName?.localizedCaseInsensitiveContains(profileSearch) ?? false) ||
+                            ($0.identifier?.localizedCaseInsensitiveContains(profileSearch) ?? false)
+                        }
+                        
+                        if filtered.isEmpty {
+                            ContentUnavailableView("No Matching Profiles", systemImage: "doc.text.magnifyingglass")
+                                .padding(.top, 40)
+                        } else {
+                            // Groups
+                            let mdmProfiles = filtered.filter { $0.displayName == "MDM Profile" }
+                            if !mdmProfiles.isEmpty {
+                                InspectorProfileGroup(title: "Management Profile", profiles: mdmProfiles, api: api, profileToInspect: $profileToInspect)
                             }
                             
-                            // OS & Security
-                            InfoSection(title: "OS & Security", icon: "lock.shield") {
-                                if let os = detail.operatingSystem {
-                                    InfoRow(label: "OS Version", value: "\(os.name ?? "macOS") \(os.version ?? "")")
-                                    InfoRow(label: "Build", value: os.build ?? "Unknown")
-                                    InfoRow(label: "FileVault", value: os.fileVault2Status ?? "Unknown")
-                                }
+                            let configProfiles = filtered.filter { $0.displayName != "MDM Profile" }
+                            if !configProfiles.isEmpty {
+                                InspectorProfileGroup(title: "Configuration Profiles", profiles: configProfiles, api: api, profileToInspect: $profileToInspect)
                             }
-                            
-                            // Network & Management
-                            InfoSection(title: "Status", icon: "antenna.radiowaves.left.and.right") {
-                                if let general = detail.general {
-                                    InfoRow(label: "IP Address", value: general.lastReportedIp ?? "Unknown")
-                                    InfoRow(label: "Last Contact", value: general.lastContactTime ?? "Never")
+                        }
+                    } else {
+                        ContentUnavailableView("No Profiles", systemImage: "doc.text.magnifyingglass")
+                            .padding(.top, 40)
+                    }
+                }
+                .padding()
+            }
+        }
+    }
+    
+    // MARK: - 3. Scripts Tab (Real Data)
+    var scriptsTab: some View {
+        VStack(spacing: 0) {
+            // Search Bar
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                TextField("Search available scripts...", text: $scriptSearch)
+                    .textFieldStyle(.plain)
+                if !scriptSearch.isEmpty {
+                    Button(action: { scriptSearch = "" }) {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                    }.buttonStyle(.plain)
+                }
+            }
+            .padding(8)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .overlay(Divider(), alignment: .bottom)
+            
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    let filteredScripts = scripts.filter {
+                        scriptSearch.isEmpty || $0.name.localizedCaseInsensitiveContains(scriptSearch)
+                    }
+                    
+                    if filteredScripts.isEmpty {
+                        ContentUnavailableView("No Scripts Found", systemImage: "applescript")
+                            .padding(.top, 40)
+                    } else {
+                        ForEach(filteredScripts) { script in
+                            HStack(alignment: .center, spacing: 12) {
+                                // Icon
+                                Image(systemName: "applescript.fill")
+                                    .foregroundColor(.secondary)
+                                    .font(.title3)
+                                
+                                // Text
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(script.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.primary)
                                     
-                                    let isManaged = general.remoteManagement?.managed ?? false
-                                    InfoRow(label: "Managed", value: isManaged ? "Yes" : "No")
-                                    
-                                    if let user = general.remoteManagement?.managementUsername {
-                                        InfoRow(label: "Mgmt Account", value: user)
+                                    HStack(spacing: 6) {
+                                        Text("ID: \(script.id)")
+                                            .font(.caption)
+                                            .fontDesign(.monospaced)
+                                            .padding(3)
+                                            .background(Color.gray.opacity(0.1))
+                                            .cornerRadius(4)
+                                        
+                                        if let cat = script.categoryName {
+                                            Text("•")
+                                            Text(cat)
+                                        }
                                     }
+                                    .foregroundColor(.secondary)
                                 }
+                                
+                                Spacer()
+                                
+                                // Inspect Button
+                                Button("Inspect") {
+                                    scriptToInspect = InspectorSelection(id: script.intId)
+                                }
+                                .font(.caption)
+                                .buttonStyle(.bordered)
+                            }
+                            .padding(8)
+                            .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+                            .cornerRadius(8)
+                            // Context Menu
+                            .contextMenu {
+                                Button("Inspect Script") {
+                                    scriptToInspect = InspectorSelection(id: script.intId)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding()
+            }
+        }
+    }
+    
+    // MARK: - 4. Policies Tab (Dummy Data)
+    var policiesTab: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                TextField("Search policies...", text: $policySearch)
+                    .textFieldStyle(.plain)
+            }
+            .padding(8)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .overlay(Divider(), alignment: .bottom)
+            
+            ScrollView {
+                VStack(spacing: 12) {
+                    // Note for Developer
+                    HStack {
+                        Image(systemName: "info.circle.fill").foregroundColor(.orange)
+                        Text("Showing mock policy logs (Development Mode)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                    
+                    // Dummy Data
+                    let dummyPolicies = [
+                        ("Weekly Maintenance", "Recurring Check-in", "Active"),
+                        ("Update Google Chrome", "Once per computer", "Completed"),
+                        ("Install Microsoft Office", "Self Service", "Available"),
+                        ("Enforce FileVault", "Enrollment", "Completed")
+                    ]
+                    
+                    ForEach(dummyPolicies, id: \.0) { policy in
+                        HStack {
+                            Image(systemName: "scroll.fill")
+                                .foregroundColor(.purple)
+                                .font(.title3)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(policy.0)
+                                    .fontWeight(.medium)
+                                Text(policy.1)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            if policy.2 == "Completed" {
+                                Text("Ran Successfully")
+                                    .font(.caption2)
+                                    .padding(4)
+                                    .background(Color.green.opacity(0.1))
+                                    .foregroundColor(.green)
+                                    .cornerRadius(4)
+                            } else if policy.2 == "Available" {
+                                Text("Pending")
+                                    .font(.caption2)
+                                    .padding(4)
+                                    .background(Color.blue.opacity(0.1))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(4)
+                            } else {
+                                Text("Active")
+                                    .font(.caption2)
+                                    .padding(4)
+                                    .background(Color.gray.opacity(0.1))
+                                    .foregroundColor(.secondary)
+                                    .cornerRadius(4)
                             }
                         }
                         .padding()
-                    }
-                } else {
-                    // PROFILES TAB (With Grouping Logic)
-                    VStack(spacing: 0) {
-                        // Search Bar
-                        HStack {
-                            Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                            TextField("Search installed profiles...", text: $profileSearch)
-                                .textFieldStyle(.plain)
-                            if !profileSearch.isEmpty {
-                                Button(action: { profileSearch = "" }) {
-                                    Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
-                                }.buttonStyle(.plain)
-                            }
-                        }
-                        .padding(8)
-                        .background(Color(nsColor: .controlBackgroundColor))
-                        .overlay(Rectangle().frame(height: 1).foregroundColor(Color.gray.opacity(0.1)), alignment: .bottom)
-                        
-                        // Grouped List
-                        ScrollView {
-                            LazyVStack(spacing: 16) {
-                                if let profiles = detail.configurationProfiles, !profiles.isEmpty {
-                                    let filtered = profiles.filter {
-                                        profileSearch.isEmpty ||
-                                        ($0.displayName?.localizedCaseInsensitiveContains(profileSearch) ?? false) ||
-                                        ($0.identifier?.localizedCaseInsensitiveContains(profileSearch) ?? false)
-                                    }
-                                    
-                                    if filtered.isEmpty {
-                                        ContentUnavailableView(
-                                            "No Matching Profiles",
-                                            systemImage: "doc.text.magnifyingglass",
-                                            description: Text("Try a different search term.")
-                                        )
-                                        .padding(.top, 40)
-                                    } else {
-                                        // 1. MDM Profile Group
-                                        let mdmProfiles = filtered.filter { $0.displayName == "MDM Profile" }
-                                        if !mdmProfiles.isEmpty {
-                                            InspectorProfileGroup(title: "Management Profile", profiles: mdmProfiles, api: api, profileToInspect: $profileToInspect)
-                                        }
-                                        
-                                        // 2. Configuration Profiles Group (The Rest)
-                                        let configProfiles = filtered.filter { $0.displayName != "MDM Profile" }
-                                        if !configProfiles.isEmpty {
-                                            InspectorProfileGroup(title: "Configuration Profiles", profiles: configProfiles, api: api, profileToInspect: $profileToInspect)
-                                        }
-                                    }
-                                } else {
-                                    ContentUnavailableView(
-                                        "No Profiles",
-                                        systemImage: "doc.text.magnifyingglass",
-                                        description: Text("No configuration profiles reported.")
-                                    )
-                                    .padding(.top, 40)
-                                }
-                            }
-                            .padding()
-                        }
+                        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.1)))
                     }
                 }
+                .padding()
             }
-        }
-        .frame(width: 500, height: 650)
-        .liquidGlass(.panel)
-        .task {
-            do {
-                self.detail = try await api.fetchComputerDetail(id: computerId)
-                self.isLoading = false
-            } catch {
-                print("Error: \(error)")
-                self.isLoading = false
-            }
-        }
-        // FIX: Explicit self.api
-        .sheet(item: $profileToInspect) { selection in
-            ProfileInspectorView(profileId: selection.id, api: self.api)
         }
     }
 }
 
-// MARK: - Subcomponents
-
-// Group Component for Profiles (Collapsible Style)
+// MARK: - Local Subcomponents
 struct InspectorProfileGroup: View {
     let title: String
     let profiles: [ComputerProfile]
@@ -207,7 +363,6 @@ struct InspectorProfileGroup: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
             Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() } }) {
                 HStack {
                     Image(systemName: title == "Management Profile" ? "lock.shield.fill" : "doc.on.doc.fill")
@@ -223,7 +378,6 @@ struct InspectorProfileGroup: View {
                         .padding(.vertical, 2)
                         .background(Color.gray.opacity(0.1))
                         .cornerRadius(4)
-                    
                     Image(systemName: "chevron.right")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -235,22 +389,18 @@ struct InspectorProfileGroup: View {
             }
             .buttonStyle(.plain)
             
-            // List Items
             if isExpanded {
                 VStack(spacing: 0) {
                     ForEach(profiles) { profile in
                         HStack(alignment: .top, spacing: 10) {
-                            // Icon based on type
                             Image(systemName: "doc.text.fill")
                                 .foregroundColor(.secondary)
                                 .font(.title3)
                                 .padding(.top, 2)
-                            
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(profile.displayName ?? "Unknown Profile")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
-                                
                                 if let id = profile.identifier {
                                     Text(id)
                                         .font(.caption)
@@ -261,15 +411,13 @@ struct InspectorProfileGroup: View {
                                 }
                             }
                             Spacer()
-                            
-                            // Context Menu Hint Icon
                             Image(systemName: "ellipsis.circle")
                                 .font(.caption)
                                 .foregroundColor(.secondary.opacity(0.5))
                         }
                         .padding(.vertical, 8)
                         .padding(.horizontal, 12)
-                        .contentShape(Rectangle()) // Makes the whole row clickable
+                        .contentShape(Rectangle())
                         .contextMenu {
                             if let jamfIdString = profile.jamfId, let jamfId = Int(jamfIdString) {
                                 Button("Inspect Profile") {
@@ -279,8 +427,6 @@ struct InspectorProfileGroup: View {
                                 Text("Cannot Inspect (System Profile)")
                             }
                         }
-                        
-                        // Divider between items
                         if profile.id != profiles.last?.id {
                             Divider().padding(.leading, 40)
                         }
@@ -290,48 +436,6 @@ struct InspectorProfileGroup: View {
                 .cornerRadius(8)
                 .padding(.top, 4)
             }
-        }
-    }
-}
-
-// Reusable Info Row (Existing)
-struct InfoSection<Content: View>: View {
-    let title: String
-    let icon: String
-    let content: Content
-    
-    init(title: String, icon: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.icon = icon
-        self.content = content()
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.headline)
-                .foregroundColor(.primary)
-            
-            VStack(spacing: 8) {
-                content
-            }
-            .padding()
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-            .cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
-        }
-    }
-}
-
-struct InfoRow: View {
-    let label: String
-    let value: String
-    
-    var body: some View {
-        HStack {
-            Text(label).foregroundColor(.secondary).font(.callout)
-            Spacer()
-            Text(value).fontWeight(.medium).font(.callout)
         }
     }
 }
