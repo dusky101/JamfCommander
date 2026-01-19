@@ -278,7 +278,7 @@ class JamfAPIService: ObservableObject {
     
     // MARK: - Helpers
     
-    private func genericFetch<T: Codable>(endpoint: String, responseType: T.Type) async throws -> T {
+    func genericFetch<T: Codable>(endpoint: String, responseType: T.Type) async throws -> T {
         guard let token = token, !baseURL.isEmpty else { throw APIError.authFailed }
         guard let url = URL(string: "\(baseURL)/\(endpoint)") else { throw APIError.invalidURL }
         
@@ -313,7 +313,7 @@ class JamfAPIService: ObservableObject {
         return String(data: data, encoding: .utf8) ?? "{}"
     }
     
-    private func genericRequest(method: String, endpoint: String, body: String? = nil) async throws {
+    func genericRequest(method: String, endpoint: String, body: String? = nil) async throws {
         guard let token = token, !baseURL.isEmpty else { throw APIError.authFailed }
         guard let url = URL(string: "\(baseURL)/\(endpoint)") else { throw APIError.invalidURL }
         

@@ -11,7 +11,7 @@ struct ContentView: View {
     @StateObject private var api = JamfAPIService()
     
     // Navigation State
-    @State private var currentModule: AppModule = .profiles
+    @State private var currentModule: AppModule = .dashboard
     
     // App State
     @State private var isLoggedIn = false
@@ -32,55 +32,59 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             // MARK: - SIDEBAR
-            ZStack {
-                Color.clear.background(.ultraThinMaterial).ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // Brand Header
-                    HStack {
-                        Image(systemName: "command.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                        Text("Commander")
-                            .font(.headline)
-                        Spacer()
-                    }
-                    .padding()
-                    
-                    if isLoggedIn {
-                        SidebarView(currentModule: $currentModule, showConfigSheet: $showConfigSheet)
-                    } else {
-                        Spacer()
-                        if isBusy {
-                            ProgressView()
-                                .controlSize(.small)
-                                .padding(.bottom, 8)
-                            Text("Restoring session...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text("Please Initialise.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                    }
-                    
-                    // Connection Status Footer
-                    HStack {
-                        Circle()
-                            .fill(isLoggedIn ? Color.green : Color.orange)
-                            .frame(width: 8, height: 8)
-                        Text(statusMessage)
-                            .font(.caption)
-                            .lineLimit(1)
-                        Spacer()
-                    }
-                    .padding()
-                    .background(Color.black.opacity(0.05))
+            // FIX: Removed ZStack. Applied background directly to VStack.
+            VStack(spacing: 0) {
+                // Brand Header
+                HStack {
+                    Image(systemName: "command.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                    Text("Commander")
+                        .font(.headline)
+                    Spacer()
                 }
+                .padding()
+                .padding(.top, 10) // Extra padding for window controls
+                
+                if isLoggedIn {
+                    SidebarView(currentModule: $currentModule, showConfigSheet: $showConfigSheet)
+                } else {
+                    Spacer()
+                    if isBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.bottom, 8)
+                        Text("Restoring session...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Please Initialise.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+                
+                // Connection Status Footer
+                HStack {
+                    Circle()
+                        .fill(isLoggedIn ? Color.green : Color.orange)
+                        .frame(width: 8, height: 8)
+                    Text(statusMessage)
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding()
+                .background(Color.black.opacity(0.05))
             }
-            .frame(minWidth: 220)
+            .frame(minWidth: 220, maxHeight: .infinity)
+            // THE VISUAL FIX: Apply material as background and ignore safe area
+            .background {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .ignoresSafeArea(.all, edges: .top)
+            }
             
         } detail: {
             // MARK: - MAIN CONTENT
@@ -106,7 +110,7 @@ struct ContentView: View {
                     // Module Switcher
                     switch currentModule {
                     case .dashboard:
-                        Text("Dashboard Coming Soon").font(.largeTitle).foregroundColor(.secondary)
+                        DashboardView(api: api, currentModule: $currentModule)
                         
                     case .profiles:
                         ProfileDashboardView(
@@ -121,7 +125,7 @@ struct ContentView: View {
                         ComputersDashboardView(api: api)
                         
                     case .policies:
-                        PoliciesDashboardView(api: api) // <--- UPDATED
+                        PoliciesDashboardView(api: api)
                         
                     case .scripts:
                         ScriptsDashboardView(api: api)
@@ -134,7 +138,6 @@ struct ContentView: View {
         }
         // MARK: - AUTO LOGIN TRIGGER
         .task {
-            // Check if we have saved credentials
             if !isLoggedIn && !storedURL.isEmpty && !storedClientId.isEmpty && !storedClientSecret.isEmpty {
                 await performAutoLogin()
             }
@@ -148,16 +151,12 @@ struct ContentView: View {
         statusMessage = "Auto-connecting..."
         
         do {
-            // Attempt to authenticate using stored credentials
             try await api.authenticate(
                 url: storedURL,
                 clientId: storedClientId,
                 clientSecret: storedClientSecret
             )
-            
-            // If successful, refresh data (for profiles)
             await refreshAllData()
-            
             await MainActor.run {
                 self.isLoggedIn = true
                 self.isBusy = false
