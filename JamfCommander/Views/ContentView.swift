@@ -32,7 +32,6 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             // MARK: - SIDEBAR
-            // FIX: Removed ZStack. Applied background directly to VStack.
             VStack(spacing: 0) {
                 // Brand Header
                 HStack {
@@ -44,7 +43,8 @@ struct ContentView: View {
                     Spacer()
                 }
                 .padding()
-                .padding(.top, 10) // Extra padding for window controls
+                // Top padding prevents traffic lights from overlapping content
+                .padding(.top, 10)
                 
                 if isLoggedIn {
                     SidebarView(currentModule: $currentModule, showConfigSheet: $showConfigSheet)
@@ -79,11 +79,11 @@ struct ContentView: View {
                 .background(Color.black.opacity(0.05))
             }
             .frame(minWidth: 220, maxHeight: .infinity)
-            // THE VISUAL FIX: Apply material as background and ignore safe area
+            // FIX: Apply background logic here to fix the "glitch" without squashing content
             .background {
                 Rectangle()
                     .fill(.ultraThinMaterial)
-                    .ignoresSafeArea(.all, edges: .top)
+                    .ignoresSafeArea()
             }
             
         } detail: {
@@ -103,6 +103,7 @@ struct ContentView: View {
                         isLoggedIn: $isLoggedIn,
                         statusMessage: $statusMessage,
                         isBusy: $isBusy,
+                        showConfigSheet: $showConfigSheet,
                         onLoginSuccess: refreshAllData
                     )
                     .frame(maxWidth: 400)
@@ -110,7 +111,7 @@ struct ContentView: View {
                     // Module Switcher
                     switch currentModule {
                     case .dashboard:
-                        DashboardView(api: api, currentModule: $currentModule)
+                        DashboardView(api: api, currentModule: $currentModule) // <--- Passed Binding
                         
                     case .profiles:
                         ProfileDashboardView(

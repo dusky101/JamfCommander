@@ -43,6 +43,11 @@ struct Category: Identifiable, Codable, Hashable {
     let name: String
 }
 
+struct ComputerGroup: Identifiable, Codable, Hashable {
+    let id: Int
+    let name: String
+}
+
 // MARK: - Detailed Models (For Crawling & Inspector)
 
 struct ProfileDetailResponse: Codable {

@@ -112,6 +112,15 @@ class JamfAPIService: ObservableObject {
         return try await genericFetch(endpoint: "JSSResource/categories", responseType: CategoryListResponse.self).categories
     }
     
+    // MARK: - Computer Groups (for future scope targeting)
+    
+    func fetchComputerGroups() async throws -> [ComputerGroup] {
+        struct ComputerGroupListResponse: Codable {
+            let computer_groups: [ComputerGroup]
+        }
+        return try await genericFetch(endpoint: "JSSResource/computergroups", responseType: ComputerGroupListResponse.self).computer_groups
+    }
+    
     // MARK: - Script Functions (Pro API)
         
     func fetchScripts() async throws -> [ScriptRecord] {
@@ -271,6 +280,54 @@ class JamfAPIService: ObservableObject {
                     <id>\(categoryID)</id>
                 </category>
             </general>
+        </os_x_configuration_profile>
+        """
+        try await genericRequest(method: "PUT", endpoint: "JSSResource/osxconfigurationprofiles/id/\(id)", body: xmlString)
+    }
+    
+    // MARK: - Scope Management
+    
+    /// Set profile to deploy to all computers
+    func setProfileScopeToAllComputers(_ id: Int) async throws {
+        let xmlString = """
+        <os_x_configuration_profile>
+            <scope>
+                <all_computers>true</all_computers>
+                <computers/>
+                <computer_groups/>
+            </scope>
+        </os_x_configuration_profile>
+        """
+        try await genericRequest(method: "PUT", endpoint: "JSSResource/osxconfigurationprofiles/id/\(id)", body: xmlString)
+    }
+    
+    /// Remove all scope from profile (no computers targeted)
+    func removeProfileScope(_ id: Int) async throws {
+        let xmlString = """
+        <os_x_configuration_profile>
+            <scope>
+                <all_computers>false</all_computers>
+                <computers/>
+                <computer_groups/>
+            </scope>
+        </os_x_configuration_profile>
+        """
+        try await genericRequest(method: "PUT", endpoint: "JSSResource/osxconfigurationprofiles/id/\(id)", body: xmlString)
+    }
+    
+    /// Set profile to deploy to specific computer groups (targets user groups/computer groups)
+    func setProfileScopeToGroups(_ id: Int, groupIDs: [Int]) async throws {
+        let groupsXML = groupIDs.map { "<computer_group><id>\($0)</id></computer_group>" }.joined(separator: "\n")
+        
+        let xmlString = """
+        <os_x_configuration_profile>
+            <scope>
+                <all_computers>false</all_computers>
+                <computers/>
+                <computer_groups>
+                    \(groupsXML)
+                </computer_groups>
+            </scope>
         </os_x_configuration_profile>
         """
         try await genericRequest(method: "PUT", endpoint: "JSSResource/osxconfigurationprofiles/id/\(id)", body: xmlString)

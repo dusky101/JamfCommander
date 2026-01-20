@@ -15,6 +15,7 @@ struct ComputerInspectorView: View {
     // Data
     @State private var detail: ComputerInventoryRecord?
     @State private var scripts: [ScriptRecord] = [] // Real Script Data
+    @State private var policies: [Policy] = [] // Real Policy Data
     @State private var isLoading = true
     
     // View State
@@ -26,6 +27,7 @@ struct ComputerInspectorView: View {
     // Inspection Sheets
     @State private var profileToInspect: InspectorSelection?
     @State private var scriptToInspect: InspectorSelection?
+    @State private var policyToInspect: InspectorSelection?
     
     var body: some View {
         InspectorShell(
@@ -71,18 +73,23 @@ struct ComputerInspectorView: View {
         .sheet(item: $scriptToInspect) { selection in
             ScriptInspectorView(scriptId: selection.id, api: api)
         }
+        .sheet(item: $policyToInspect) { selection in
+            PoliciesInspectorView(policyId: selection.id, api: api)
+        }
     }
     
     func loadData() async {
         do {
-            // Fetch Computer Detail AND Scripts in parallel
+            // Fetch Computer Detail, Scripts, and Policies in parallel
             async let detailCall = api.fetchComputerDetail(id: computerId)
             async let scriptsCall = api.fetchScripts()
+            async let policiesCall = api.fetchPolicies()
             
-            let (fetchedDetail, fetchedScripts) = try await (detailCall, scriptsCall)
+            let (fetchedDetail, fetchedScripts, fetchedPolicies) = try await (detailCall, scriptsCall, policiesCall)
             
             self.detail = fetchedDetail
             self.scripts = fetchedScripts
+            self.policies = fetchedPolicies
             self.isLoading = false
         } catch {
             print("Error loading inspector data: \(error)")
@@ -268,82 +275,127 @@ struct ComputerInspectorView: View {
         }
     }
     
-    // MARK: - 4. Policies Tab (Dummy Data)
+    // MARK: - 4. Policies Tab (Real Data)
     var policiesTab: some View {
         VStack(spacing: 0) {
+            // Search Bar
             HStack {
                 Image(systemName: "magnifyingglass").foregroundColor(.secondary)
                 TextField("Search policies...", text: $policySearch)
                     .textFieldStyle(.plain)
+                if !policySearch.isEmpty {
+                    Button(action: { policySearch = "" }) {
+                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                    }.buttonStyle(.plain)
+                }
             }
             .padding(8)
             .background(Color(nsColor: .controlBackgroundColor))
             .overlay(Divider(), alignment: .bottom)
             
             ScrollView {
-                VStack(spacing: 12) {
-                    // Note for Developer
-                    HStack {
-                        Image(systemName: "info.circle.fill").foregroundColor(.orange)
-                        Text("Showing mock policy logs (Development Mode)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Spacer()
+                LazyVStack(spacing: 8) {
+                    // Filter policies that apply to this computer
+                    let applicablePolicies = policies.filter { policy in
+                        guard let scope = policy.scope else { return false }
+                        
+                        // Include if targeting all computers
+                        if scope.all_computers {
+                            return true
+                        }
+                        
+                        // Include if this computer is in the targets list
+                        if let computers = scope.computers {
+                            return computers.contains { $0.id == computerId }
+                        }
+                        
+                        return false
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
                     
-                    // Dummy Data
-                    let dummyPolicies = [
-                        ("Weekly Maintenance", "Recurring Check-in", "Active"),
-                        ("Update Google Chrome", "Once per computer", "Completed"),
-                        ("Install Microsoft Office", "Self Service", "Available"),
-                        ("Enforce FileVault", "Enrollment", "Completed")
-                    ]
+                    // Apply search filter
+                    let filteredPolicies = applicablePolicies.filter {
+                        policySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(policySearch)
+                    }
                     
-                    ForEach(dummyPolicies, id: \.0) { policy in
-                        HStack {
-                            Image(systemName: "scroll.fill")
-                                .foregroundColor(.purple)
-                                .font(.title3)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(policy.0)
-                                    .fontWeight(.medium)
-                                Text(policy.1)
-                                    .font(.caption)
+                    if filteredPolicies.isEmpty {
+                        ContentUnavailableView(
+                            policySearch.isEmpty ? "No Policies Apply" : "No Matching Policies",
+                            systemImage: "scroll",
+                            description: Text(policySearch.isEmpty ? "This computer is not targeted by any policies." : "Try adjusting your search.")
+                        )
+                        .padding(.top, 40)
+                    } else {
+                        ForEach(filteredPolicies) { policy in
+                            HStack(alignment: .center, spacing: 12) {
+                                // Icon
+                                Image(systemName: policy.scope?.all_computers == true ? "globe" : "target")
+                                    .foregroundColor(policy.enabled ? .purple : .secondary)
+                                    .font(.title3)
+                                
+                                // Text
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(policy.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.primary)
+                                    
+                                    HStack(spacing: 6) {
+                                        Text("ID: \(policy.id)")
+                                            .font(.caption)
+                                            .fontDesign(.monospaced)
+                                            .padding(3)
+                                            .background(Color.gray.opacity(0.1))
+                                            .cornerRadius(4)
+                                        
+                                        if let category = policy.categoryName {
+                                            Text("•")
+                                            Text(category)
+                                        }
+                                        
+                                        Text("•")
+                                        Text(policy.scope?.all_computers == true ? "All Computers" : "Targeted")
+                                    }
                                     .foregroundColor(.secondary)
+                                }
+                                
+                                Spacer()
+                                
+                                // Status Badge
+                                if policy.enabled {
+                                    Text("Active")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.green.opacity(0.1))
+                                        .foregroundColor(.green)
+                                        .cornerRadius(4)
+                                } else {
+                                    Text("Disabled")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.gray.opacity(0.1))
+                                        .foregroundColor(.secondary)
+                                        .cornerRadius(4)
+                                }
+                                
+                                // Inspect Button
+                                Button("Inspect") {
+                                    policyToInspect = InspectorSelection(id: policy.id)
+                                }
+                                .font(.caption)
+                                .buttonStyle(.bordered)
                             }
-                            
-                            Spacer()
-                            
-                            if policy.2 == "Completed" {
-                                Text("Ran Successfully")
-                                    .font(.caption2)
-                                    .padding(4)
-                                    .background(Color.green.opacity(0.1))
-                                    .foregroundColor(.green)
-                                    .cornerRadius(4)
-                            } else if policy.2 == "Available" {
-                                Text("Pending")
-                                    .font(.caption2)
-                                    .padding(4)
-                                    .background(Color.blue.opacity(0.1))
-                                    .foregroundColor(.blue)
-                                    .cornerRadius(4)
-                            } else {
-                                Text("Active")
-                                    .font(.caption2)
-                                    .padding(4)
-                                    .background(Color.gray.opacity(0.1))
-                                    .foregroundColor(.secondary)
-                                    .cornerRadius(4)
+                            .padding(8)
+                            .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+                            .cornerRadius(8)
+                            // Context Menu
+                            .contextMenu {
+                                Button("Inspect Policy") {
+                                    policyToInspect = InspectorSelection(id: policy.id)
+                                }
                             }
                         }
-                        .padding()
-                        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-                        .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.1)))
                     }
                 }
                 .padding()

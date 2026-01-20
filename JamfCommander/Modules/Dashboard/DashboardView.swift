@@ -10,7 +10,7 @@ import SwiftUI
 struct DashboardView: View {
     @ObservedObject var api: JamfAPIService
     
-    // Navigation Binding
+    // NEW: Binding to control navigation from the stats
     @Binding var currentModule: AppModule
     
     // Stats State
@@ -21,7 +21,7 @@ struct DashboardView: View {
     
     // Data Lists
     @State private var categories: [Category] = []
-    @State private var computers: [BasicComputerRecord] = [] // For the new list
+    @State private var computers: [BasicComputerRecord] = [] // For Device Status
     
     // UI State
     @State private var searchText = ""
@@ -42,7 +42,7 @@ struct DashboardView: View {
         ScrollView {
             VStack(spacing: 24) {
                 
-                // MARK: - 1. Hero Stats Grid
+                // MARK: - 1. Hero Stats Grid (Clickable)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 16)], spacing: 16) {
                     
                     Button(action: { currentModule = .computers }) {
@@ -104,44 +104,46 @@ struct DashboardView: View {
                 .cornerRadius(16)
                 .padding(.horizontal)
                 
-                // MARK: - 3. Device Status List (NEW)
+                // MARK: - 3. Device Status (NEW)
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
                         Label("Device Status", systemImage: "antenna.radiowaves.left.and.right")
                             .font(.title2).fontWeight(.bold)
                         Spacer()
-                        Text("Latest check-ins")
+                        Text("Recent Check-ins")
                             .font(.caption).foregroundColor(.secondary)
                     }
                     
-                    // The Computer List Box
+                    // Device List Box
                     VStack(spacing: 0) {
                         if computers.isEmpty {
                             Text("No computers found.").padding()
+                                .foregroundColor(.secondary)
                         } else {
+                            // Show first 10 for dashboard summary
                             ForEach(computers.prefix(10), id: \.id) { comp in
                                 HStack {
                                     Image(systemName: "desktopcomputer")
                                         .foregroundColor(.secondary)
+                                        .font(.title3)
                                     Text(comp.name)
                                         .fontWeight(.medium)
+                                        .foregroundColor(.primary)
                                     
                                     Spacer()
                                     
-                                    // Mock Status Logic
-                                    // (In real app, check 'lastContactTime' or similar)
+                                    // Mock Status Badge (Green for OK)
                                     HStack(spacing: 6) {
-                                        Circle()
-                                            .fill(Color.green)
-                                            .frame(width: 8, height: 8)
+                                        Circle().fill(Color.green).frame(width: 6, height: 6)
                                         Text("Active")
-                                            .font(.caption)
-                                            .foregroundColor(.green)
                                     }
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.green)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background(Color.green.opacity(0.1))
-                                    .cornerRadius(4)
+                                    .cornerRadius(12)
                                 }
                                 .padding()
                                 

@@ -41,6 +41,33 @@ struct ActionPanelView: View {
     
     @AppStorage("jamfInstanceURL") private var instanceURL = ""
     
+    // Scope Action State (Profiles Only)
+    @State private var selectedScopeAction: ScopeAction?
+    
+    // Define scope actions
+    enum ScopeAction: String, CaseIterable, Identifiable {
+        case allComputers = "All Computers"
+        case removeScope = "Remove Scope"
+        // Note: "User Groups" would require fetching groups and selecting them,
+        // which we can implement later if needed
+        
+        var id: String { rawValue }
+        
+        var icon: String {
+            switch self {
+            case .allComputers: return "globe"
+            case .removeScope: return "xmark.circle"
+            }
+        }
+        
+        var color: Color {
+            switch self {
+            case .allComputers: return .green
+            case .removeScope: return .orange
+            }
+        }
+    }
+    
     var body: some View {
         HStack(spacing: 20) {
             
@@ -111,6 +138,62 @@ struct ActionPanelView: View {
             
             Divider()
             
+            // MARK: - Center-Right: Scope Management (Profiles Only)
+            if mode == .profiles {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Scope Management")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+                    
+                    HStack {
+                        Menu {
+                            ForEach(ScopeAction.allCases) { action in
+                                Button {
+                                    selectedScopeAction = action
+                                } label: {
+                                    Label(action.rawValue, systemImage: action.icon)
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                if let action = selectedScopeAction {
+                                    Image(systemName: action.icon)
+                                        .foregroundColor(action.color)
+                                    Text(action.rawValue)
+                                        .foregroundColor(.primary)
+                                } else {
+                                    Text("Select Scope Action...")
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(8)
+                            .background(Color.black.opacity(0.1))
+                            .cornerRadius(6)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .frame(maxWidth: 200)
+                        
+                        Button(action: requestScopeChange) {
+                            Text("Apply Scope")
+                                .fontWeight(.medium)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .disabled(selectedScopeAction == nil || isBusy)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                Divider()
+            }
+            
             // MARK: - Right: Danger Zone
             VStack(alignment: .leading, spacing: 12) {
                 Text("Danger Zone")
@@ -150,6 +233,7 @@ struct ActionPanelView: View {
                     showResultsSheet = false
                     selectedIDs.removeAll()
                     selectedTargetCategory = nil
+                    selectedScopeAction = nil // Clear scope action too
                     Task { await onRefresh() }
                 }
             )
@@ -157,6 +241,27 @@ struct ActionPanelView: View {
     }
     
     // MARK: - Logic
+    
+    func requestScopeChange() {
+        guard let scopeAction = selectedScopeAction else { return }
+        let count = selectedIDs.count
+        
+        let actionDescription: String
+        switch scopeAction {
+        case .allComputers:
+            actionDescription = "set the scope to 'All Computers'"
+        case .removeScope:
+            actionDescription = "remove all scope (no computers will be targeted)"
+        }
+        
+        confirmation = ConfirmationData(
+            title: "Confirm Scope Change",
+            message: "You are about to \(actionDescription) for \(count) profile\(count == 1 ? "" : "s").\n\nThis will update the deployment targets.\n\nPlease confirm this action.",
+            actionTitle: "Update Scope",
+            role: .none,
+            action: { performBulkScopeChange() }
+        )
+    }
     
     func requestMove() {
         guard let category = selectedTargetCategory else { return }
@@ -184,6 +289,54 @@ struct ActionPanelView: View {
             role: .destructive,
             action: { performBulkDelete() }
         )
+    }
+    
+    func performBulkScopeChange() {
+        guard let scopeAction = selectedScopeAction else { return }
+        isBusy = true
+        statusMessage = "Processing..."
+        resultsLog = []
+        
+        Task {
+            for id in selectedIDs {
+                var name = "Item #\(id)"
+                
+                // Get profile name
+                if let p = profiles.first(where: { $0.id == id }) {
+                    name = p.name
+                }
+                
+                do {
+                    // Call appropriate API method based on scope action
+                    switch scopeAction {
+                    case .allComputers:
+                        try await api.setProfileScopeToAllComputers(id)
+                    case .removeScope:
+                        try await api.removeProfileScope(id)
+                    }
+                    
+                    resultsLog.append(OperationResult(
+                        itemName: name,
+                        success: true,
+                        error: nil,
+                        fromCategory: nil,
+                        toCategory: "Scope: \(scopeAction.rawValue)"
+                    ))
+                } catch {
+                    resultsLog.append(OperationResult(
+                        itemName: name,
+                        success: false,
+                        error: "\(error)"
+                    ))
+                }
+            }
+            
+            await MainActor.run {
+                isBusy = false
+                statusMessage = "Done."
+                showResultsSheet = true
+            }
+        }
     }
     
     func performBulkMove() {
