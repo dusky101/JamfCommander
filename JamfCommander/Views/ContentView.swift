@@ -111,7 +111,7 @@ struct ContentView: View {
                     // Module Switcher
                     switch currentModule {
                     case .dashboard:
-                        DashboardView(api: api, currentModule: $currentModule) // <--- Passed Binding
+                        DashboardView(api: api, currentModule: $currentModule)
                         
                     case .profiles:
                         ProfileDashboardView(
@@ -130,6 +130,9 @@ struct ContentView: View {
                         
                     case .scripts:
                         ScriptsDashboardView(api: api)
+                        
+                    case .packages:
+                        PackagesDashboardView(api: api) // <--- FIXED: Passed 'api' explicitly
                     }
                 }
             }

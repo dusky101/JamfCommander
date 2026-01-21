@@ -11,8 +11,9 @@ enum AppModule: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case profiles = "Profiles"
     case computers = "Computers"
-    case scripts = "Scripts" // Added Scripts
+    case scripts = "Scripts"
     case policies = "Policies"
+    case packages = "Packages" // Added Packages
     
     var id: String { rawValue }
     
@@ -21,8 +22,9 @@ enum AppModule: String, CaseIterable, Identifiable {
         case .dashboard: return "square.grid.2x2.fill"
         case .profiles: return "doc.text.fill"
         case .computers: return "desktopcomputer"
-        case .scripts: return "applescript.fill" // Requested icon
+        case .scripts: return "applescript.fill"
         case .policies: return "scroll.fill"
+        case .packages: return "shippingbox.fill" // Icon for Packages
         }
     }
 }

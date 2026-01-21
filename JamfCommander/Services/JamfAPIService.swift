@@ -9,8 +9,9 @@ import SwiftUI
 import Combine
 
 class JamfAPIService: ObservableObject {
-    private var baseURL: String = ""
-    private var token: String?
+    // UPDATED: Changed from 'private' to internal (default) so extensions can access them
+    var baseURL: String = ""
+    var token: String?
     
     enum APIError: Error {
         case invalidURL
