@@ -11,13 +11,6 @@ struct ProfileCardView: View {
     let profile: ConfigProfile
     let categoryName: String
     
-    // We can compute a "mock" status for now since the API summary doesn't give one.
-    // Later we will fetch real status.
-    var computedStatus: JamfItemStatus {
-        // Just logic for visual variety for now
-        return .active 
-    }
-    
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             // Icon
@@ -57,8 +50,8 @@ struct ProfileCardView: View {
             
             Spacer()
             
-            // Status Badge (Right aligned)
-            StatusBadge(status: computedStatus)
+            // Status Badge (Right aligned) - Now using actual status from profile
+            StatusBadge(status: profile.status)
             
             // Chevron
             Image(systemName: "chevron.right")

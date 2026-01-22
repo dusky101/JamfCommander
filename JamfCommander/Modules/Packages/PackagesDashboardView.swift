@@ -14,14 +14,19 @@ struct PackagesDashboardView: View {
     @ObservedObject var api: JamfAPIService
     
     // Selection & filtering
-    @State private var selection = Set<UUID>()
+    @State private var selection = Set<String>()  // Changed from UUID to String
     @State private var searchText = ""
     @State private var selectedPlatformFilter: String = "All"
     @State private var showAllLabels = false // Toggle between matched items and all labels
     
+    // Multi-select support
+    @State private var lastSelectedID: String? = nil  // Changed from UUID to String
+    
     // Action States
     @State private var creationStatus: String = ""
     @State private var isCreatingPolicies = false
+    @State private var showResultsSheet = false
+    @State private var deploymentResults: [OperationResult] = []
     // Removed cancellables as we are using async/await now
     
     // Config Sheet State
@@ -101,6 +106,11 @@ struct PackagesDashboardView: View {
         }
     }
     
+    // Helper to find PackageMatch for a display item
+    func findMatch(for item: PackageDisplayItem) -> PackageMatch? {
+        return matcher.matches.first { $0.matchedLabel == item.label }
+    }
+    
     // MARK: - Body
     var body: some View {
         VStack(spacing: 0) {
@@ -122,7 +132,8 @@ struct PackagesDashboardView: View {
                                 items: group.value,
                                 selectedIDs: $selection,
                                 onToggle: toggleSelection,
-                                showAllMode: showAllLabels
+                                showAllMode: showAllLabels,
+                                matcher: matcher
                             )
                         }
                     }
@@ -152,6 +163,16 @@ struct PackagesDashboardView: View {
                 }
             )
         }
+        .sheet(isPresented: $showResultsSheet) {
+            OperationResultView(
+                title: "Deployment Results",
+                results: deploymentResults,
+                onDismiss: {
+                    showResultsSheet = false
+                    deploymentResults = []
+                }
+            )
+        }
     }
     
     // MARK: - Components
@@ -175,12 +196,14 @@ struct PackagesDashboardView: View {
                 .onChange(of: showAllLabels) {
                     // Clear selection when switching modes
                     selection.removeAll()
+                    lastSelectedID = nil
                 }
                 
                 Button(action: { 
                     matcher.reset()
                     showAllLabels = false
                     selection.removeAll()
+                    lastSelectedID = nil
                 }) {
                     Label("New Session", systemImage: "trash")
                 }
@@ -313,51 +336,111 @@ struct PackagesDashboardView: View {
     
     // MARK: - Logic
     
-    func toggleSelection(id: UUID) {
-        if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+    func toggleSelection(id: String) {  // Changed from UUID to String
+        let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
+        
+        if isShiftPressed, let lastId = lastSelectedID {
+            // Shift-Click: Select range
+            let allVisibleItems = filteredItems
+            
+            if let lastIndex = allVisibleItems.firstIndex(where: { $0.id == lastId }),
+               let currentIndex = allVisibleItems.firstIndex(where: { $0.id == id }) {
+                
+                let start = min(lastIndex, currentIndex)
+                let end = max(lastIndex, currentIndex)
+                
+                let idsToSelect = allVisibleItems[start...end]
+                    .filter { !showAllLabels || $0.isMatched } // Only select matched items in "show all" mode
+                    .map { $0.id }
+                
+                selection.formUnion(idsToSelect)
+            }
+        } else {
+            // Standard Toggle
+            if selection.contains(id) {
+                selection.remove(id)
+            } else {
+                selection.insert(id)
+            }
+            lastSelectedID = id
+        }
     }
     
     // UPDATED: Async implementation with throttling
+    // Deploy all selected items (both matched and unmatched) - ALL have Installomator labels
     func deployPolicies(category: String, scriptID: String, featureOnMain: Bool, displayInCat: Bool) {
         guard !selection.isEmpty else { return }
         isCreatingPolicies = true
         creationStatus = "Initialising..."
+        deploymentResults = []
         
-        let matchesToDeploy = selectedMatches
+        // Get all selected items
+        let selectedItems = displayItems.filter { selection.contains($0.id) }
         
         Task {
-            var successCount = 0
-            var failCount = 0
+            var results: [OperationResult] = []
             
-            for (index, match) in matchesToDeploy.enumerated() {
-                // Update status
+            for (index, item) in selectedItems.enumerated() {
                 await MainActor.run {
-                    creationStatus = "Deploying \(index + 1) of \(matchesToDeploy.count)..."
+                    creationStatus = "Deploying \(index + 1) of \(selectedItems.count)..."
                 }
                 
                 do {
+                    // ALL items use Installomator (matched and unmatched both have labels)
+                    let appName = item.displayName
+                    let label = item.label
+                    
                     try await api.createInstallomatorPolicyAsync(
-                        appName: match.intuneApp.name,
-                        label: match.matchedLabel,
+                        appName: appName,
+                        label: label,
                         categoryName: category,
                         scriptID: scriptID,
                         featureOnMainPage: featureOnMain,
                         displayInSelfServiceCategory: displayInCat
                     )
-                    successCount += 1
+                    
+                    results.append(OperationResult(
+                        itemName: appName,
+                        success: true,
+                        error: nil
+                    ))
                 } catch {
-                    print("Failed to create policy for \(match.intuneApp.name): \(error)")
-                    failCount += 1
+                    results.append(OperationResult(
+                        itemName: item.displayName,
+                        success: false,
+                        error: error.localizedDescription
+                    ))
+                    print("Failed to create policy for \(item.displayName): \(error)")
                 }
                 
-                // THROTTLE: Wait 0.5s between calls to avoid server overwhelm
+                // THROTTLE: Wait 0.5s between calls
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
             
             await MainActor.run {
                 isCreatingPolicies = false
-                creationStatus = "Completed: \(successCount) created, \(failCount) failed."
-                if failCount == 0 { selection.removeAll() }
+                deploymentResults = results
+                
+                let successCount = results.filter(\.success).count
+                let failCount = results.count - successCount
+                
+                if failCount == 0 {
+                    creationStatus = "✓ Completed: \(successCount) created"
+                    selection.removeAll()
+                    lastSelectedID = nil
+                } else {
+                    creationStatus = "⚠️ Completed: \(successCount) created, \(failCount) failed"
+                }
+                
+                // Show results sheet
+                showResultsSheet = true
+                
+                // Clear status after 5 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                    if !isCreatingPolicies {
+                        creationStatus = ""
+                    }
+                }
             }
         }
     }
@@ -368,9 +451,10 @@ struct PackagesDashboardView: View {
 struct CollapsiblePackageSection: View {
     let title: String
     let items: [PackageDisplayItem]
-    @Binding var selectedIDs: Set<UUID>
-    var onToggle: (UUID) -> Void
+    @Binding var selectedIDs: Set<String>  // Changed from UUID to String
+    var onToggle: (String) -> Void  // Changed from UUID to String
     var showAllMode: Bool
+    var matcher: PackageMatchingService  // Need access to find matches
     
     @State private var isExpanded = true
     
@@ -432,18 +516,32 @@ struct CollapsiblePackageSection: View {
             if isExpanded {
                 VStack(spacing: 12) {
                     ForEach(items) { item in
-                        PackageDisplayItemView(
-                            item: item,
-                            isSelected: selectedIDs.contains(item.id),
-                            showAllMode: showAllMode
-                        )
-                        .onTapGesture {
-                            // Only allow selection of matched items in show all mode
-                            if !showAllMode || item.isMatched {
+                        // Use PackageCardView for matched items
+                        if item.isMatched, let match = matcher.matches.first(where: { $0.matchedLabel == item.label }) {
+                            PackageCardView(match: match)
+                                .onTapGesture {
+                                    onToggle(item.id)
+                                }
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(selectedIDs.contains(item.id) ? Color.blue : Color.clear, lineWidth: 2)
+                                )
+                        } else {
+                            // Fallback to display item view for unmatched items in "show all" mode
+                            PackageDisplayItemView(
+                                item: item,
+                                isSelected: selectedIDs.contains(item.id),
+                                showAllMode: showAllMode
+                            )
+                            .onTapGesture {
                                 onToggle(item.id)
                             }
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(selectedIDs.contains(item.id) ? Color.blue : Color.clear, lineWidth: 2)
+                            )
+                            .opacity(0.6)
                         }
-                        .opacity((showAllMode && !item.isMatched) ? 0.6 : 1.0)
                     }
                 }
                 .padding(.top, 12)

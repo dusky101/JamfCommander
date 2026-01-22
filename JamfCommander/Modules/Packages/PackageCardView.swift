@@ -10,7 +10,6 @@ import SwiftUI
 
 struct PackageCardView: View {
     let match: PackageMatch
-    let isSelected: Bool
     
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
@@ -57,24 +56,12 @@ struct PackageCardView: View {
             
             Spacer()
             
-            // Selection Checkmark
-            if isSelected {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.blue)
-            } else {
-                Image(systemName: "circle")
-                    .font(.title2)
-                    .foregroundColor(.secondary.opacity(0.3))
-            }
+            // Chevron
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.secondary.opacity(0.5))
         }
         .padding(12)
-        .background(isSelected ? Color.blue.opacity(0.05) : Color(nsColor: .controlBackgroundColor).opacity(0.5))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isSelected ? Color.blue.opacity(0.3) : Color.gray.opacity(0.1), lineWidth: 1)
-        )
-        // Note: You can use .liquidGlass(.card) here if you have that modifier available globally
+        .liquidGlass(.card)
     }
 }

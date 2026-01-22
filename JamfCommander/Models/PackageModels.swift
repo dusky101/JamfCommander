@@ -41,9 +41,13 @@ struct PackageMatch: Identifiable, Hashable {
 
 // Unified display item that can represent either a matched package or a standalone label
 struct PackageDisplayItem: Identifiable, Hashable {
-    let id = UUID()
     let label: String
     let matchedApp: IntuneApp?
+    
+    // CRITICAL: Use label as stable ID (not UUID which changes every refresh!)
+    var id: String {
+        return label
+    }
     
     var isMatched: Bool {
         return matchedApp != nil

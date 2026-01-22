@@ -39,5 +39,5 @@ struct ScriptRecord: Identifiable, Codable, Hashable {
     var intId: Int { Int(id) ?? 0 }
     
     // Helper: Safe Category Name for Grouping
-    var safeCategory: String { categoryName ?? "Uncategorized" }
+    var safeCategory: String { categoryName ?? "Uncategorised" }
 }

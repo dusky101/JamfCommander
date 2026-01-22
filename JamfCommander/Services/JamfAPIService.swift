@@ -57,7 +57,7 @@ class JamfAPIService: ObservableObject {
     func fetchProfiles() async throws -> [ConfigProfile] {
         // STRATEGY: "Profile First Crawl" (Bulletproof)
         // 1. Fetch the Basic List (Reliable).
-        // 2. Hydrate details (Category) in parallel.
+        // 2. Hydrate details (Category & Scoped Status) in parallel.
         
         guard let token = token, !baseURL.isEmpty else { throw APIError.authFailed }
         guard let url = URL(string: "\(baseURL)/JSSResource/osxconfigurationprofiles") else { throw APIError.invalidURL }
@@ -78,7 +78,7 @@ class JamfAPIService: ObservableObject {
         
         var richProfiles: [ConfigProfile] = []
         
-        // 2. Hydrate in Parallel (Fetch Categories)
+        // 2. Hydrate in Parallel (Fetch Categories and Scoped Status)
         // We limit concurrency to avoid slamming the API too hard (max 10-20 concurrent is usually safe)
         await withTaskGroup(of: ConfigProfile?.self) { group in
             for profile in basicProfiles {
@@ -86,9 +86,13 @@ class JamfAPIService: ObservableObject {
                     do {
                         // Fetch details for this specific profile ID
                         let detail = try await self.fetchProfileScope(id: profile.id)
+                        // Capture computed property value before using it
+                        let activeStatus = detail.isActive
                         var enrichedProfile = profile
                         // Assign the category found in the details
-                        enrichedProfile.categoryName = detail.general.category?.name ?? "Uncategorized"
+                        enrichedProfile.categoryName = detail.general.category?.name ?? "Uncategorised"
+                        // Assign scoped status based on scope
+                        enrichedProfile.isActive = activeStatus
                         return enrichedProfile
                     } catch {
                         // If detail fetch fails, return the basic profile (better than nothing!)
