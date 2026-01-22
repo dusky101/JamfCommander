@@ -39,6 +39,32 @@ struct PackageMatch: Identifiable, Hashable {
     }
 }
 
+// Unified display item that can represent either a matched package or a standalone label
+struct PackageDisplayItem: Identifiable, Hashable {
+    let id = UUID()
+    let label: String
+    let matchedApp: IntuneApp?
+    
+    var isMatched: Bool {
+        return matchedApp != nil
+    }
+    
+    var displayName: String {
+        return matchedApp?.name ?? label
+    }
+    
+    var platform: String {
+        return matchedApp?.platform ?? "Installomator"
+    }
+    
+    var platformIcon: String {
+        if let app = matchedApp {
+            return app.platform.lowercased().contains("mac") ? "applelogo" : "desktopcomputer"
+        }
+        return "tag.fill"
+    }
+}
+
 // MARK: - Package Matching Logic
 
 class PackageMatchingService: ObservableObject {
@@ -54,6 +80,11 @@ class PackageMatchingService: ObservableObject {
     private var labels: [String] = []
     private var macApps: [IntuneApp] = []
     private var pcApps: [IntuneApp] = []
+    
+    // Expose all labels for "show all" mode
+    var allLabels: [String] {
+        return labels.sorted()
+    }
     
     // Persistence File Names
     private let savedLabelsName = "Commander_Saved_Labels.txt"

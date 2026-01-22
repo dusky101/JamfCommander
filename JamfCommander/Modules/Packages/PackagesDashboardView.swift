@@ -17,6 +17,7 @@ struct PackagesDashboardView: View {
     @State private var selection = Set<UUID>()
     @State private var searchText = ""
     @State private var selectedPlatformFilter: String = "All"
+    @State private var showAllLabels = false // Toggle between matched items and all labels
     
     // Action States
     @State private var creationStatus: String = ""
@@ -28,6 +29,42 @@ struct PackagesDashboardView: View {
     @State private var animateImportIcon = false
     
     // MARK: - Computed Logic
+    var displayItems: [PackageDisplayItem] {
+        if showAllLabels {
+            // Show all labels from Installomator
+            return matcher.allLabels.map { label in
+                // Check if this label has a match
+                let match = matcher.matches.first(where: { $0.matchedLabel == label })
+                return PackageDisplayItem(label: label, matchedApp: match?.intuneApp)
+            }
+        } else {
+            // Show only matched items
+            return matcher.matches.map { match in
+                PackageDisplayItem(label: match.matchedLabel, matchedApp: match.intuneApp)
+            }
+        }
+    }
+    
+    var filteredItems: [PackageDisplayItem] {
+        displayItems.filter { item in
+            let textMatch = searchText.isEmpty ||
+            item.displayName.localizedCaseInsensitiveContains(searchText) ||
+            item.label.localizedCaseInsensitiveContains(searchText)
+            
+            let platformMatch = (selectedPlatformFilter == "All") ||
+            (item.platform == selectedPlatformFilter) ||
+            (!item.isMatched && selectedPlatformFilter == "Installomator")
+            
+            return textMatch && platformMatch
+        }
+    }
+    
+    var groupedItems: [(key: String, value: [PackageDisplayItem])] {
+        let grouped = Dictionary(grouping: filteredItems) { $0.platform }
+        return grouped.sorted { $0.key < $1.key }
+    }
+    
+    // Keep original computed properties for backwards compatibility
     var filteredMatches: [PackageMatch] {
         matcher.matches.filter { match in
             let textMatch = searchText.isEmpty ||
@@ -46,6 +83,24 @@ struct PackagesDashboardView: View {
         return grouped.sorted { $0.key < $1.key }
     }
     
+    var selectedMatches: [PackageMatch] {
+        if showAllLabels {
+            // In "show all" mode, we need to find matches by label name since IDs are different
+            let selectedLabels = displayItems
+                .filter { selection.contains($0.id) && $0.isMatched }
+                .map { $0.label }
+            
+            return matcher.matches.filter { selectedLabels.contains($0.matchedLabel) }
+        } else {
+            // In matched mode, find matches by comparing their labels with selected display items
+            let selectedLabels = displayItems
+                .filter { selection.contains($0.id) }
+                .map { $0.label }
+            
+            return matcher.matches.filter { selectedLabels.contains($0.matchedLabel) }
+        }
+    }
+    
     // MARK: - Body
     var body: some View {
         VStack(spacing: 0) {
@@ -61,12 +116,13 @@ struct PackagesDashboardView: View {
                 filterBar
                 ScrollView {
                     LazyVStack(spacing: 20) {
-                        ForEach(groupedMatches, id: \.key) { group in
+                        ForEach(groupedItems, id: \.key) { group in
                             CollapsiblePackageSection(
                                 title: group.key,
-                                matches: group.value,
+                                items: group.value,
                                 selectedIDs: $selection,
-                                onToggle: toggleSelection
+                                onToggle: toggleSelection,
+                                showAllMode: showAllLabels
                             )
                         }
                     }
@@ -100,15 +156,35 @@ struct PackagesDashboardView: View {
     
     // MARK: - Components
     var headerView: some View {
-        HStack {
+        HStack(spacing: 16) {
             Text("Package Migration Assistant")
                 .font(.title2)
                 .fontWeight(.bold)
+            
             Spacer()
+            
             if !matcher.matches.isEmpty {
-                Button(action: { matcher.reset() }) {
+                // Toggle between matched and all labels
+                Picker("View Mode", selection: $showAllLabels) {
+                    Text("Matched Only").tag(false)
+                    Text("All Labels").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(minWidth: 220)
+                .onChange(of: showAllLabels) {
+                    // Clear selection when switching modes
+                    selection.removeAll()
+                }
+                
+                Button(action: { 
+                    matcher.reset()
+                    showAllLabels = false
+                    selection.removeAll()
+                }) {
                     Label("New Session", systemImage: "trash")
                 }
+                .buttonStyle(.bordered)
             }
         }
         .padding()
@@ -116,25 +192,33 @@ struct PackagesDashboardView: View {
     }
     
     var filterBar: some View {
-        HStack {
-            HStack {
-                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                TextField("Search apps or labels...", text: $searchText).textFieldStyle(.plain)
+        HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                TextField("Search apps or labels...", text: $searchText)
+                    .textFieldStyle(.plain)
             }
             .padding(8)
             .background(Color(nsColor: .controlBackgroundColor))
             .cornerRadius(8)
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray.opacity(0.2), lineWidth: 1))
             
-            Picker("", selection: $selectedPlatformFilter) {
+            Picker("Platform", selection: $selectedPlatformFilter) {
                 Text("All Platforms").tag("All")
                 Text("macOS").tag("macOS")
                 Text("Windows").tag("Windows")
+                if showAllLabels {
+                    Text("Unmatched").tag("Installomator")
+                }
             }
             .pickerStyle(.segmented)
-            .frame(width: 200)
+            .labelsHidden()
+            .frame(minWidth: showAllLabels ? 300 : 240)
+            .animation(.default, value: showAllLabels)
         }
-        .padding(10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(Color(nsColor: .windowBackgroundColor))
         .zIndex(1)
     }
@@ -182,7 +266,7 @@ struct PackagesDashboardView: View {
                 .padding(.horizontal)
                 
                 Button(action: { matcher.processMatches() }) {
-                    Text("Analyze Matches")
+                    Text("Analyse Matches")
                         .font(.headline)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 8)
@@ -239,16 +323,16 @@ struct PackagesDashboardView: View {
         isCreatingPolicies = true
         creationStatus = "Initialising..."
         
-        let selectedMatches = matcher.matches.filter { selection.contains($0.id) }
+        let matchesToDeploy = selectedMatches
         
         Task {
             var successCount = 0
             var failCount = 0
             
-            for (index, match) in selectedMatches.enumerated() {
+            for (index, match) in matchesToDeploy.enumerated() {
                 // Update status
                 await MainActor.run {
-                    creationStatus = "Deploying \(index + 1) of \(selectedMatches.count)..."
+                    creationStatus = "Deploying \(index + 1) of \(matchesToDeploy.count)..."
                 }
                 
                 do {
@@ -283,21 +367,30 @@ struct PackagesDashboardView: View {
 
 struct CollapsiblePackageSection: View {
     let title: String
-    let matches: [PackageMatch]
+    let items: [PackageDisplayItem]
     @Binding var selectedIDs: Set<UUID>
     var onToggle: (UUID) -> Void
+    var showAllMode: Bool
     
     @State private var isExpanded = true
     
     var allSelected: Bool {
-        matches.allSatisfy { selectedIDs.contains($0.id) }
+        items.allSatisfy { selectedIDs.contains($0.id) }
+    }
+    
+    var selectableItems: [PackageDisplayItem] {
+        // In "show all" mode, only allow selection of matched items
+        if showAllMode {
+            return items.filter { $0.isMatched }
+        }
+        return items
     }
     
     func toggleGroup() {
         if allSelected {
-            for match in matches { selectedIDs.remove(match.id) }
+            for item in selectableItems { selectedIDs.remove(item.id) }
         } else {
-            for match in matches { selectedIDs.insert(match.id) }
+            for item in selectableItems { selectedIDs.insert(item.id) }
         }
     }
     
@@ -306,12 +399,12 @@ struct CollapsiblePackageSection: View {
             HStack {
                 Button(action: { withAnimation { isExpanded.toggle() } }) {
                     HStack {
-                        Image(systemName: title.lowercased().contains("mac") ? "applelogo" : "desktopcomputer")
+                        Image(systemName: platformIcon)
                             .foregroundColor(.blue)
-                        Text(title == "macOS" ? "macOS Apps" : "Windows Apps")
+                        Text(platformTitle)
                             .font(.headline)
                             .foregroundColor(.primary)
-                        Text("(\(matches.count))")
+                        Text("(\(items.count))")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
@@ -322,12 +415,15 @@ struct CollapsiblePackageSection: View {
                 }
                 .buttonStyle(.plain)
                 Spacer()
-                Button(action: toggleGroup) {
-                    Text(allSelected ? "Deselect All" : "Select All")
-                        .font(.caption)
-                        .foregroundColor(.blue)
+                
+                if !selectableItems.isEmpty {
+                    Button(action: toggleGroup) {
+                        Text(allSelected ? "Deselect All" : "Select All")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(12)
             .background(Color.blue.opacity(0.05))
@@ -335,12 +431,19 @@ struct CollapsiblePackageSection: View {
             
             if isExpanded {
                 VStack(spacing: 12) {
-                    ForEach(matches) { match in
-                        PackageCardView(
-                            match: match,
-                            isSelected: selectedIDs.contains(match.id)
+                    ForEach(items) { item in
+                        PackageDisplayItemView(
+                            item: item,
+                            isSelected: selectedIDs.contains(item.id),
+                            showAllMode: showAllMode
                         )
-                        .onTapGesture { onToggle(match.id) }
+                        .onTapGesture {
+                            // Only allow selection of matched items in show all mode
+                            if !showAllMode || item.isMatched {
+                                onToggle(item.id)
+                            }
+                        }
+                        .opacity((showAllMode && !item.isMatched) ? 0.6 : 1.0)
                     }
                 }
                 .padding(.top, 12)
@@ -351,6 +454,26 @@ struct CollapsiblePackageSection: View {
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
         .cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+    }
+    
+    var platformIcon: String {
+        if title == "macOS" {
+            return "applelogo"
+        } else if title == "Windows" {
+            return "desktopcomputer"
+        } else {
+            return "tag.fill"
+        }
+    }
+    
+    var platformTitle: String {
+        if title == "macOS" {
+            return "macOS Apps"
+        } else if title == "Windows" {
+            return "Windows Apps"
+        } else {
+            return "Unmatched Labels"
+        }
     }
 }
 
@@ -413,5 +536,62 @@ struct ImportDropZone: View {
                 print("Import failed: \(error.localizedDescription)")
             }
         }
+    }
+}
+
+// MARK: - Package Display Item View
+
+struct PackageDisplayItemView: View {
+    let item: PackageDisplayItem
+    let isSelected: Bool
+    let showAllMode: Bool
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Selection indicator
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .foregroundColor(isSelected ? .blue : .gray.opacity(0.3))
+                .font(.title3)
+                .opacity((showAllMode && !item.isMatched) ? 0.3 : 1.0)
+            
+            // Platform icon
+            Image(systemName: item.platformIcon)
+                .foregroundColor(item.isMatched ? .blue : .gray)
+                .font(.title2)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.displayName)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                HStack(spacing: 6) {
+                    Image(systemName: "tag.fill")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text(item.label)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    if !item.isMatched && showAllMode {
+                        Text("• Not matched")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    } else if item.isMatched {
+                        Text("• Matched")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    }
+                }
+            }
+            
+            Spacer()
+        }
+        .padding(12)
+        .background(isSelected ? Color.blue.opacity(0.1) : Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isSelected ? Color.blue : Color.gray.opacity(0.2), lineWidth: 1.5)
+        )
     }
 }
