@@ -103,7 +103,7 @@ struct ScriptsDashboardView: View {
     private func exportScripts() {
         let csvContent = ExportService.exportScriptsToCSV(scripts: scripts)
         let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let dateString = dateFormatter.string(from: Date())
         ExportService.saveCSVToFile(content: csvContent, defaultName: "Scripts_\(dateString).csv")
     }

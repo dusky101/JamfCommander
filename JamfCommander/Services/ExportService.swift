@@ -48,11 +48,15 @@ class ExportService {
     
     /// Export policies with detailed information (Async version)
     /// Fetches full policy details including triggers, frequency, scope, etc.
-    static func exportPoliciesDetailedToCSV(policies: [Policy], api: JamfAPIService) async -> String {
+    static func exportPoliciesDetailedToCSV(policies: [Policy], api: JamfAPIService, progress: ExportProgress? = nil) async -> String {
         var csv = "ID,Name,Category,Enabled,Frequency,Triggers,Scoped To,Computer Groups,Target Count,Exclusions\n"
         
         // Fetch details for each policy with rate limiting and retries
         var detailedRows: [(id: Int, row: String)] = []
+        
+        // Update progress
+        progress?.updateProgress(for: .policies, status: .fetching, total: policies.count)
+        progress?.setCurrentTask("Fetching policy details...")
         
         // Process in batches of 10 with delays to avoid overwhelming the API
         let batchSize = 10
@@ -135,6 +139,7 @@ class ExportService {
                 for await result in group {
                     if let (id, row) = result {
                         detailedRows.append((id, row))
+                        progress?.updateProgress(for: .policies, status: .processing(current: detailedRows.count, total: policies.count), count: detailedRows.count, total: policies.count)
                     }
                 }
             }
@@ -144,6 +149,8 @@ class ExportService {
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay between batches
             }
         }
+        
+        progress?.updateProgress(for: .policies, status: .complete, count: detailedRows.count, total: policies.count)
         
         // Sort by ID and build final CSV
         for (_, row) in detailedRows.sorted(by: { $0.id < $1.id }) {
@@ -174,11 +181,15 @@ class ExportService {
     
     /// Export configuration profiles with detailed information (Async version)
     /// Fetches full profile details including scope, distribution method, etc.
-    static func exportProfilesDetailedToCSV(profiles: [ConfigProfile], api: JamfAPIService) async -> String {
+    static func exportProfilesDetailedToCSV(profiles: [ConfigProfile], api: JamfAPIService, progress: ExportProgress? = nil) async -> String {
         var csv = "ID,Name,Category,Status,Distribution Method,Level,User Removable,Redeploy on Update,Scoped To,Computer Groups,Exclusions\n"
         
         // Fetch details for each profile with rate limiting and retries
         var detailedRows: [(id: Int, row: String)] = []
+        
+        // Update progress
+        progress?.updateProgress(for: .profiles, status: .fetching, total: profiles.count)
+        progress?.setCurrentTask("Fetching profile details...")
         
         // Process in batches of 10 with delays to avoid overwhelming the API
         let batchSize = 10
@@ -249,6 +260,7 @@ class ExportService {
                 for await result in group {
                     if let (id, row) = result {
                         detailedRows.append((id, row))
+                        progress?.updateProgress(for: .profiles, status: .processing(current: detailedRows.count, total: profiles.count), count: detailedRows.count, total: profiles.count)
                     }
                 }
             }
@@ -258,6 +270,8 @@ class ExportService {
                 try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay between batches
             }
         }
+        
+        progress?.updateProgress(for: .profiles, status: .complete, count: detailedRows.count, total: profiles.count)
         
         // Sort by ID and build final CSV
         for (_, row) in detailedRows.sorted(by: { $0.id < $1.id }) {
@@ -335,31 +349,39 @@ class ExportService {
     // MARK: - Export All Data
     
     /// Export all data types to a single ZIP file containing separate CSVs
-    static func exportAllDataToZip(api: JamfAPIService) async -> Bool {
+    static func exportAllDataToZip(api: JamfAPIService, progress: ExportProgress? = nil) async -> Bool {
         do {
             // Fetch all data in parallel
-            async let computers = api.fetchComputers()
-            async let policies = api.fetchPolicies()
-            async let profiles = api.fetchProfiles()
-            async let scripts = api.fetchScripts()
+            progress?.setCurrentTask("Fetching data from Jamf...")
             
-            let (computerData, policyData, profileData, scriptData) = try await (computers, policies, profiles, scripts)
+            progress?.updateProgress(for: .computers, status: .fetching)
+            let computerData = try await api.fetchComputers()
+            progress?.updateProgress(for: .computers, status: .complete, count: computerData.count, total: computerData.count)
+            
+            progress?.updateProgress(for: .scripts, status: .fetching)
+            let scriptData = try await api.fetchScripts()
+            progress?.updateProgress(for: .scripts, status: .complete, count: scriptData.count, total: scriptData.count)
+            
+            let policyData = try await api.fetchPolicies()
+            let profileData = try await api.fetchProfiles()
             
             // Generate CSVs
+            progress?.setCurrentTask("Generating CSV files...")
             let computerCSV = exportComputersToCSV(computers: computerData)
             let scriptCSV = exportScriptsToCSV(scripts: scriptData)
             
-            // Generate detailed exports for policies and profiles
-            let policyCSV = await exportPoliciesDetailedToCSV(policies: policyData, api: api)
-            let profileCSV = await exportProfilesDetailedToCSV(profiles: profileData, api: api)
+            // Generate detailed exports for policies and profiles (with progress updates)
+            let policyCSV = await exportPoliciesDetailedToCSV(policies: policyData, api: api, progress: progress)
+            let profileCSV = await exportProfilesDetailedToCSV(profiles: profileData, api: api, progress: progress)
             
             // Create temporary directory for CSV files
+            progress?.setCurrentTask("Creating archive...")
             let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
             
             // Write CSV files
             let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd"
+            dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
             let dateString = dateFormatter.string(from: Date())
             
             try computerCSV.write(to: tempDir.appendingPathComponent("Computers_\(dateString).csv"), atomically: true, encoding: .utf8)
@@ -370,6 +392,8 @@ class ExportService {
             // Create ZIP archive
             let zipURL = tempDir.appendingPathComponent("JamfCommander_Export_\(dateString).zip")
             try await createZipArchive(from: tempDir, to: zipURL)
+            
+            progress?.markComplete()
             
             // Present save panel
             let savePanel = NSSavePanel()

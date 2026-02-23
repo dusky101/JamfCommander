@@ -28,6 +28,8 @@ struct ProfileDashboardView: View {
     @State private var inspectorSelection: InspectorSelection?
     @State private var isBusy = false
     @State private var actionStatus = ""
+    @State private var showExportProgress = false
+    @StateObject private var exportProgress = ExportProgress()
     
     // MARK: - Filtering & Grouping Logic
     
@@ -127,6 +129,9 @@ struct ProfileDashboardView: View {
         .sheet(item: $inspectorSelection) { selection in
             ProfileInspectorView(profileId: selection.id, api: api)
         }
+        .sheet(isPresented: $showExportProgress) {
+            ExportProgressSheet(isPresented: $showExportProgress, progress: exportProgress)
+        }
     }
     
     // MARK: - Actions
@@ -155,12 +160,22 @@ struct ProfileDashboardView: View {
     
     // MARK: - Export
     private func exportProfiles() {
+        exportProgress.reset()
+        showExportProgress = true
+        
         Task {
-            let csvContent = await ExportService.exportProfilesDetailedToCSV(profiles: profiles, api: api)
+            let csvContent = await ExportService.exportProfilesDetailedToCSV(profiles: profiles, api: api, progress: exportProgress)
+            
             let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd"
+            dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
             let dateString = dateFormatter.string(from: Date())
+            
+            // Mark complete and wait a moment for UI to update
+            exportProgress.markComplete()
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second to show completion
+            
             await MainActor.run {
+                showExportProgress = false
                 _ = ExportService.saveCSVToFile(content: csvContent, defaultName: "Profiles_\(dateString).csv")
             }
         }

@@ -33,6 +33,8 @@ struct DashboardView: View {
     @State private var categoryToDelete: Category?
     @State private var showDeleteConfirmation = false
     @State private var isExporting = false
+    @State private var showExportProgress = false
+    @StateObject private var exportProgress = ExportProgress()
     
     var filteredCategories: [Category] {
         if searchText.isEmpty { return categories }
@@ -204,6 +206,9 @@ struct DashboardView: View {
         } message: {
             Text("This will verify if the category is empty before deletion.")
         }
+        .sheet(isPresented: $showExportProgress) {
+            ExportProgressSheet(isPresented: $showExportProgress, progress: exportProgress)
+        }
     }
     
     // MARK: - Actions
@@ -272,10 +277,18 @@ struct DashboardView: View {
     
     func exportAllData() {
         isExporting = true
+        exportProgress.reset()
+        showExportProgress = true
+        
         Task {
-            _ = await ExportService.exportAllDataToZip(api: api)
+            _ = await ExportService.exportAllDataToZip(api: api, progress: exportProgress)
+            
+            // Wait a moment to show completion state
+            try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            
             await MainActor.run {
                 isExporting = false
+                showExportProgress = false // Auto-dismiss sheet
             }
         }
     }

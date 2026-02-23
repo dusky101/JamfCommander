@@ -28,6 +28,8 @@ struct PoliciesDashboardView: View {
     @State private var inspectorSelection: InspectorSelection?
     @State private var isBusy = false
     @State private var actionStatus = ""
+    @State private var showExportProgress = false
+    @StateObject private var exportProgress = ExportProgress()
     
     // MARK: - Logic
     var filteredPolicies: [Policy] {
@@ -112,6 +114,9 @@ struct PoliciesDashboardView: View {
         .sheet(item: $inspectorSelection) { selection in
             PoliciesInspectorView(policyId: selection.id, api: api)
         }
+        .sheet(isPresented: $showExportProgress) {
+            ExportProgressSheet(isPresented: $showExportProgress, progress: exportProgress)
+        }
     }
     
     // MARK: - Actions
@@ -152,12 +157,22 @@ struct PoliciesDashboardView: View {
     }
     
     private func exportPolicies() {
+        exportProgress.reset()
+        showExportProgress = true
+        
         Task {
-            let csvContent = await ExportService.exportPoliciesDetailedToCSV(policies: policies, api: api)
+            let csvContent = await ExportService.exportPoliciesDetailedToCSV(policies: policies, api: api, progress: exportProgress)
+            
             let dateFormatter = DateFormatter()
-            dateFormatter.dateFormat = "yyyy-MM-dd"
+            dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
             let dateString = dateFormatter.string(from: Date())
+            
+            // Mark complete and wait a moment for UI to update
+            exportProgress.markComplete()
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second to show completion
+            
             await MainActor.run {
+                showExportProgress = false
                 _ = ExportService.saveCSVToFile(content: csvContent, defaultName: "Policies_\(dateString).csv")
             }
         }
