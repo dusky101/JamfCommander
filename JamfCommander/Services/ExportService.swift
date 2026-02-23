@@ -47,9 +47,9 @@ class ExportService {
     }
     
     /// Export policies with detailed information (Async version)
-    /// Fetches full policy details including triggers, frequency, scope, etc.
+    /// Fetches full policy details including triggers, frequency, scope, packages, scripts, etc.
     static func exportPoliciesDetailedToCSV(policies: [Policy], api: JamfAPIService, progress: ExportProgress? = nil) async -> String {
-        var csv = "ID,Name,Category,Enabled,Frequency,Triggers,Scoped To,Computer Groups,Target Count,Exclusions\n"
+        var csv = "ID,Name,Category,Enabled,Frequency,Triggers,Scoped To,Computer Groups,Target Count,Exclusions,Packages,Scripts,Printers,Dock Items,Files/Processes\n"
         
         // Fetch details for each policy with rate limiting and retries
         var detailedRows: [(id: Int, row: String)] = []
@@ -120,7 +120,83 @@ class ExportService {
                                     exclusionsList = parts.joined(separator: "; ")
                                 }
                                 
-                                let row = "\(id),\(name),\(category),\(enabled),\(frequency),\(escapeCSV(triggersList)),\(escapeCSV(scopedTo)),\(escapeCSV(computerGroups)),\(targetCount),\(escapeCSV(exclusionsList))\n"
+                                // Packages
+                                var packagesList = ""
+                                if let packages = detail.package_configuration?.packages, !packages.isEmpty {
+                                    packagesList = packages.map { pkg in
+                                        var parts = [pkg.name]
+                                        if let action = pkg.action {
+                                            parts.append("(\(action))")
+                                        }
+                                        return parts.joined(separator: " ")
+                                    }.joined(separator: "; ")
+                                }
+                                
+                                // Scripts
+                                var scriptsList = ""
+                                if let scripts = detail.scripts, !scripts.isEmpty {
+                                    scriptsList = scripts.map { script in
+                                        var parts = [script.name]
+                                        if let priority = script.priority {
+                                            parts.append("[\(priority)]")
+                                        }
+                                        return parts.joined(separator: " ")
+                                    }.joined(separator: "; ")
+                                }
+                                
+                                // Printers
+                                var printersList = ""
+                                if let printers = detail.printers, !printers.isEmpty {
+                                    printersList = printers.map { printer in
+                                        var parts = [printer.name]
+                                        if let action = printer.action {
+                                            parts.append("(\(action))")
+                                        }
+                                        if printer.make_default == true {
+                                            parts.append("[Default]")
+                                        }
+                                        return parts.joined(separator: " ")
+                                    }.joined(separator: "; ")
+                                }
+                                
+                                // Dock Items
+                                var dockItemsList = ""
+                                if let dockItems = detail.dock_items, !dockItems.isEmpty {
+                                    dockItemsList = dockItems.map { item in
+                                        var parts = [item.name]
+                                        if let action = item.action {
+                                            parts.append("(\(action))")
+                                        }
+                                        return parts.joined(separator: " ")
+                                    }.joined(separator: "; ")
+                                }
+                                
+                                // Files and Processes
+                                var filesProcessesList = ""
+                                if let fp = detail.files_processes {
+                                    var parts: [String] = []
+                                    if let cmd = fp.run_command, !cmd.isEmpty {
+                                        parts.append("Run: \(cmd)")
+                                    }
+                                    if let search = fp.search_for_process, !search.isEmpty {
+                                        parts.append("Search: \(search)")
+                                        if fp.kill_process == true {
+                                            parts.append("(Kill)")
+                                        }
+                                    }
+                                    if let locate = fp.locate_file, !locate.isEmpty {
+                                        parts.append("Locate: \(locate)")
+                                    }
+                                    if let searchPath = fp.search_by_path, !searchPath.isEmpty {
+                                        parts.append("Path: \(searchPath)")
+                                        if fp.delete_file == true {
+                                            parts.append("(Delete)")
+                                        }
+                                    }
+                                    filesProcessesList = parts.joined(separator: "; ")
+                                }
+                                
+                                let row = "\(id),\(name),\(category),\(enabled),\(frequency),\(escapeCSV(triggersList)),\(escapeCSV(scopedTo)),\(escapeCSV(computerGroups)),\(targetCount),\(escapeCSV(exclusionsList)),\(escapeCSV(packagesList)),\(escapeCSV(scriptsList)),\(escapeCSV(printersList)),\(escapeCSV(dockItemsList)),\(escapeCSV(filesProcessesList))\n"
                                 
                                 return (id, row)
                             } catch {
@@ -284,9 +360,9 @@ class ExportService {
     // MARK: - Script Export
     
     /// Export scripts to CSV format
-    /// Includes: ID, Name, Category, Priority, OS Requirements, Parameters (4-11)
+    /// Includes: ID, Name, Category, Priority, OS Requirements, Parameters (4-11), and Directories Created
     static func exportScriptsToCSV(scripts: [ScriptRecord]) -> String {
-        var csv = "ID,Name,Category,Priority,OS Requirements,Info,Notes,Parameter 4,Parameter 5,Parameter 6,Parameter 7,Parameter 8,Parameter 9,Parameter 10,Parameter 11\n"
+        var csv = "ID,Name,Category,Priority,OS Requirements,Info,Notes,Directories Created,Parameter 4,Parameter 5,Parameter 6,Parameter 7,Parameter 8,Parameter 9,Parameter 10,Parameter 11\n"
         
         for script in scripts.sorted(by: { $0.name < $1.name }) {
             let id = escapeCSV(script.id)
@@ -296,6 +372,11 @@ class ExportService {
             let osReqs = escapeCSV(script.osRequirements ?? "")
             let info = escapeCSV(script.info ?? "")
             let notes = escapeCSV(script.notes ?? "")
+            
+            // Extract directories from script content
+            let directories = extractDirectoriesFromScript(script.scriptContents ?? "")
+            let dirList = escapeCSV(directories.joined(separator: "; "))
+            
             let p4 = escapeCSV(script.parameter4 ?? "")
             let p5 = escapeCSV(script.parameter5 ?? "")
             let p6 = escapeCSV(script.parameter6 ?? "")
@@ -305,10 +386,107 @@ class ExportService {
             let p10 = escapeCSV(script.parameter10 ?? "")
             let p11 = escapeCSV(script.parameter11 ?? "")
             
-            csv += "\(id),\(name),\(category),\(priority),\(osReqs),\(info),\(notes),\(p4),\(p5),\(p6),\(p7),\(p8),\(p9),\(p10),\(p11)\n"
+            csv += "\(id),\(name),\(category),\(priority),\(osReqs),\(info),\(notes),\(dirList),\(p4),\(p5),\(p6),\(p7),\(p8),\(p9),\(p10),\(p11)\n"
         }
         
         return csv
+    }
+    
+    /// Extracts directory paths from script content by scanning for mkdir commands
+    /// Looks for patterns like: mkdir, mkdir -p, BASE_DIR="/path", ONBOARDING_DIR="${BASE_DIR}/subdir"
+    private static func extractDirectoriesFromScript(_ scriptContent: String) -> [String] {
+        var directories: [String] = []
+        var variables: [String: String] = [:] // Track variable assignments
+        
+        let lines = scriptContent.components(separatedBy: .newlines)
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            
+            // Skip comments and empty lines
+            if trimmedLine.hasPrefix("#") || trimmedLine.isEmpty {
+                continue
+            }
+            
+            // Extract variable assignments (e.g., BASE_DIR="/Library/Application Support")
+            if let varMatch = extractVariableAssignment(from: trimmedLine) {
+                variables[varMatch.name] = varMatch.value
+            }
+            
+            // Look for mkdir commands
+            if trimmedLine.contains("mkdir") {
+                let dirs = extractDirectoriesFromMkdir(trimmedLine, variables: variables)
+                directories.append(contentsOf: dirs)
+            }
+        }
+        
+        // Remove duplicates and sort
+        return Array(Set(directories)).sorted()
+    }
+    
+    /// Extracts variable assignments from a line (e.g., BASE_DIR="/path")
+    private static func extractVariableAssignment(from line: String) -> (name: String, value: String)? {
+        // Match patterns like: VARIABLE="/path" or VARIABLE="${OTHER_VAR}/subpath"
+        let pattern = "^([A-Z_]+)=\"([^\"]+)\"$"
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else {
+            return nil
+        }
+        
+        guard let nameRange = Range(match.range(at: 1), in: line),
+              let valueRange = Range(match.range(at: 2), in: line) else {
+            return nil
+        }
+        
+        let name = String(line[nameRange])
+        let value = String(line[valueRange])
+        
+        // Resolve variable references (e.g., ${BASE_DIR}/subdir -> /Library/Application Support/subdir)
+        // This is a simple implementation - could be enhanced for more complex cases
+        
+        return (name, value)
+    }
+    
+    /// Extracts directory paths from mkdir commands
+    private static func extractDirectoriesFromMkdir(_ line: String, variables: [String: String]) -> [String] {
+        var directories: [String] = []
+        
+        // Use regex to extract quoted or unquoted paths after mkdir
+        // Matches: mkdir -p "/path/with spaces" or mkdir -p /path or mkdir "$VAR"
+        let patterns = [
+            "mkdir\\s+(?:-[pm]\\s+)?[\"']([^\"']+)[\"']",  // Quoted paths: mkdir -p "/path/with spaces"
+            "mkdir\\s+(?:-[pm]\\s+)?([^\\s\"']+)",         // Unquoted paths: mkdir -p /path
+        ]
+        
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let matches = regex.matches(in: line, range: NSRange(line.startIndex..., in: line))
+            
+            for match in matches {
+                // Try to get the captured group (the path)
+                let groupIndex = 1
+                guard match.numberOfRanges > groupIndex else { continue }
+                let capturedRange = match.range(at: groupIndex)
+                guard let swiftRange = Range(capturedRange, in: line) else { continue }
+                
+                var dirPath = String(line[swiftRange])
+                
+                // Resolve variable references like $BASE_DIR or ${BASE_DIR}
+                for (varName, varValue) in variables {
+                    dirPath = dirPath
+                        .replacingOccurrences(of: "${\(varName)}", with: varValue)
+                        .replacingOccurrences(of: "$\(varName)", with: varValue)
+                }
+                
+                // Only include if it looks like an absolute path and doesn't contain unresolved variables
+                if dirPath.hasPrefix("/") && !dirPath.contains("$") {
+                    directories.append(dirPath)
+                    break  // Found a match, no need to try other patterns
+                }
+            }
+        }
+        
+        return directories
     }
     
     // MARK: - Computer Export

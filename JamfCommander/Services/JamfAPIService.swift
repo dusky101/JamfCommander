@@ -153,34 +153,53 @@ class JamfAPIService: ObservableObject {
             let listResponse = try await genericFetch(endpoint: endpoint, responseType: PolicyListResponse.self)
             
             // 2. Hydrate Details (to get Categories & Enabled State)
-            // We limit concurrency to avoid overwhelming the server
+            // Process in batches of 10 with delays to avoid overwhelming the API
             var detailedPolicies: [Policy] = []
             
-            await withTaskGroup(of: Policy?.self) { group in
-                for item in listResponse.policies {
-                    group.addTask {
-                        do {
-                            // Fetch full detail for this policy
-                            let detail = try await self.fetchPolicyDetail(id: item.id)
-                            return Policy(
-                                id: detail.general.id,
-                                name: detail.general.name,
-                                categoryId: detail.general.category?.id,
-                                categoryName: detail.general.category?.name,
-                                enabled: detail.general.enabled,
-                                scope: detail.scope
-                            )
-                        } catch {
-                            print("Failed to hydrate policy \(item.id): \(error)")
+            let batchSize = 10
+            let batches = stride(from: 0, to: listResponse.policies.count, by: batchSize).map {
+                Array(listResponse.policies[$0..<min($0 + batchSize, listResponse.policies.count)])
+            }
+            
+            for (batchIndex, batch) in batches.enumerated() {
+                await withTaskGroup(of: Policy?.self) { group in
+                    for item in batch {
+                        group.addTask {
+                            // Retry logic: try up to 3 times with exponential backoff
+                            for attempt in 1...3 {
+                                do {
+                                    let detail = try await self.fetchPolicyDetail(id: item.id)
+                                    return Policy(
+                                        id: detail.general.id,
+                                        name: detail.general.name,
+                                        categoryId: detail.general.category?.id,
+                                        categoryName: detail.general.category?.name,
+                                        enabled: detail.general.enabled,
+                                        scope: detail.scope
+                                    )
+                                } catch {
+                                    if attempt == 3 {
+                                        print("Failed to hydrate policy \(item.id) after 3 attempts: \(error)")
+                                        return nil
+                                    }
+                                    // Wait with exponential backoff: 0.5s, 1s, 2s
+                                    try? await Task.sleep(nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000))
+                                }
+                            }
                             return nil
+                        }
+                    }
+                    
+                    for await result in group {
+                        if let policy = result {
+                            detailedPolicies.append(policy)
                         }
                     }
                 }
                 
-                for await result in group {
-                    if let policy = result {
-                        detailedPolicies.append(policy)
-                    }
+                // Add delay between batches (except for last batch)
+                if batchIndex < batches.count - 1 {
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
                 }
             }
             

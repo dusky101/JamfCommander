@@ -44,6 +44,11 @@ struct ActionPanelView: View {
     // Scope Action State (Profiles Only)
     @State private var selectedScopeAction: ScopeAction?
     
+    // Clone State
+    @State private var showCloneSheet = false
+    @State private var cloneConfig: CloneConfiguration?
+    @State private var mutableCategories: [Category] = []
+    
     // Define scope actions
     enum ScopeAction: String, CaseIterable, Identifiable {
         case allComputers = "All Computers"
@@ -194,6 +199,31 @@ struct ActionPanelView: View {
                 Divider()
             }
             
+            // MARK: - Clone Section
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Cloning")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.secondary)
+                
+                Button(action: { showCloneSheet = true }) {
+                    HStack {
+                        Image(systemName: "doc.on.doc")
+                        Text("Clone Selection")
+                    }
+                    .fontWeight(.medium)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.purple)
+                .disabled(isBusy)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            
+            Divider()
+            
             // MARK: - Right: Danger Zone
             VStack(alignment: .leading, spacing: 12) {
                 Text("Danger Zone")
@@ -234,9 +264,28 @@ struct ActionPanelView: View {
                     selectedIDs.removeAll()
                     selectedTargetCategory = nil
                     selectedScopeAction = nil // Clear scope action too
+                    cloneConfig = nil // Clear clone config
                     Task { await onRefresh() }
                 }
             )
+        }
+        
+        // Clone Configuration Sheet
+        .sheet(isPresented: $showCloneSheet) {
+            CloneConfigSheet(
+                api: api,
+                mode: mode,
+                itemCount: selectedIDs.count,
+                categories: $mutableCategories,
+                onConfirm: { config in
+                    cloneConfig = config
+                    showCloneSheet = false
+                    requestClone()
+                }
+            )
+        }
+        .onAppear {
+            mutableCategories = categories
         }
     }
     
@@ -407,6 +456,94 @@ struct ActionPanelView: View {
                     resultsLog.append(OperationResult(itemName: "ID \(id)", success: true, error: nil))
                 } catch {
                     resultsLog.append(OperationResult(itemName: "ID \(id)", success: false, error: "\(error)"))
+                }
+            }
+            
+            await MainActor.run {
+                isBusy = false
+                statusMessage = "Done."
+                showResultsSheet = true
+            }
+        }
+    }
+    
+    func requestClone() {
+        guard let config = cloneConfig else { return }
+        let count = selectedIDs.count
+        let typeName = mode == .profiles ? "profiles" : "policies"
+        
+        let categoryName = categories.first(where: { $0.id == config.targetCategoryID })?.name ?? "Unknown"
+        
+        confirmation = ConfirmationData(
+            title: "Confirm Clone",
+            message: "You are about to clone \(count) \(typeName) to the '\(categoryName)' category.\n\nNew items will be named 'Copy of [Original Name]'.\n\nPlease confirm this action.",
+            actionTitle: "Clone Items",
+            role: .none,
+            action: { performBulkClone() }
+        )
+    }
+    
+    func performBulkClone() {
+        guard let config = cloneConfig else { return }
+        isBusy = true
+        statusMessage = "Cloning..."
+        resultsLog = []
+        
+        Task {
+            for id in selectedIDs {
+                var originalName = "Item #\(id)"
+                
+                // Get original name
+                if mode == .profiles {
+                    if let p = profiles.first(where: { $0.id == id }) {
+                        originalName = p.name
+                    }
+                } else {
+                    if let p = policies.first(where: { $0.id == id }) {
+                        originalName = p.name
+                    }
+                }
+                
+                let cloneName = "Copy of \(originalName)"
+                
+                do {
+                    // Call API
+                    if mode == .profiles {
+                        let newId = try await api.cloneProfile(
+                            id: id,
+                            newName: cloneName,
+                            toCategoryID: config.targetCategoryID,
+                            stripScope: config.stripScope
+                        )
+                        resultsLog.append(OperationResult(
+                            itemName: cloneName,
+                            success: true,
+                            error: nil,
+                            toCategory: "Created (ID: \(newId))"
+                        ))
+                    } else {
+                        let newId = try await api.clonePolicy(
+                            id: id,
+                            newName: cloneName,
+                            toCategoryID: config.targetCategoryID,
+                            stripScope: config.stripScope,
+                            stripTriggers: config.stripTriggers,
+                            stripFrequency: config.stripFrequency,
+                            disableSelfService: config.disableSelfService
+                        )
+                        resultsLog.append(OperationResult(
+                            itemName: cloneName,
+                            success: true,
+                            error: nil,
+                            toCategory: "Created (ID: \(newId))"
+                        ))
+                    }
+                } catch {
+                    resultsLog.append(OperationResult(
+                        itemName: originalName,
+                        success: false,
+                        error: "\(error)"
+                    ))
                 }
             }
             
