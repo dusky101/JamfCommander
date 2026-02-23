@@ -62,6 +62,6 @@ struct PackageCardView: View {
                 .foregroundColor(.secondary.opacity(0.5))
         }
         .padding(12)
-        .liquidGlass(.card)
+        .liquidGlass(cornerRadius: 12)
     }
 }

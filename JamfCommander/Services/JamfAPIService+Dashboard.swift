@@ -7,13 +7,35 @@
 
 import Foundation
 
-// Helper Model just for counting computers
-struct BasicComputerListResponse: Codable {
-    let computers: [BasicComputerRecord]
-}
-struct BasicComputerRecord: Codable {
+// Helper Model for dashboard computers with user info
+struct BasicComputerRecord: Codable, Identifiable {
     let id: Int
     let name: String
+    let username: String?
+    let realname: String?
+    let email: String?
+    
+    init(from computer: ComputerInventoryRecord) {
+        self.id = computer.intId
+        self.name = computer.general?.name ?? "Unknown"
+        self.username = computer.userAndLocation?.username
+        self.realname = computer.userAndLocation?.realname
+        self.email = computer.userAndLocation?.email
+    }
+    
+    // Extract email domain for grouping
+    var emailDomain: String {
+        guard let email = email, !email.isEmpty else {
+            return "No Email Domain"
+        }
+        
+        if let atIndex = email.lastIndex(of: "@") {
+            let domain = String(email[email.index(after: atIndex)...])
+            return domain.isEmpty ? "No Email Domain" : domain
+        }
+        
+        return "No Email Domain"
+    }
 }
 
 extension JamfAPIService {
@@ -21,9 +43,17 @@ extension JamfAPIService {
     // MARK: - Computer Functions
     
     func fetchDashboardComputers() async throws -> [BasicComputerRecord] {
-        let endpoint = "JSSResource/computers"
-        let response = try await genericFetch(endpoint: endpoint, responseType: BasicComputerListResponse.self)
-        return response.computers
+        // First, get the list of all computers (fast, basic info only)
+        let endpoint = "api/v1/computers-inventory?section=GENERAL&section=USER_AND_LOCATION&page-size=2000"
+        
+        let response = try await genericFetch(
+            endpoint: endpoint,
+            responseType: JamfProComputerListResponse.self
+        )
+        
+        // Convert to BasicComputerRecord with user info
+        return response.results.map { BasicComputerRecord(from: $0) }
+            .sorted { $0.name < $1.name }
     }
     
     // MARK: - Category Management Functions

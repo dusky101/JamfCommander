@@ -83,6 +83,6 @@ struct ComputerCardView: View {
             }
         }
         .padding(12)
-        .liquidGlass(.card)
+        .liquidGlass(cornerRadius: 12)
     }
 }

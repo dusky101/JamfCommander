@@ -20,6 +20,7 @@ struct ComputerInventoryRecord: Identifiable, Codable, Hashable {
     let hardware: ComputerHardware?
     let operatingSystem: ComputerOS?
     let configurationProfiles: [ComputerProfile]?
+    let userAndLocation: ComputerUserAndLocation?
     
     // Helper to Convert String ID to Int (for compatibility with UI)
     var intId: Int { Int(id) ?? 0 }
@@ -32,6 +33,7 @@ struct ComputerGeneral: Codable, Hashable {
     let lastIpAddress: String?
     let lastReportedIp: String?
     let lastContactTime: String?
+    let lastLoggedInUsernameBinary: String?
     let remoteManagement: RemoteManagement?
     
     struct RemoteManagement: Codable, Hashable {
@@ -53,6 +55,17 @@ struct ComputerOS: Codable, Hashable {
     let version: String?
     let build: String?
     let fileVault2Status: String? // "All Partitions Encrypted", etc.
+}
+
+struct ComputerUserAndLocation: Codable, Hashable {
+    let username: String?
+    let realname: String?
+    let email: String?
+    let position: String?
+    let phone: String?
+    let departmentId: String?
+    let buildingId: String?
+    let room: String?
 }
 
 // MARK: - Profiles (Bulletproof)

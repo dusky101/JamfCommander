@@ -60,6 +60,6 @@ struct ProfileCardView: View {
         }
         .padding(12)
         // Apply our custom card style
-        .liquidGlass(.card)
+        .liquidGlass(cornerRadius: 12)
     }
 }

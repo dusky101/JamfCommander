@@ -35,6 +35,8 @@ struct DashboardView: View {
     @State private var isExporting = false
     @State private var showExportProgress = false
     @StateObject private var exportProgress = ExportProgress()
+    @State private var isCategoryManagerExpanded = true
+    @State private var expandedDomains: Set<String> = [] // Track which domain groups are expanded
     
     var filteredCategories: [Category] {
         if searchText.isEmpty { return categories }
@@ -89,29 +91,43 @@ struct DashboardView: View {
                 // MARK: - 2. Category Manager
                 VStack(spacing: 16) {
                     HStack {
-                        Label("Categories", systemImage: "folder.fill")
-                            .font(.title2).fontWeight(.bold)
-                        Spacer()
-                        HStack {
-                            Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                            TextField("Search...", text: $searchText)
-                                .textFieldStyle(.plain).frame(width: 150)
+                        Button(action: { withAnimation { isCategoryManagerExpanded.toggle() } }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: isCategoryManagerExpanded ? "chevron.down" : "chevron.right")
+                                    .font(.caption).fontWeight(.bold)
+                                Label("Categories", systemImage: "folder.fill")
+                                    .font(.title2).fontWeight(.bold)
+                            }
                         }
-                        .padding(6).background(Color.black.opacity(0.1)).cornerRadius(8)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.primary)
                         
-                        Button(action: { openCategorySheet(for: nil) }) {
-                            Label("New Category", systemImage: "plus").fontWeight(.medium)
+                        Spacer()
+                        
+                        if isCategoryManagerExpanded {
+                            HStack {
+                                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                                TextField("Search...", text: $searchText)
+                                    .textFieldStyle(.plain).frame(width: 150)
+                            }
+                            .padding(6).background(Color.black.opacity(0.1)).cornerRadius(8)
+                            
+                            Button(action: { openCategorySheet(for: nil) }) {
+                                Label("New Category", systemImage: "plus").fontWeight(.medium)
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                     
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 12)], spacing: 12) {
-                        ForEach(filteredCategories) { category in
-                            CategoryTile(
-                                category: category,
-                                onEdit: { openCategorySheet(for: category) },
-                                onDelete: { confirmDelete(category) }
-                            )
+                    if isCategoryManagerExpanded {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 12)], spacing: 12) {
+                            ForEach(filteredCategories) { category in
+                                CategoryTile(
+                                    category: category,
+                                    onEdit: { openCategorySheet(for: category) },
+                                    onDelete: { confirmDelete(category) }
+                                )
+                            }
                         }
                     }
                 }
@@ -130,48 +146,123 @@ struct DashboardView: View {
                             .font(.caption).foregroundColor(.secondary)
                     }
                     
-                    // Device List Box
-                    VStack(spacing: 0) {
-                        if computers.isEmpty {
+                    // Device List Box - Grouped by Email Domain
+                    if computers.isEmpty {
+                        VStack {
                             Text("No computers found.").padding()
                                 .foregroundColor(.secondary)
-                        } else {
-                            // Show first 10 for dashboard summary
-                            ForEach(computers.prefix(10), id: \.id) { comp in
-                                HStack {
-                                    Image(systemName: "desktopcomputer")
-                                        .foregroundColor(.secondary)
-                                        .font(.title3)
-                                    Text(comp.name)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.primary)
-                                    
-                                    Spacer()
-                                    
-                                    // Mock Status Badge (Green for OK)
-                                    HStack(spacing: 6) {
-                                        Circle().fill(Color.green).frame(width: 6, height: 6)
-                                        Text("Active")
-                                    }
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.green)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.green.opacity(0.1))
-                                    .cornerRadius(12)
-                                }
-                                .padding()
+                        }
+                        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                        .cornerRadius(12)
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+                    } else {
+                        // Group computers by email domain
+                        let groupedComputers = Dictionary(grouping: computers.prefix(20), by: { $0.emailDomain })
+                        let sortedDomains = groupedComputers.keys.sorted()
+                        
+                        VStack(spacing: 12) {
+                            ForEach(sortedDomains, id: \.self) { domain in
+                                let computersInDomain = groupedComputers[domain] ?? []
                                 
-                                if comp.id != computers.prefix(10).last?.id {
-                                    Divider()
+                                VStack(alignment: .leading, spacing: 0) {
+                                    // Domain Header (Collapsible)
+                                    Button(action: {
+                                        withAnimation {
+                                            if expandedDomains.contains(domain) {
+                                                expandedDomains.remove(domain)
+                                            } else {
+                                                expandedDomains.insert(domain)
+                                            }
+                                        }
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "envelope.fill")
+                                                .foregroundColor(.blue)
+                                            
+                                            Text(domain)
+                                                .font(.headline)
+                                                .foregroundColor(.primary)
+                                            
+                                            Spacer()
+                                            
+                                            Text("\(computersInDomain.count)")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                            
+                                            Image(systemName: "chevron.right")
+                                                .foregroundColor(.secondary)
+                                                .rotationEffect(.degrees(expandedDomains.contains(domain) ? 90 : 0))
+                                        }
+                                        .padding(12)
+                                        .background(Color.blue.opacity(0.05))
+                                        .cornerRadius(10)
+                                    }
+                                    .buttonStyle(.plain)
+                                    
+                                    // Computers in this domain
+                                    if expandedDomains.contains(domain) {
+                                        VStack(spacing: 12) {
+                                            ForEach(computersInDomain) { comp in
+                                                HStack {
+                                                    Image(systemName: "desktopcomputer")
+                                                        .foregroundColor(.secondary)
+                                                        .font(.title3)
+                                                    
+                                                    VStack(alignment: .leading, spacing: 2) {
+                                                        Text(comp.name)
+                                                            .fontWeight(.medium)
+                                                            .foregroundColor(.primary)
+                                                        
+                                                        if let email = comp.email, !email.isEmpty {
+                                                            HStack(spacing: 4) {
+                                                                Image(systemName: "envelope")
+                                                                    .font(.caption2)
+                                                                Text(email)
+                                                            }
+                                                            .font(.caption)
+                                                            .foregroundColor(.secondary)
+                                                        } else if let username = comp.username, !username.isEmpty {
+                                                            HStack(spacing: 4) {
+                                                                Image(systemName: "person.crop.circle")
+                                                                    .font(.caption2)
+                                                                Text(username)
+                                                            }
+                                                            .font(.caption)
+                                                            .foregroundColor(.secondary)
+                                                        }
+                                                    }
+                                                    
+                                                    Spacer()
+                                                    
+                                                    // Status Badge
+                                                    HStack(spacing: 6) {
+                                                        Circle().fill(Color.green).frame(width: 6, height: 6)
+                                                        Text("Active")
+                                                    }
+                                                    .font(.caption2)
+                                                    .fontWeight(.bold)
+                                                    .foregroundColor(.green)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 4)
+                                                    .background(Color.green.opacity(0.1))
+                                                    .cornerRadius(12)
+                                                }
+                                                .padding(12)
+                                                .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
+                                                .cornerRadius(8)
+                                            }
+                                        }
+                                        .padding(.top, 8)
+                                    }
                                 }
                             }
                         }
+                        .onAppear {
+                            // Expand all domains by default
+                            let domains = Set(computers.prefix(20).map { $0.emailDomain })
+                            expandedDomains = domains
+                        }
                     }
-                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-                    .cornerRadius(12)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.1), lineWidth: 1))
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 40)
@@ -326,7 +417,7 @@ struct StatCard: View {
                 .foregroundColor(.secondary)
         }
         .padding(16)
-        .liquidGlass(.card)
+        .liquidGlass(cornerRadius: 12)
         .scaleEffect(isHovering ? 1.02 : 1.0)
         .animation(.spring(response: 0.3), value: isHovering)
         .onHover { isHovering = $0 }
@@ -399,7 +490,7 @@ struct ExportAllCard: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .padding(.horizontal, 8)
-        .liquidGlass(.card)
+        .liquidGlass(cornerRadius: 12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.green.opacity(isHovering ? 0.5 : 0.2), lineWidth: 2)

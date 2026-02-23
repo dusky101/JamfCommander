@@ -82,7 +82,7 @@ struct InspectorShell<Content: View>: View {
             }
         }
         .frame(width: 500, height: 650)
-        .liquidGlass(.panel)
+        .liquidGlass(cornerRadius: 16)
     }
 }
 

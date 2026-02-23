@@ -94,7 +94,7 @@ struct ExportProgressSheet: View {
         }
         .padding(24)
         .frame(width: 450)
-        .liquidGlass(.panel)
+        .liquidGlass(cornerRadius: 16)
     }
 }
 

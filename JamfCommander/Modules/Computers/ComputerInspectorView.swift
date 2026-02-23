@@ -19,7 +19,7 @@ struct ComputerInspectorView: View {
     @State private var isLoading = true
     
     // View State
-    @State private var selectedTab = 0 // 0=Info, 1=Profiles, 2=Scripts, 3=Policies
+    @State private var selectedTab = 0 // 0=Info, 1=Profiles, 2=Scripts, 3=Policies, 4=User & Location
     @State private var profileSearch = ""
     @State private var scriptSearch = ""
     @State private var policySearch = ""
@@ -45,6 +45,7 @@ struct ComputerInspectorView: View {
                     Text("Profiles").tag(1)
                     Text("Scripts").tag(2)
                     Text("Policies").tag(3)
+                    Text("User & Location").tag(4)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -59,6 +60,7 @@ struct ComputerInspectorView: View {
                 case 1: profilesTab
                 case 2: scriptsTab
                 case 3: policiesTab
+                case 4: userLocationTab
                 default: EmptyView()
                 }
             }
@@ -400,6 +402,104 @@ struct ComputerInspectorView: View {
                 }
                 .padding()
             }
+        }
+    }
+    
+    // MARK: - 5. User & Location Tab
+    
+    var userLocationTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                if let userLocation = detail?.userAndLocation {
+                    // User Information Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("User Information")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        
+                        VStack(spacing: 8) {
+                            if let username = userLocation.username, !username.isEmpty {
+                                InfoRowWithIcon(label: "Username", value: username, icon: "person.circle")
+                            }
+                            if let realname = userLocation.realname, !realname.isEmpty {
+                                InfoRowWithIcon(label: "Full Name", value: realname, icon: "person.fill")
+                            }
+                            if let email = userLocation.email, !email.isEmpty {
+                                InfoRowWithIcon(label: "Email", value: email, icon: "envelope.fill")
+                            }
+                            if let position = userLocation.position, !position.isEmpty {
+                                InfoRowWithIcon(label: "Position", value: position, icon: "briefcase.fill")
+                            }
+                            if let phone = userLocation.phone, !phone.isEmpty {
+                                InfoRowWithIcon(label: "Phone", value: phone, icon: "phone.fill")
+                            }
+                        }
+                        .padding()
+                        .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
+                        .cornerRadius(8)
+                    }
+                    
+                    // Location Information Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Location Information")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        
+                        VStack(spacing: 8) {
+                            if let buildingId = userLocation.buildingId, !buildingId.isEmpty {
+                                InfoRowWithIcon(label: "Building ID", value: buildingId, icon: "building.2.fill")
+                            }
+                            if let departmentId = userLocation.departmentId, !departmentId.isEmpty {
+                                InfoRowWithIcon(label: "Department ID", value: departmentId, icon: "person.3.fill")
+                            }
+                            if let room = userLocation.room, !room.isEmpty {
+                                InfoRowWithIcon(label: "Room", value: room, icon: "door.left.hand.open")
+                            }
+                        }
+                        .padding()
+                        .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
+                        .cornerRadius(8)
+                    }
+                } else {
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.crop.circle.badge.questionmark")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("No user or location information available")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, 100)
+                }
+            }
+            .padding()
+        }
+    }
+}
+
+// Helper view for displaying info rows with icons
+struct InfoRowWithIcon: View {
+    let label: String
+    let value: String
+    let icon: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(.secondary)
+                .frame(width: 24)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text(value)
+                    .font(.body)
+                    .foregroundColor(.primary)
+            }
+            
+            Spacer()
         }
     }
 }

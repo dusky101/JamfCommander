@@ -58,7 +58,7 @@ struct OperationResultView: View {
             .background(Color(nsColor: .controlBackgroundColor)) // Subtle background difference
         }
         .frame(width: 550, height: 650) // Slightly wider to accommodate the extra info
-        .liquidGlass(.panel)
+        .liquidGlass(cornerRadius: 16)
     }
 }
 

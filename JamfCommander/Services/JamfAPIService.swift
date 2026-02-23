@@ -256,7 +256,8 @@ class JamfAPIService: ObservableObject {
     func fetchComputerDetail(id: Int) async throws -> ComputerInventoryRecord {
         // We MUST request CONFIGURATION_PROFILES to populate the "Profiles" tab.
         // We also request OS and Hardware for the "Info" tab.
-        let endpoint = "api/v1/computers-inventory/\(id)?section=GENERAL&section=HARDWARE&section=OPERATING_SYSTEM&section=CONFIGURATION_PROFILES"
+        // Added USER_AND_LOCATION for user details
+        let endpoint = "api/v1/computers-inventory/\(id)?section=GENERAL&section=HARDWARE&section=OPERATING_SYSTEM&section=CONFIGURATION_PROFILES&section=USER_AND_LOCATION"
         
         return try await genericFetch(
             endpoint: endpoint,

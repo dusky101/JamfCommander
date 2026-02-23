@@ -106,7 +106,7 @@ struct PoliciesInspectorView: View {
             }
         }
         .frame(width: 950, height: 700)
-        .liquidGlass(.panel)
+        .liquidGlass(cornerRadius: 16)
         .task {
             await loadData()
         }
