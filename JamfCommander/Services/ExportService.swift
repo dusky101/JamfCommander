@@ -47,164 +47,38 @@ class ExportService {
     }
     
     /// Export policies with detailed information (Async version)
-    /// Fetches full policy details including triggers, frequency, scope, packages, scripts, etc.
+    /// Fetches full policy details as raw JSON and dynamically extracts all fields
     static func exportPoliciesDetailedToCSV(policies: [Policy], api: JamfAPIService, progress: ExportProgress? = nil) async -> String {
-        var csv = "ID,Name,Category,Enabled,Frequency,Triggers,Scoped To,Computer Groups,Target Count,Exclusions,Packages,Scripts,Printers,Dock Items,Files/Processes\n"
+        // First, collect all policy JSON data
+        var policyDataList: [(id: Int, json: [String: Any])] = []
         
-        // Fetch details for each policy with rate limiting and retries
-        var detailedRows: [(id: Int, row: String)] = []
-        
-        // Update progress
         progress?.updateProgress(for: .policies, status: .fetching, total: policies.count)
         progress?.setCurrentTask("Fetching policy details...")
         
-        // Process in batches of 10 with delays to avoid overwhelming the API
+        // Process in batches of 10 with delays
         let batchSize = 10
         let batches = stride(from: 0, to: policies.count, by: batchSize).map {
             Array(policies[$0..<min($0 + batchSize, policies.count)])
         }
         
         for (batchIndex, batch) in batches.enumerated() {
-            await withTaskGroup(of: (Int, String)?.self) { group in
+            await withTaskGroup(of: (Int, [String: Any])?.self) { group in
                 for policy in batch {
                     group.addTask {
-                        // Retry logic: try up to 3 times with exponential backoff
                         for attempt in 1...3 {
                             do {
-                                let detail = try await api.fetchPolicyDetail(id: policy.id)
-                                
-                                let id = policy.id
-                                let name = escapeCSV(detail.general.name)
-                                let category = escapeCSV(detail.general.category?.name ?? "No Category")
-                                let enabled = detail.general.enabled ? "Yes" : "No"
-                                let frequency = escapeCSV(detail.general.frequency ?? "N/A")
-                                
-                                // Build triggers list
-                                var triggers: [String] = []
-                                if detail.general.trigger_checkin == true { triggers.append("Check-in") }
-                                if detail.general.trigger_enrollment_complete == true { triggers.append("Enrollment Complete") }
-                                if detail.general.trigger_login == true { triggers.append("Login") }
-                                if detail.general.trigger_logout == true { triggers.append("Logout") }
-                                if detail.general.trigger_network_state_changed == true { triggers.append("Network State Changed") }
-                                if detail.general.trigger_startup == true { triggers.append("Startup") }
-                                if let other = detail.general.trigger_other, !other.isEmpty { triggers.append(other) }
-                                if let mainTrigger = detail.general.trigger, !mainTrigger.isEmpty { triggers.append(mainTrigger) }
-                                let triggersList = triggers.isEmpty ? "None" : triggers.joined(separator: "; ")
-                                
-                                // Scope information
-                                var scopedTo = "None"
-                                var computerGroups = ""
-                                var targetCount = 0
-                                
-                                if detail.scope.all_computers {
-                                    scopedTo = "All Computers"
-                                } else if let groups = detail.scope.computer_groups, !groups.isEmpty {
-                                    scopedTo = "Computer Groups"
-                                    computerGroups = groups.map { $0.name }.joined(separator: "; ")
-                                    targetCount = groups.count
-                                } else if let computers = detail.scope.computers, !computers.isEmpty {
-                                    scopedTo = "Specific Computers"
-                                    targetCount = computers.count
+                                let jsonString = try await api.fetchPolicyJSON(id: policy.id)
+                                if let data = jsonString.data(using: .utf8),
+                                   let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                                   let policyDict = jsonObject["policy"] as? [String: Any] {
+                                    return (policy.id, policyDict)
                                 }
-                                
-                                // Exclusions
-                                var exclusionsList = ""
-                                if let exclusions = detail.scope.exclusions {
-                                    var parts: [String] = []
-                                    if let exGroups = exclusions.computer_groups, !exGroups.isEmpty {
-                                        parts.append("Groups: \(exGroups.map { $0.name }.joined(separator: ", "))")
-                                    }
-                                    if let exComputers = exclusions.computers, !exComputers.isEmpty {
-                                        parts.append("Computers: \(exComputers.count)")
-                                    }
-                                    exclusionsList = parts.joined(separator: "; ")
-                                }
-                                
-                                // Packages
-                                var packagesList = ""
-                                if let packages = detail.package_configuration?.packages, !packages.isEmpty {
-                                    packagesList = packages.map { pkg in
-                                        var parts = [pkg.name]
-                                        if let action = pkg.action {
-                                            parts.append("(\(action))")
-                                        }
-                                        return parts.joined(separator: " ")
-                                    }.joined(separator: "; ")
-                                }
-                                
-                                // Scripts
-                                var scriptsList = ""
-                                if let scripts = detail.scripts, !scripts.isEmpty {
-                                    scriptsList = scripts.map { script in
-                                        var parts = [script.name]
-                                        if let priority = script.priority {
-                                            parts.append("[\(priority)]")
-                                        }
-                                        return parts.joined(separator: " ")
-                                    }.joined(separator: "; ")
-                                }
-                                
-                                // Printers
-                                var printersList = ""
-                                if let printers = detail.printers, !printers.isEmpty {
-                                    printersList = printers.map { printer in
-                                        var parts = [printer.name]
-                                        if let action = printer.action {
-                                            parts.append("(\(action))")
-                                        }
-                                        if printer.make_default == true {
-                                            parts.append("[Default]")
-                                        }
-                                        return parts.joined(separator: " ")
-                                    }.joined(separator: "; ")
-                                }
-                                
-                                // Dock Items
-                                var dockItemsList = ""
-                                if let dockItems = detail.dock_items, !dockItems.isEmpty {
-                                    dockItemsList = dockItems.map { item in
-                                        var parts = [item.name]
-                                        if let action = item.action {
-                                            parts.append("(\(action))")
-                                        }
-                                        return parts.joined(separator: " ")
-                                    }.joined(separator: "; ")
-                                }
-                                
-                                // Files and Processes
-                                var filesProcessesList = ""
-                                if let fp = detail.files_processes {
-                                    var parts: [String] = []
-                                    if let cmd = fp.run_command, !cmd.isEmpty {
-                                        parts.append("Run: \(cmd)")
-                                    }
-                                    if let search = fp.search_for_process, !search.isEmpty {
-                                        parts.append("Search: \(search)")
-                                        if fp.kill_process == true {
-                                            parts.append("(Kill)")
-                                        }
-                                    }
-                                    if let locate = fp.locate_file, !locate.isEmpty {
-                                        parts.append("Locate: \(locate)")
-                                    }
-                                    if let searchPath = fp.search_by_path, !searchPath.isEmpty {
-                                        parts.append("Path: \(searchPath)")
-                                        if fp.delete_file == true {
-                                            parts.append("(Delete)")
-                                        }
-                                    }
-                                    filesProcessesList = parts.joined(separator: "; ")
-                                }
-                                
-                                let row = "\(id),\(name),\(category),\(enabled),\(frequency),\(escapeCSV(triggersList)),\(escapeCSV(scopedTo)),\(escapeCSV(computerGroups)),\(targetCount),\(escapeCSV(exclusionsList)),\(escapeCSV(packagesList)),\(escapeCSV(scriptsList)),\(escapeCSV(printersList)),\(escapeCSV(dockItemsList)),\(escapeCSV(filesProcessesList))\n"
-                                
-                                return (id, row)
+                                return nil
                             } catch {
                                 if attempt == 3 {
-                                    print("Failed to hydrate policy \(policy.id) after 3 attempts: \(error)")
+                                    print("Failed to fetch policy \(policy.id) after 3 attempts: \(error)")
                                     return nil
                                 }
-                                // Wait with exponential backoff: 0.5s, 1s, 2s
                                 try? await Task.sleep(nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000))
                             }
                         }
@@ -213,24 +87,220 @@ class ExportService {
                 }
                 
                 for await result in group {
-                    if let (id, row) = result {
-                        detailedRows.append((id, row))
-                        progress?.updateProgress(for: .policies, status: .processing(current: detailedRows.count, total: policies.count), count: detailedRows.count, total: policies.count)
+                    if let (id, json) = result {
+                        policyDataList.append((id, json))
+                        progress?.updateProgress(for: .policies, status: .processing(current: policyDataList.count, total: policies.count), count: policyDataList.count, total: policies.count)
                     }
                 }
             }
             
-            // Add delay between batches (except for last batch)
             if batchIndex < batches.count - 1 {
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay between batches
+                try? await Task.sleep(nanoseconds: 500_000_000)
             }
         }
         
-        progress?.updateProgress(for: .policies, status: .complete, count: detailedRows.count, total: policies.count)
+        progress?.updateProgress(for: .policies, status: .complete, count: policyDataList.count, total: policies.count)
         
-        // Sort by ID and build final CSV
-        for (_, row) in detailedRows.sorted(by: { $0.id < $1.id }) {
-            csv += row
+        // Sort by ID
+        policyDataList.sort { $0.id < $1.id }
+        
+        // Determine which optional columns have data
+        var hasPackages = false
+        var hasScripts = false
+        var hasPrinters = false
+        var hasDockItems = false
+        var hasFilesProcesses = false
+        
+        for (_, policyDict) in policyDataList {
+            if let pkgConfig = policyDict["package_configuration"] as? [String: Any],
+               let packages = pkgConfig["packages"] as? [[String: Any]], !packages.isEmpty {
+                hasPackages = true
+            }
+            if let scripts = policyDict["scripts"] as? [[String: Any]], !scripts.isEmpty {
+                hasScripts = true
+            }
+            if let printers = policyDict["printers"] as? [[String: Any]], !printers.isEmpty {
+                hasPrinters = true
+            }
+            if let dockItems = policyDict["dock_items"] as? [[String: Any]], !dockItems.isEmpty {
+                hasDockItems = true
+            }
+            if let fp = policyDict["files_processes"] as? [String: Any] {
+                if let cmd = fp["run_command"] as? String, !cmd.isEmpty {
+                    hasFilesProcesses = true
+                } else if let search = fp["search_for_process"] as? String, !search.isEmpty {
+                    hasFilesProcesses = true
+                } else if let locate = fp["locate_file"] as? String, !locate.isEmpty {
+                    hasFilesProcesses = true
+                } else if let path = fp["search_by_path"] as? String, !path.isEmpty {
+                    hasFilesProcesses = true
+                }
+            }
+        }
+        
+        // Build header dynamically
+        var headers = ["ID", "Name", "Category", "Enabled", "Frequency", "Triggers", "Scoped To", "Computer Groups", "Target Count", "Exclusions"]
+        if hasPackages { headers.append("Packages") }
+        if hasScripts { headers.append("Scripts") }
+        if hasPrinters { headers.append("Printers") }
+        if hasDockItems { headers.append("Dock Items") }
+        if hasFilesProcesses { headers.append("Files/Processes") }
+        
+        var csv = headers.joined(separator: ",") + "\n"
+        
+        // Build rows
+        for (id, policyDict) in policyDataList {
+            guard let general = policyDict["general"] as? [String: Any],
+                  let scope = policyDict["scope"] as? [String: Any] else {
+                continue
+            }
+            
+            let name = escapeCSV((general["name"] as? String) ?? "")
+            let category = escapeCSV(((general["category"] as? [String: Any])?["name"] as? String) ?? "No Category")
+            let enabled = (general["enabled"] as? Bool) == true ? "Yes" : "No"
+            let frequency = escapeCSV((general["frequency"] as? String) ?? "N/A")
+            
+            // Triggers
+            var triggers: [String] = []
+            if (general["trigger_checkin"] as? Bool) == true { triggers.append("Check-in") }
+            if (general["trigger_enrollment_complete"] as? Bool) == true { triggers.append("Enrollment Complete") }
+            if (general["trigger_login"] as? Bool) == true { triggers.append("Login") }
+            if (general["trigger_logout"] as? Bool) == true { triggers.append("Logout") }
+            if (general["trigger_network_state_changed"] as? Bool) == true { triggers.append("Network State Changed") }
+            if (general["trigger_startup"] as? Bool) == true { triggers.append("Startup") }
+            if let other = general["trigger_other"] as? String, !other.isEmpty { triggers.append(other) }
+            if let mainTrigger = general["trigger"] as? String, !mainTrigger.isEmpty { triggers.append(mainTrigger) }
+            let triggersList = escapeCSV(triggers.isEmpty ? "None" : triggers.joined(separator: "; "))
+            
+            // Scope
+            var scopedTo = "None"
+            var computerGroups = ""
+            var targetCount = 0
+            
+            if (scope["all_computers"] as? Bool) == true {
+                scopedTo = "All Computers"
+            } else if let groups = scope["computer_groups"] as? [[String: Any]], !groups.isEmpty {
+                scopedTo = "Computer Groups"
+                computerGroups = groups.compactMap { $0["name"] as? String }.joined(separator: "; ")
+                targetCount = groups.count
+            } else if let computers = scope["computers"] as? [[String: Any]], !computers.isEmpty {
+                scopedTo = "Specific Computers"
+                targetCount = computers.count
+            }
+            
+            // Exclusions
+            var exclusionsList = ""
+            if let exclusions = scope["exclusions"] as? [String: Any] {
+                var parts: [String] = []
+                if let exGroups = exclusions["computer_groups"] as? [[String: Any]], !exGroups.isEmpty {
+                    let groupNames = exGroups.compactMap { $0["name"] as? String }.joined(separator: ", ")
+                    parts.append("Groups: \(groupNames)")
+                }
+                if let exComputers = exclusions["computers"] as? [[String: Any]], !exComputers.isEmpty {
+                    parts.append("Computers: \(exComputers.count)")
+                }
+                exclusionsList = parts.joined(separator: "; ")
+            }
+            
+            var row = "\(id),\(name),\(category),\(enabled),\(frequency),\(triggersList),\(escapeCSV(scopedTo)),\(escapeCSV(computerGroups)),\(targetCount),\(escapeCSV(exclusionsList))"
+            
+            // Packages
+            if hasPackages {
+                var packagesList = ""
+                if let pkgConfig = policyDict["package_configuration"] as? [String: Any],
+                   let packages = pkgConfig["packages"] as? [[String: Any]], !packages.isEmpty {
+                    packagesList = packages.compactMap { pkg in
+                        guard let name = pkg["name"] as? String else { return nil }
+                        var parts = [name]
+                        if let action = pkg["action"] as? String {
+                            parts.append("(\(action))")
+                        }
+                        return parts.joined(separator: " ")
+                    }.joined(separator: "; ")
+                }
+                row += ",\(escapeCSV(packagesList))"
+            }
+            
+            // Scripts
+            if hasScripts {
+                var scriptsList = ""
+                if let scripts = policyDict["scripts"] as? [[String: Any]], !scripts.isEmpty {
+                    scriptsList = scripts.compactMap { script in
+                        guard let name = script["name"] as? String else { return nil }
+                        var parts = [name]
+                        if let priority = script["priority"] as? String {
+                            parts.append("[\(priority)]")
+                        }
+                        return parts.joined(separator: " ")
+                    }.joined(separator: "; ")
+                }
+                row += ",\(escapeCSV(scriptsList))"
+            }
+            
+            // Printers
+            if hasPrinters {
+                var printersList = ""
+                if let printers = policyDict["printers"] as? [[String: Any]], !printers.isEmpty {
+                    printersList = printers.compactMap { printer in
+                        guard let name = printer["name"] as? String else { return nil }
+                        var parts = [name]
+                        if let action = printer["action"] as? String {
+                            parts.append("(\(action))")
+                        }
+                        if (printer["make_default"] as? Bool) == true {
+                            parts.append("[Default]")
+                        }
+                        return parts.joined(separator: " ")
+                    }.joined(separator: "; ")
+                }
+                row += ",\(escapeCSV(printersList))"
+            }
+            
+            // Dock Items
+            if hasDockItems {
+                var dockItemsList = ""
+                if let dockItems = policyDict["dock_items"] as? [[String: Any]], !dockItems.isEmpty {
+                    dockItemsList = dockItems.compactMap { item in
+                        guard let name = item["name"] as? String else { return nil }
+                        var parts = [name]
+                        if let action = item["action"] as? String {
+                            parts.append("(\(action))")
+                        }
+                        return parts.joined(separator: " ")
+                    }.joined(separator: "; ")
+                }
+                row += ",\(escapeCSV(dockItemsList))"
+            }
+            
+            // Files and Processes
+            if hasFilesProcesses {
+                var filesProcessesList = ""
+                if let fp = policyDict["files_processes"] as? [String: Any] {
+                    var parts: [String] = []
+                    if let cmd = fp["run_command"] as? String, !cmd.isEmpty {
+                        parts.append("Run: \(cmd)")
+                    }
+                    if let search = fp["search_for_process"] as? String, !search.isEmpty {
+                        parts.append("Search: \(search)")
+                        if (fp["kill_process"] as? Bool) == true {
+                            parts.append("(Kill)")
+                        }
+                    }
+                    if let locate = fp["locate_file"] as? String, !locate.isEmpty {
+                        parts.append("Locate: \(locate)")
+                    }
+                    if let searchPath = fp["search_by_path"] as? String, !searchPath.isEmpty {
+                        parts.append("Path: \(searchPath)")
+                        if (fp["delete_file"] as? Bool) == true {
+                            parts.append("(Delete)")
+                        }
+                    }
+                    filesProcessesList = parts.joined(separator: "; ")
+                }
+                row += ",\(escapeCSV(filesProcessesList))"
+            }
+            
+            csv += row + "\n"
         }
         
         return csv
