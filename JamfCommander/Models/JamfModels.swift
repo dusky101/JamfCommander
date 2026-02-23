@@ -83,6 +83,10 @@ struct GeneralInfo: Codable, Sendable {
     let name: String
     let description: String?
     let category: CategoryWrapper? // NEW: Added this to capture category info
+    let distribution_method: String?
+    let level: String? // "System" or "User"
+    let user_removable: Bool?
+    let redeploy_on_update: String? // "Newly Assigned", "All", etc.
 }
 
 // Helper to decode the nested <category><name>...</name></category>
@@ -95,6 +99,7 @@ struct ScopeInfo: Codable, Sendable {
     let all_computers: Bool
     let computers: [BasicComputer]?
     let computer_groups: [BasicGroup]?
+    let exclusions: Exclusions?
     
     struct BasicComputer: Codable, Identifiable, Sendable {
         let id: Int
@@ -103,6 +108,10 @@ struct ScopeInfo: Codable, Sendable {
     struct BasicGroup: Codable, Identifiable, Sendable {
         let id: Int
         let name: String
+    }
+    struct Exclusions: Codable, Sendable {
+        let computers: [BasicComputer]?
+        let computer_groups: [BasicGroup]?
     }
 }
 

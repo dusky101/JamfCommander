@@ -13,7 +13,7 @@ class ExportService {
     
     // MARK: - Policy Export
     
-    /// Export policies to CSV format
+    /// Export policies to CSV format (Basic version)
     /// Includes: ID, Name, Category, Enabled, Scope Type, Target Count
     static func exportPoliciesToCSV(policies: [Policy]) -> String {
         var csv = "ID,Name,Category,Enabled,Scope Type,Target Count\n"
@@ -46,9 +46,116 @@ class ExportService {
         return csv
     }
     
+    /// Export policies with detailed information (Async version)
+    /// Fetches full policy details including triggers, frequency, scope, etc.
+    static func exportPoliciesDetailedToCSV(policies: [Policy], api: JamfAPIService) async -> String {
+        var csv = "ID,Name,Category,Enabled,Frequency,Triggers,Scoped To,Computer Groups,Target Count,Exclusions\n"
+        
+        // Fetch details for each policy with rate limiting and retries
+        var detailedRows: [(id: Int, row: String)] = []
+        
+        // Process in batches of 10 with delays to avoid overwhelming the API
+        let batchSize = 10
+        let batches = stride(from: 0, to: policies.count, by: batchSize).map {
+            Array(policies[$0..<min($0 + batchSize, policies.count)])
+        }
+        
+        for (batchIndex, batch) in batches.enumerated() {
+            await withTaskGroup(of: (Int, String)?.self) { group in
+                for policy in batch {
+                    group.addTask {
+                        // Retry logic: try up to 3 times with exponential backoff
+                        for attempt in 1...3 {
+                            do {
+                                let detail = try await api.fetchPolicyDetail(id: policy.id)
+                                
+                                let id = policy.id
+                                let name = escapeCSV(detail.general.name)
+                                let category = escapeCSV(detail.general.category?.name ?? "No Category")
+                                let enabled = detail.general.enabled ? "Yes" : "No"
+                                let frequency = escapeCSV(detail.general.frequency ?? "N/A")
+                                
+                                // Build triggers list
+                                var triggers: [String] = []
+                                if detail.general.trigger_checkin == true { triggers.append("Check-in") }
+                                if detail.general.trigger_enrollment_complete == true { triggers.append("Enrollment Complete") }
+                                if detail.general.trigger_login == true { triggers.append("Login") }
+                                if detail.general.trigger_logout == true { triggers.append("Logout") }
+                                if detail.general.trigger_network_state_changed == true { triggers.append("Network State Changed") }
+                                if detail.general.trigger_startup == true { triggers.append("Startup") }
+                                if let other = detail.general.trigger_other, !other.isEmpty { triggers.append(other) }
+                                if let mainTrigger = detail.general.trigger, !mainTrigger.isEmpty { triggers.append(mainTrigger) }
+                                let triggersList = triggers.isEmpty ? "None" : triggers.joined(separator: "; ")
+                                
+                                // Scope information
+                                var scopedTo = "None"
+                                var computerGroups = ""
+                                var targetCount = 0
+                                
+                                if detail.scope.all_computers {
+                                    scopedTo = "All Computers"
+                                } else if let groups = detail.scope.computer_groups, !groups.isEmpty {
+                                    scopedTo = "Computer Groups"
+                                    computerGroups = groups.map { $0.name }.joined(separator: "; ")
+                                    targetCount = groups.count
+                                } else if let computers = detail.scope.computers, !computers.isEmpty {
+                                    scopedTo = "Specific Computers"
+                                    targetCount = computers.count
+                                }
+                                
+                                // Exclusions
+                                var exclusionsList = ""
+                                if let exclusions = detail.scope.exclusions {
+                                    var parts: [String] = []
+                                    if let exGroups = exclusions.computer_groups, !exGroups.isEmpty {
+                                        parts.append("Groups: \(exGroups.map { $0.name }.joined(separator: ", "))")
+                                    }
+                                    if let exComputers = exclusions.computers, !exComputers.isEmpty {
+                                        parts.append("Computers: \(exComputers.count)")
+                                    }
+                                    exclusionsList = parts.joined(separator: "; ")
+                                }
+                                
+                                let row = "\(id),\(name),\(category),\(enabled),\(frequency),\(escapeCSV(triggersList)),\(escapeCSV(scopedTo)),\(escapeCSV(computerGroups)),\(targetCount),\(escapeCSV(exclusionsList))\n"
+                                
+                                return (id, row)
+                            } catch {
+                                if attempt == 3 {
+                                    print("Failed to hydrate policy \(policy.id) after 3 attempts: \(error)")
+                                    return nil
+                                }
+                                // Wait with exponential backoff: 0.5s, 1s, 2s
+                                try? await Task.sleep(nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000))
+                            }
+                        }
+                        return nil
+                    }
+                }
+                
+                for await result in group {
+                    if let (id, row) = result {
+                        detailedRows.append((id, row))
+                    }
+                }
+            }
+            
+            // Add delay between batches (except for last batch)
+            if batchIndex < batches.count - 1 {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay between batches
+            }
+        }
+        
+        // Sort by ID and build final CSV
+        for (_, row) in detailedRows.sorted(by: { $0.id < $1.id }) {
+            csv += row
+        }
+        
+        return csv
+    }
+    
     // MARK: - Profile Export
     
-    /// Export configuration profiles to CSV format
+    /// Export configuration profiles to CSV format (Basic version)
     /// Includes: ID, Name, Category, Status (Scoped/Unscoped)
     static func exportProfilesToCSV(profiles: [ConfigProfile]) -> String {
         var csv = "ID,Name,Category,Status\n"
@@ -60,6 +167,101 @@ class ExportService {
             let status = profile.isActive ? "Scoped" : "Unscoped"
             
             csv += "\(id),\(name),\(category),\(status)\n"
+        }
+        
+        return csv
+    }
+    
+    /// Export configuration profiles with detailed information (Async version)
+    /// Fetches full profile details including scope, distribution method, etc.
+    static func exportProfilesDetailedToCSV(profiles: [ConfigProfile], api: JamfAPIService) async -> String {
+        var csv = "ID,Name,Category,Status,Distribution Method,Level,User Removable,Redeploy on Update,Scoped To,Computer Groups,Exclusions\n"
+        
+        // Fetch details for each profile with rate limiting and retries
+        var detailedRows: [(id: Int, row: String)] = []
+        
+        // Process in batches of 10 with delays to avoid overwhelming the API
+        let batchSize = 10
+        let batches = stride(from: 0, to: profiles.count, by: batchSize).map {
+            Array(profiles[$0..<min($0 + batchSize, profiles.count)])
+        }
+        
+        for (batchIndex, batch) in batches.enumerated() {
+            await withTaskGroup(of: (Int, String)?.self) { group in
+                for profile in batch {
+                    group.addTask {
+                        // Retry logic: try up to 3 times with exponential backoff
+                        for attempt in 1...3 {
+                            do {
+                                let detail = try await api.fetchProfileScope(id: profile.id)
+                                
+                                let id = profile.id
+                                let name = escapeCSV(profile.name)
+                                let category = escapeCSV(profile.categoryName)
+                                let status = profile.isActive ? "Scoped" : "Unscoped"
+                                let distributionMethod = escapeCSV(detail.general.distribution_method ?? "N/A")
+                                let level = escapeCSV(detail.general.level ?? "N/A")
+                                let userRemovable = (detail.general.user_removable ?? false) ? "Yes" : "No"
+                                let redeployOnUpdate = escapeCSV(detail.general.redeploy_on_update ?? "N/A")
+                                
+                                // Scope information
+                                var scopedTo = "None"
+                                var computerGroups = ""
+                                
+                                if detail.scope.all_computers {
+                                    scopedTo = "All Computers"
+                                } else if let groups = detail.scope.computer_groups, !groups.isEmpty {
+                                    scopedTo = "Computer Groups"
+                                    computerGroups = groups.map { $0.name }.joined(separator: "; ")
+                                } else if let computers = detail.scope.computers, !computers.isEmpty {
+                                    scopedTo = "Specific Computers (\(computers.count))"
+                                }
+                                
+                                // Exclusions
+                                var exclusionsList = ""
+                                if let exclusions = detail.scope.exclusions {
+                                    var parts: [String] = []
+                                    if let exGroups = exclusions.computer_groups, !exGroups.isEmpty {
+                                        parts.append("Groups: \(exGroups.map { $0.name }.joined(separator: ", "))")
+                                    }
+                                    if let exComputers = exclusions.computers, !exComputers.isEmpty {
+                                        parts.append("Computers: \(exComputers.count)")
+                                    }
+                                    exclusionsList = parts.joined(separator: "; ")
+                                }
+                                
+                                let row = "\(id),\(name),\(category),\(status),\(distributionMethod),\(level),\(userRemovable),\(redeployOnUpdate),\(escapeCSV(scopedTo)),\(escapeCSV(computerGroups)),\(escapeCSV(exclusionsList))\n"
+                                
+                                return (id, row)
+                            } catch {
+                                if attempt == 3 {
+                                    print("Failed to fetch details for profile \(profile.id) after 3 attempts: \(error)")
+                                    return nil
+                                }
+                                // Wait with exponential backoff: 0.5s, 1s, 2s
+                                try? await Task.sleep(nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000))
+                            }
+                        }
+                        return nil
+                    }
+                }
+                
+                for await result in group {
+                    if let (id, row) = result {
+                        detailedRows.append((id, row))
+                    }
+                }
+            }
+            
+            // Add delay between batches (except for last batch)
+            if batchIndex < batches.count - 1 {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay between batches
+            }
+        }
+        
+        // Sort by ID and build final CSV
+        for (_, row) in detailedRows.sorted(by: { $0.id < $1.id }) {
+            csv += row
         }
         
         return csv
@@ -121,13 +323,106 @@ class ExportService {
     // MARK: - Helper Functions
     
     /// Escape CSV fields (handle commas, quotes, newlines)
-    private static func escapeCSV(_ field: String) -> String {
+    nonisolated private static func escapeCSV(_ field: String) -> String {
         // If field contains comma, quote, or newline, wrap in quotes and escape quotes
         if field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r") {
             let escaped = field.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
         }
         return field
+    }
+    
+    // MARK: - Export All Data
+    
+    /// Export all data types to a single ZIP file containing separate CSVs
+    static func exportAllDataToZip(api: JamfAPIService) async -> Bool {
+        do {
+            // Fetch all data in parallel
+            async let computers = api.fetchComputers()
+            async let policies = api.fetchPolicies()
+            async let profiles = api.fetchProfiles()
+            async let scripts = api.fetchScripts()
+            
+            let (computerData, policyData, profileData, scriptData) = try await (computers, policies, profiles, scripts)
+            
+            // Generate CSVs
+            let computerCSV = exportComputersToCSV(computers: computerData)
+            let scriptCSV = exportScriptsToCSV(scripts: scriptData)
+            
+            // Generate detailed exports for policies and profiles
+            let policyCSV = await exportPoliciesDetailedToCSV(policies: policyData, api: api)
+            let profileCSV = await exportProfilesDetailedToCSV(profiles: profileData, api: api)
+            
+            // Create temporary directory for CSV files
+            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            
+            // Write CSV files
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            let dateString = dateFormatter.string(from: Date())
+            
+            try computerCSV.write(to: tempDir.appendingPathComponent("Computers_\(dateString).csv"), atomically: true, encoding: .utf8)
+            try policyCSV.write(to: tempDir.appendingPathComponent("Policies_\(dateString).csv"), atomically: true, encoding: .utf8)
+            try profileCSV.write(to: tempDir.appendingPathComponent("Profiles_\(dateString).csv"), atomically: true, encoding: .utf8)
+            try scriptCSV.write(to: tempDir.appendingPathComponent("Scripts_\(dateString).csv"), atomically: true, encoding: .utf8)
+            
+            // Create ZIP archive
+            let zipURL = tempDir.appendingPathComponent("JamfCommander_Export_\(dateString).zip")
+            try await createZipArchive(from: tempDir, to: zipURL)
+            
+            // Present save panel
+            let savePanel = NSSavePanel()
+            savePanel.allowedContentTypes = [.zip]
+            savePanel.nameFieldStringValue = "JamfCommander_Export_\(dateString).zip"
+            savePanel.title = "Export All Data"
+            savePanel.message = "Save complete Jamf data export"
+            
+            let response = await MainActor.run { savePanel.runModal() }
+            
+            if response == .OK, let destination = savePanel.url {
+                // Copy ZIP to destination
+                if FileManager.default.fileExists(atPath: destination.path) {
+                    try FileManager.default.removeItem(at: destination)
+                }
+                try FileManager.default.copyItem(at: zipURL, to: destination)
+                
+                // Clean up temp directory
+                try? FileManager.default.removeItem(at: tempDir)
+                
+                // Show success notification
+                showNotification(title: "Export Successful", message: "All data exported to \(destination.lastPathComponent)")
+                return true
+            }
+            
+            // Clean up if cancelled
+            try? FileManager.default.removeItem(at: tempDir)
+            return false
+            
+        } catch {
+            print("Export all failed: \(error)")
+            showNotification(title: "Export Failed", message: error.localizedDescription)
+            return false
+        }
+    }
+    
+    /// Create a ZIP archive from a directory
+    private static func createZipArchive(from sourceDir: URL, to destinationURL: URL) async throws {
+        let fileManager = FileManager.default
+        let files = try fileManager.contentsOfDirectory(at: sourceDir, includingPropertiesForKeys: nil)
+        
+        // Use the system's zip command
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.arguments = ["-j", "-q", destinationURL.path] + files.map { $0.path }
+        process.currentDirectoryURL = sourceDir
+        
+        try process.run()
+        process.waitUntilExit()
+        
+        guard process.terminationStatus == 0 else {
+            throw NSError(domain: "ExportService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create ZIP archive"])
+        }
     }
     
     // MARK: - Save to File

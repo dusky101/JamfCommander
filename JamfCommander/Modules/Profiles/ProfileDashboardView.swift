@@ -155,11 +155,15 @@ struct ProfileDashboardView: View {
     
     // MARK: - Export
     private func exportProfiles() {
-        let csvContent = ExportService.exportProfilesToCSV(profiles: profiles)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let dateString = dateFormatter.string(from: Date())
-        ExportService.saveCSVToFile(content: csvContent, defaultName: "Profiles_\(dateString).csv")
+        Task {
+            let csvContent = await ExportService.exportProfilesDetailedToCSV(profiles: profiles, api: api)
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            let dateString = dateFormatter.string(from: Date())
+            await MainActor.run {
+                _ = ExportService.saveCSVToFile(content: csvContent, defaultName: "Profiles_\(dateString).csv")
+            }
+        }
     }
     
     // MARK: - Smart Selection Logic (Shift-Click)

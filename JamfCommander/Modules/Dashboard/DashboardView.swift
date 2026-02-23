@@ -32,6 +32,7 @@ struct DashboardView: View {
     @State private var isSaving = false
     @State private var categoryToDelete: Category?
     @State private var showDeleteConfirmation = false
+    @State private var isExporting = false
     
     var filteredCategories: [Category] {
         if searchText.isEmpty { return categories }
@@ -43,27 +44,40 @@ struct DashboardView: View {
             VStack(spacing: 24) {
                 
                 // MARK: - 1. Hero Stats Grid (Clickable)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 16)], spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
+                    // Stats Grid (Leading)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 16)], alignment: .leading, spacing: 16) {
+                        
+                        Button(action: { currentModule = .computers }) {
+                            StatCard(title: "Computers", count: computerCount, icon: "desktopcomputer", color: .blue)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Button(action: { currentModule = .policies }) {
+                            StatCard(title: "Policies", count: policyCount, icon: "scroll.fill", color: .purple)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Button(action: { currentModule = .profiles }) {
+                            StatCard(title: "Profiles", count: profileCount, icon: "doc.text.fill", color: .orange)
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Button(action: { currentModule = .scripts }) {
+                            StatCard(title: "Scripts", count: scriptCount, icon: "applescript.fill", color: .gray)
+                        }
+                        .buttonStyle(.plain)
+                    }
                     
-                    Button(action: { currentModule = .computers }) {
-                        StatCard(title: "Computers", count: computerCount, icon: "desktopcomputer", color: .blue)
+                    Spacer()
+                    
+                    // Export All Button (Trailing)
+                    Button(action: { exportAllData() }) {
+                        ExportAllCard(isExporting: isExporting)
                     }
                     .buttonStyle(.plain)
-                    
-                    Button(action: { currentModule = .policies }) {
-                        StatCard(title: "Policies", count: policyCount, icon: "scroll.fill", color: .purple)
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Button(action: { currentModule = .profiles }) {
-                        StatCard(title: "Profiles", count: profileCount, icon: "doc.text.fill", color: .orange)
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Button(action: { currentModule = .scripts }) {
-                        StatCard(title: "Scripts", count: scriptCount, icon: "applescript.fill", color: .gray)
-                    }
-                    .buttonStyle(.plain)
+                    .disabled(isExporting)
+                    .frame(width: 140)
                 }
                 .padding(.horizontal)
                 .padding(.top)
@@ -255,6 +269,16 @@ struct DashboardView: View {
             print("Failed to delete category: \(error)")
         }
     }
+    
+    func exportAllData() {
+        isExporting = true
+        Task {
+            _ = await ExportService.exportAllDataToZip(api: api)
+            await MainActor.run {
+                isExporting = false
+            }
+        }
+    }
 }
 
 // MARK: - Subviews
@@ -329,3 +353,50 @@ struct CategoryTile: View {
         .onHover { isHovering = $0 }
     }
 }
+struct ExportAllCard: View {
+    let isExporting: Bool
+    @State private var isHovering = false
+    
+    var body: some View {
+        VStack(alignment: .center, spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.15))
+                    .frame(width: 36, height: 36)
+                if isExporting {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .frame(width: 20, height: 20)
+                } else {
+                    Image(systemName: "arrow.down.doc.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.green)
+                }
+            }
+            
+            Text(isExporting ? "Exporting..." : "Export All")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(isExporting ? .secondary : .primary)
+            
+            Text(isExporting ? "Please wait..." : "Download Data")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .liquidGlass(.card)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.green.opacity(isHovering ? 0.5 : 0.2), lineWidth: 2)
+        )
+        .scaleEffect(isHovering && !isExporting ? 1.02 : 1.0)
+        .animation(.spring(response: 0.3), value: isHovering)
+        .onHover { isHovering = $0 }
+        .onHover { inside in
+            if inside && !isExporting { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+    }
+}
+

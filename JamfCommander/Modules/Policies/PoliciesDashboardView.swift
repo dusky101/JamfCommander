@@ -152,11 +152,15 @@ struct PoliciesDashboardView: View {
     }
     
     private func exportPolicies() {
-        let csvContent = ExportService.exportPoliciesToCSV(policies: policies)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let dateString = dateFormatter.string(from: Date())
-        ExportService.saveCSVToFile(content: csvContent, defaultName: "Policies_\(dateString).csv")
+        Task {
+            let csvContent = await ExportService.exportPoliciesDetailedToCSV(policies: policies, api: api)
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            let dateString = dateFormatter.string(from: Date())
+            await MainActor.run {
+                _ = ExportService.saveCSVToFile(content: csvContent, defaultName: "Policies_\(dateString).csv")
+            }
+        }
     }
     
     // MARK: - Shift-Click Selection

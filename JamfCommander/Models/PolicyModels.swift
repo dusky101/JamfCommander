@@ -47,6 +47,15 @@ struct PolicyGeneral: Codable {
     let name: String
     let enabled: Bool
     let category: PolicyCategory?
+    let frequency: String?
+    let trigger: String?
+    let trigger_checkin: Bool?
+    let trigger_enrollment_complete: Bool?
+    let trigger_login: Bool?
+    let trigger_logout: Bool?
+    let trigger_network_state_changed: Bool?
+    let trigger_startup: Bool?
+    let trigger_other: String?
 }
 
 struct PolicyCategory: Codable {
@@ -57,7 +66,13 @@ struct PolicyCategory: Codable {
 struct PolicyScope: Codable, Hashable {
     let all_computers: Bool
     let computers: [PolicyComputerTarget]?
-    // Add groups if needed later
+    let computer_groups: [PolicyComputerTarget]?
+    let exclusions: PolicyExclusions?
+}
+
+struct PolicyExclusions: Codable, Hashable {
+    let computers: [PolicyComputerTarget]?
+    let computer_groups: [PolicyComputerTarget]?
 }
 
 struct PolicyComputerTarget: Identifiable, Codable, Hashable {
