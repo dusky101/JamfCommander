@@ -78,6 +78,22 @@ struct ComputersDashboardView: View {
                     ) { showManagedOnly = true }
                     
                     Spacer()
+                    
+                    // Export Button
+                    Button(action: { exportComputers() }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .frame(height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Export to CSV")
+                    
+                    // Refresh Button
+                    Button(action: { Task { await refreshData() } }) {
+                        Image(systemName: "arrow.clockwise")
+                            .frame(height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Refresh Data")
                 }
             }
             .padding()
@@ -114,7 +130,7 @@ struct ComputersDashboardView: View {
         }
         .background(Color.clear)
         .task {
-            await loadComputers()
+            await refreshData()
         }
         // FIX: Removed 'self.' to fix the wrapper error
         .sheet(item: $inspectorSelection) { selection in
@@ -122,7 +138,9 @@ struct ComputersDashboardView: View {
         }
     }
     
-    func loadComputers() async {
+    // MARK: - Actions
+    
+    func refreshData() async {
         do {
             let list = try await api.fetchComputers()
             self.computers = list
@@ -131,6 +149,14 @@ struct ComputersDashboardView: View {
             print("Error loading computers: \(error)")
             self.isLoading = false
         }
+    }
+    
+    private func exportComputers() {
+        let csvContent = ExportService.exportComputersToCSV(computers: computers)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateString = dateFormatter.string(from: Date())
+        ExportService.saveCSVToFile(content: csvContent, defaultName: "Computers_\(dateString).csv")
     }
 }
 

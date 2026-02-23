@@ -70,10 +70,14 @@ struct PoliciesDashboardView: View {
                     searchText: $searchText,
                     categories: categories,
                     selectedCategory: $selectedCategory,
-                    policies: policies // Pass policies for counts
-                ) {
-                    Task { await loadData() }
-                }
+                    policies: policies, // Pass policies for counts
+                    onRefresh: {
+                        Task { await loadData() }
+                    },
+                    onExport: {
+                        exportPolicies()
+                    }
+                )
                 .zIndex(1)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
@@ -145,6 +149,14 @@ struct PoliciesDashboardView: View {
                 print("Failed to move policy: \(error)")
             }
         }
+    }
+    
+    private func exportPolicies() {
+        let csvContent = ExportService.exportPoliciesToCSV(policies: policies)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateString = dateFormatter.string(from: Date())
+        ExportService.saveCSVToFile(content: csvContent, defaultName: "Policies_\(dateString).csv")
     }
     
     // MARK: - Shift-Click Selection

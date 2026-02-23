@@ -36,6 +36,24 @@ struct ScriptsDashboardView: View {
                         Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
                     }.buttonStyle(.plain)
                 }
+                
+                Spacer()
+                
+                // Export Button
+                Button(action: { exportScripts() }) {
+                    Image(systemName: "square.and.arrow.up")
+                        .frame(height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("Export to CSV")
+                
+                // Refresh Button
+                Button(action: { Task { await refreshData() } }) {
+                    Image(systemName: "arrow.clockwise")
+                        .frame(height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("Refresh Data")
             }
             .padding(12)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
@@ -63,17 +81,31 @@ struct ScriptsDashboardView: View {
             }
         }
         .task {
-            do {
-                self.scripts = try await api.fetchScripts()
-                self.isLoading = false
-            } catch {
-                print("Error fetching scripts: \(error)")
-                self.isLoading = false
-            }
+            await refreshData()
         }
         .sheet(item: $inspectorSelection) { selection in
             ScriptInspectorView(scriptId: selection.id, api: api)
         }
+    }
+    
+    // MARK: - Actions
+    
+    private func refreshData() async {
+        do {
+            self.scripts = try await api.fetchScripts()
+            self.isLoading = false
+        } catch {
+            print("Error fetching scripts: \(error)")
+            self.isLoading = false
+        }
+    }
+    
+    private func exportScripts() {
+        let csvContent = ExportService.exportScriptsToCSV(scripts: scripts)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateString = dateFormatter.string(from: Date())
+        ExportService.saveCSVToFile(content: csvContent, defaultName: "Scripts_\(dateString).csv")
     }
 }
 

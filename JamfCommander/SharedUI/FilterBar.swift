@@ -18,6 +18,7 @@ struct FilterBar: View {
     var policies: [Policy] = [] // Added for Policy Dashboard support
     
     var onRefresh: (() -> Void)?
+    var onExport: (() -> Void)? // Optional export action
     
     var body: some View {
         VStack(spacing: 12) {
@@ -46,6 +47,16 @@ struct FilterBar: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                 )
+                
+                // Export Button
+                if let onExport = onExport {
+                    Button(action: onExport) {
+                        Image(systemName: "square.and.arrow.up")
+                            .frame(height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Export to CSV")
+                }
                 
                 // Refresh Button
                 if let onRefresh = onRefresh {

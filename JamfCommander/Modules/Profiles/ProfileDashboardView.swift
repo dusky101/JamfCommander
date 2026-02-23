@@ -77,7 +77,13 @@ struct ProfileDashboardView: View {
                     searchText: $searchText,
                     categories: categories,
                     selectedCategory: $selectedCategory,
-                    profiles: profiles
+                    profiles: profiles,
+                    onRefresh: {
+                        Task { await refreshAction() }
+                    },
+                    onExport: {
+                        exportProfiles()
+                    }
                 )
                 .zIndex(1)
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -145,6 +151,15 @@ struct ProfileDashboardView: View {
                 print("Failed to move profile: \(error)")
             }
         }
+    }
+    
+    // MARK: - Export
+    private func exportProfiles() {
+        let csvContent = ExportService.exportProfilesToCSV(profiles: profiles)
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let dateString = dateFormatter.string(from: Date())
+        ExportService.saveCSVToFile(content: csvContent, defaultName: "Profiles_\(dateString).csv")
     }
     
     // MARK: - Smart Selection Logic (Shift-Click)
