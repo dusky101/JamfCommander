@@ -149,13 +149,15 @@ struct PackagesDashboardView: View {
         .sheet(isPresented: $showConfigSheet) {
             DeploymentConfigSheet(
                 api: api,
-                onConfirm: { category, scriptID, featured, displayInCat in
+                onConfirm: { category, scriptID, featured, displayInCat, scopeConfig, nameTemplate in
                     showConfigSheet = false
                     deployPolicies(
                         category: category,
                         scriptID: scriptID,
                         featureOnMain: featured,
-                        displayInCat: displayInCat
+                        displayInCat: displayInCat,
+                        scopeConfig: scopeConfig,
+                        nameTemplate: nameTemplate
                     )
                 },
                 onCancel: {
@@ -366,9 +368,8 @@ struct PackagesDashboardView: View {
         }
     }
     
-    // UPDATED: Async implementation with throttling
     // Deploy all selected items (both matched and unmatched) - ALL have Installomator labels
-    func deployPolicies(category: String, scriptID: String, featureOnMain: Bool, displayInCat: Bool) {
+    func deployPolicies(category: String, scriptID: String, featureOnMain: Bool, displayInCat: Bool, scopeConfig: DeploymentScopeConfig, nameTemplate: String) {
         guard !selection.isEmpty else { return }
         isCreatingPolicies = true
         creationStatus = "Initialising..."
@@ -396,7 +397,9 @@ struct PackagesDashboardView: View {
                         categoryName: category,
                         scriptID: scriptID,
                         featureOnMainPage: featureOnMain,
-                        displayInSelfServiceCategory: displayInCat
+                        displayInSelfServiceCategory: displayInCat,
+                        scopeConfig: scopeConfig,
+                        policyNameTemplate: nameTemplate
                     )
                     
                     results.append(OperationResult(

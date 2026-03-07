@@ -10,6 +10,21 @@ import Combine
 
 extension JamfAPIService {
     
+    /// Custom error type for policy creation with better messaging
+    enum PolicyCreationError: LocalizedError {
+        case conflict(String)
+        case serverError(Int, String)
+        
+        var errorDescription: String? {
+            switch self {
+            case .conflict(let name):
+                return "A policy named '\(name)' already exists. Skipped."
+            case .serverError(let code, let detail):
+                return "Server error (\(code)): \(detail)"
+            }
+        }
+    }
+    
     /// Creates a Policy to install software via Installomator (Async Version)
     func createInstallomatorPolicyAsync(
         appName: String,
@@ -17,31 +32,36 @@ extension JamfAPIService {
         categoryName: String,
         scriptID: String,
         featureOnMainPage: Bool,
-        displayInSelfServiceCategory: Bool
+        displayInSelfServiceCategory: Bool,
+        scopeConfig: DeploymentScopeConfig? = nil,
+        policyNameTemplate: String = "Install {appName}"
     ) async throws {
         
         let endpoint = "\(baseURL)/JSSResource/policies/id/0"
+        let policyName = policyNameTemplate.replacingOccurrences(of: "{appName}", with: appName)
+        let scope = scopeConfig ?? DeploymentScopeConfig()
         
         // Convert bools to explicit strings for XML safety
         let featMain = featureOnMainPage ? "true" : "false"
         let dispInCat = displayInSelfServiceCategory ? "true" : "false"
         
+        // Generate scope XML from the configuration
+        let scopeXML = scope.toScopeXML()
+        
         let xmlBody = """
         <policy>
             <general>
-                <name>Install \(appName)</name>
+                <name>\(policyName)</name>
                 <enabled>true</enabled>
                 <frequency>Ongoing</frequency>
                 <category>
                     <name>\(categoryName)</name>
                 </category>
             </general>
-            <scope>
-                <all_computers>true</all_computers>
-            </scope>
+            \(scopeXML)
             <self_service>
                 <use_for_self_service>true</use_for_self_service>
-                <self_service_display_name>Install \(appName)</self_service_display_name>
+                <self_service_display_name>\(policyName)</self_service_display_name>
                 <install_button_text>Install</install_button_text>
                 <force_users_to_view_description>false</force_users_to_view_description>
                 
@@ -86,10 +106,15 @@ extension JamfAPIService {
         }
         
         if !(200...299).contains(httpResponse.statusCode) {
-            if let errorStr = String(data: data, encoding: .utf8) {
-                print("Jamf API Error: \(errorStr)")
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("Jamf API Error (\(httpResponse.statusCode)): \(errorBody)")
+            
+            // HTTP 409 = Conflict (duplicate policy name — e.g. "Install Homebrew" already exists)
+            if httpResponse.statusCode == 409 {
+                throw PolicyCreationError.conflict(policyName)
             }
-            throw URLError(.badServerResponse)
+            
+            throw PolicyCreationError.serverError(httpResponse.statusCode, errorBody)
         }
     }
 }

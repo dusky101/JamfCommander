@@ -44,6 +44,10 @@ struct DashboardView: View {
     }
     
     var body: some View {
+        Group {
+        if isLoading {
+            LoadingProgressView(message: "Loading Dashboard...")
+        } else {
         ScrollView {
             VStack(spacing: 24) {
                 
@@ -269,6 +273,8 @@ struct DashboardView: View {
             }
         }
         .background(Color.clear)
+        } // end else (not loading)
+        } // end Group
         .task { await refreshDashboard() }
         
         // MARK: - Sheets
