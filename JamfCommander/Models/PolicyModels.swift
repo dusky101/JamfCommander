@@ -93,6 +93,35 @@ struct PolicyScript: Codable, Identifiable {
     let parameter9: String?
     let parameter10: String?
     let parameter11: String?
+    
+    // Jamf Classic API returns script id as Int, but we store as String
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        // Handle id being either Int or String
+        if let intID = try? container.decode(Int.self, forKey: .id) {
+            id = String(intID)
+        } else {
+            id = try container.decode(String.self, forKey: .id)
+        }
+        
+        name = try container.decode(String.self, forKey: .name)
+        priority = try container.decodeIfPresent(String.self, forKey: .priority)
+        parameter4 = try container.decodeIfPresent(String.self, forKey: .parameter4)
+        parameter5 = try container.decodeIfPresent(String.self, forKey: .parameter5)
+        parameter6 = try container.decodeIfPresent(String.self, forKey: .parameter6)
+        parameter7 = try container.decodeIfPresent(String.self, forKey: .parameter7)
+        parameter8 = try container.decodeIfPresent(String.self, forKey: .parameter8)
+        parameter9 = try container.decodeIfPresent(String.self, forKey: .parameter9)
+        parameter10 = try container.decodeIfPresent(String.self, forKey: .parameter10)
+        parameter11 = try container.decodeIfPresent(String.self, forKey: .parameter11)
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, priority
+        case parameter4, parameter5, parameter6, parameter7
+        case parameter8, parameter9, parameter10, parameter11
+    }
 }
 
 // MARK: - Policy Printers

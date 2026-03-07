@@ -25,6 +25,117 @@ extension JamfAPIService {
         }
     }
     
+    // MARK: - Installomator Discovery
+    
+    /// Represents a deployed Installomator policy discovered in Jamf
+    struct InstallomatorPolicyInfo {
+        let policyID: Int
+        let policyName: String
+        let label: String
+        let categoryName: String?
+        let enabled: Bool
+    }
+    
+    /// Fetches all policies from Jamf and filters to those using an Installomator script.
+    /// Hydrates policy details in batches of 10 with retry logic, then extracts the label from parameter4.
+    func fetchInstallomatorPolicies() async throws -> [InstallomatorPolicyInfo] {
+        print("[Installomator] Starting fetchInstallomatorPolicies...")
+        
+        let listResponse = try await genericFetch(
+            endpoint: "JSSResource/policies",
+            responseType: PolicyListResponse.self
+        )
+        print("[Installomator] Fetched \(listResponse.policies.count) policies from Jamf")
+        
+        var results: [InstallomatorPolicyInfo] = []
+        
+        let batchSize = 10
+        let batches = stride(from: 0, to: listResponse.policies.count, by: batchSize).map {
+            Array(listResponse.policies[$0..<min($0 + batchSize, listResponse.policies.count)])
+        }
+        
+        for (batchIndex, batch) in batches.enumerated() {
+            await withTaskGroup(of: InstallomatorPolicyInfo?.self) { group in
+                for item in batch {
+                    group.addTask {
+                        for attempt in 1...3 {
+                            do {
+                                let detail = try await self.fetchPolicyDetail(id: item.id)
+                                
+                                guard let scripts = detail.scripts, !scripts.isEmpty else { return nil }
+                                
+                                for script in scripts {
+                                    if script.name.localizedCaseInsensitiveContains("installomator"),
+                                       let label = script.parameter4, !label.isEmpty {
+                                        return InstallomatorPolicyInfo(
+                                            policyID: detail.general.id,
+                                            policyName: detail.general.name,
+                                            label: label,
+                                            categoryName: detail.general.category?.name,
+                                            enabled: detail.general.enabled
+                                        )
+                                    }
+                                }
+                                return nil
+                            } catch {
+                                if attempt == 3 { return nil }
+                                try? await Task.sleep(nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000))
+                            }
+                        }
+                        return nil
+                    }
+                }
+                
+                for await result in group {
+                    if let info = result {
+                        results.append(info)
+                    }
+                }
+            }
+            
+            if batchIndex < batches.count - 1 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        
+        print("[Installomator] Found \(results.count) deployed Installomator policies")
+        return results
+    }
+    
+    /// Fetches the Installomator Labels.txt from GitHub and parses individual labels.
+    /// Each non-empty, non-comment line that matches the label pattern is extracted.
+    func fetchInstallomatorLabelsFromGitHub() async throws -> [String] {
+        let urlString = "https://raw.githubusercontent.com/Installomator/Installomator/main/Labels.txt"
+        guard let url = URL(string: urlString) else { throw URLError(.badURL) }
+        
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        
+        guard let content = String(data: data, encoding: .utf8) else {
+            throw URLError(.cannotDecodeContentData)
+        }
+        
+        var labels: [String] = []
+        let lines = content.components(separatedBy: .newlines)
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+            if !trimmed.contains(" ") {
+                labels.append(trimmed)
+            }
+        }
+        
+        print("[Installomator] Parsed \(labels.count) labels from GitHub")
+        return labels
+    }
+    
+    // MARK: - Policy Creation
+    
     /// Creates a Policy to install software via Installomator (Async Version)
     func createInstallomatorPolicyAsync(
         appName: String,
