@@ -276,11 +276,11 @@ class JamfAPIService: ObservableObject {
     
     // MARK: - Computer Functions
         
-    // Pro API (v1) - Returns detailed inventory records for the Dashboard
+    // Pro API (v3) - Returns detailed inventory records for the Dashboard
     func fetchComputers() async throws -> [ComputerInventoryRecord] {
-        // We MUST request specific sections (GENERAL, HARDWARE) to get Name, Serial, and Managed Status.
-        // We also add page-size=2000 to ensure we get the whole fleet in one go.
-        let endpoint = "api/v1/computers-inventory?section=GENERAL&section=HARDWARE&page-size=2000"
+        // Request GENERAL + HARDWARE for name/serial/managed status, plus USER_AND_LOCATION so the
+        // list view and CSV export can surface the assigned user and location details.
+        let endpoint = "api/v3/computers-inventory?section=GENERAL&section=HARDWARE&section=USER_AND_LOCATION&page-size=2000"
         
         let response = try await genericFetch(
             endpoint: endpoint,
@@ -290,12 +290,12 @@ class JamfAPIService: ObservableObject {
         return response.results.sorted { ($0.general?.name ?? "") < ($1.general?.name ?? "") }
     }
     
-    // Pro API (v1) - Fetch single computer detail for the Inspector
+    // Pro API (v3) - Fetch single computer detail for the Inspector
     func fetchComputerDetail(id: Int) async throws -> ComputerInventoryRecord {
         // We MUST request CONFIGURATION_PROFILES to populate the "Profiles" tab.
         // We also request OS and Hardware for the "Info" tab.
         // Added USER_AND_LOCATION for user details
-        let endpoint = "api/v1/computers-inventory/\(id)?section=GENERAL&section=HARDWARE&section=OPERATING_SYSTEM&section=CONFIGURATION_PROFILES&section=USER_AND_LOCATION"
+        let endpoint = "api/v3/computers-inventory/\(id)?section=GENERAL&section=HARDWARE&section=OPERATING_SYSTEM&section=CONFIGURATION_PROFILES&section=USER_AND_LOCATION"
         
         return try await genericFetch(
             endpoint: endpoint,

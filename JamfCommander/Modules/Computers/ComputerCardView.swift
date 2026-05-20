@@ -9,7 +9,30 @@ import SwiftUI
 
 struct ComputerCardView: View {
     let computer: ComputerInventoryRecord
-    
+
+    /// Build a single-line description of the assigned user for the card.
+    /// Returns nil when there's nothing useful to show.
+    private var assignedUserLine: String? {
+        let displayName = (computer.userAndLocation?.realname?.trimmingCharacters(in: .whitespacesAndNewlines))
+            .flatMap { $0.isEmpty ? nil : $0 }
+            ?? (computer.userAndLocation?.username?.trimmingCharacters(in: .whitespacesAndNewlines))
+                .flatMap { $0.isEmpty ? nil : $0 }
+
+        let email = (computer.userAndLocation?.email?.trimmingCharacters(in: .whitespacesAndNewlines))
+            .flatMap { $0.isEmpty ? nil : $0 }
+
+        switch (displayName, email) {
+        case let (name?, email?):
+            return "\(name) • \(email)"
+        case let (name?, nil):
+            return name
+        case let (nil, email?):
+            return email
+        default:
+            return nil
+        }
+    }
+
     var body: some View {
         let isManaged = computer.general?.remoteManagement?.managed ?? false
         let model = computer.hardware?.model ?? "Mac"
@@ -58,6 +81,20 @@ struct ComputerCardView: View {
                 }
                 .font(.caption)
                 .foregroundColor(.secondary)
+
+                // ROW 3: Assigned user (name and/or email), only when present
+                if let userLine = assignedUserLine {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.crop.circle")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text(userLine)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
             }
             
             Spacer()

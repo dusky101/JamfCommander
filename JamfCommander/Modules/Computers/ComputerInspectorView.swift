@@ -16,6 +16,8 @@ struct ComputerInspectorView: View {
     @State private var detail: ComputerInventoryRecord?
     @State private var scripts: [ScriptRecord] = [] // Real Script Data
     @State private var policies: [Policy] = [] // Real Policy Data
+    @State private var buildings: [String: String] = [:] // ID → name lookup
+    @State private var departments: [String: String] = [:] // ID → name lookup
     @State private var isLoading = true
     
     // View State
@@ -82,16 +84,27 @@ struct ComputerInspectorView: View {
     
     func loadData() async {
         do {
-            // Fetch Computer Detail, Scripts, and Policies in parallel
+            // Fetch Computer Detail, Scripts, Policies, and User & Location lookups in parallel.
+            // Buildings/departments lookups are non-fatal — if they fail, the tab simply falls
+            // back to showing the raw IDs from the inventory record.
             async let detailCall = api.fetchComputerDetail(id: computerId)
             async let scriptsCall = api.fetchScripts()
             async let policiesCall = api.fetchPolicies()
-            
-            let (fetchedDetail, fetchedScripts, fetchedPolicies) = try await (detailCall, scriptsCall, policiesCall)
-            
+            async let buildingsCall: [String: String] = {
+                (try? await api.fetchBuildings()) ?? [:]
+            }()
+            async let departmentsCall: [String: String] = {
+                (try? await api.fetchDepartments()) ?? [:]
+            }()
+
+            let (fetchedDetail, fetchedScripts, fetchedPolicies, fetchedBuildings, fetchedDepartments) =
+                try await (detailCall, scriptsCall, policiesCall, buildingsCall, departmentsCall)
+
             self.detail = fetchedDetail
             self.scripts = fetchedScripts
             self.policies = fetchedPolicies
+            self.buildings = fetchedBuildings
+            self.departments = fetchedDepartments
             self.isLoading = false
         } catch {
             print("Error loading inspector data: \(error)")
@@ -444,13 +457,15 @@ struct ComputerInspectorView: View {
                         Text("Location Information")
                             .font(.headline)
                             .foregroundColor(.primary)
-                        
+
                         VStack(spacing: 8) {
                             if let buildingId = userLocation.buildingId, !buildingId.isEmpty {
-                                InfoRowWithIcon(label: "Building ID", value: buildingId, icon: "building.2.fill")
+                                let buildingValue = buildings[buildingId] ?? buildingId
+                                InfoRowWithIcon(label: "Building", value: buildingValue, icon: "building.2.fill")
                             }
                             if let departmentId = userLocation.departmentId, !departmentId.isEmpty {
-                                InfoRowWithIcon(label: "Department ID", value: departmentId, icon: "person.3.fill")
+                                let departmentValue = departments[departmentId] ?? departmentId
+                                InfoRowWithIcon(label: "Department", value: departmentValue, icon: "person.3.fill")
                             }
                             if let room = userLocation.room, !room.isEmpty {
                                 InfoRowWithIcon(label: "Room", value: room, icon: "door.left.hand.open")

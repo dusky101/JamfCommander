@@ -152,11 +152,15 @@ struct ComputersDashboardView: View {
     }
     
     private func exportComputers() {
-        let csvContent = ExportService.exportComputersToCSV(computers: computers)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let dateString = dateFormatter.string(from: Date())
-        ExportService.saveCSVToFile(content: csvContent, defaultName: "Computers_\(dateString).csv")
+        Task {
+            let csvContent = await ExportService.exportComputersToCSV(computers: computers, api: api)
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+            let dateString = dateFormatter.string(from: Date())
+            await MainActor.run {
+                ExportService.saveCSVToFile(content: csvContent, defaultName: "Computers_\(dateString).csv")
+            }
+        }
     }
 }
 
