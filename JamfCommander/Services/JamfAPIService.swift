@@ -117,13 +117,51 @@ class JamfAPIService: ObservableObject {
         return try await genericFetch(endpoint: "JSSResource/categories", responseType: CategoryListResponse.self).categories
     }
     
-    // MARK: - Computer Groups (for future scope targeting)
+    // MARK: - Computer Groups (for scope targeting)
     
     func fetchComputerGroups() async throws -> [ComputerGroup] {
-        struct ComputerGroupListResponse: Codable {
-            let computer_groups: [ComputerGroup]
+        struct ComputerGroupResponse: Codable {
+            let groups: [ComputerGroup]
+            
+            enum CodingKeys: String, CodingKey {
+                case results
+                case groups
+                case computerGroups
+                case computer_groups
+            }
+            
+            init(from decoder: Decoder) throws {
+                if let arrayContainer = try? decoder.singleValueContainer(),
+                   let groups = try? arrayContainer.decode([ComputerGroup].self) {
+                    self.groups = groups
+                    return
+                }
+                
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                groups = try container.decodeIfPresent([ComputerGroup].self, forKey: .results)
+                    ?? container.decodeIfPresent([ComputerGroup].self, forKey: .groups)
+                    ?? container.decodeIfPresent([ComputerGroup].self, forKey: .computerGroups)
+                    ?? container.decodeIfPresent([ComputerGroup].self, forKey: .computer_groups)
+                    ?? []
+            }
+            
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(groups, forKey: .results)
+            }
         }
-        return try await genericFetch(endpoint: "JSSResource/computergroups", responseType: ComputerGroupListResponse.self).computer_groups
+        
+        do {
+            return try await genericFetch(
+                endpoint: "api/v1/computer-groups",
+                responseType: ComputerGroupResponse.self
+            ).groups
+        } catch {
+            return try await genericFetch(
+                endpoint: "JSSResource/computergroups",
+                responseType: ComputerGroupResponse.self
+            ).groups
+        }
     }
     
     // MARK: - Script Functions (Pro API)
