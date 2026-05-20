@@ -157,7 +157,7 @@ struct ComputersDashboardView: View {
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
             let dateString = dateFormatter.string(from: Date())
-            await MainActor.run {
+            _ = await MainActor.run {
                 ExportService.saveCSVToFile(content: csvContent, defaultName: "Computers_\(dateString).csv")
             }
         }
