@@ -148,7 +148,8 @@ struct PoliciesDashboardView: View {
     private func movePolicy(id: Int, targetCatId: Int) {
         Task {
             do {
-                try await api.movePolicy(id: id, toCategoryID: targetCatId) // Ensure label 'id:' and 'toCategoryID:' are used
+                let targetName = categories.first(where: { $0.id == targetCatId })?.name ?? ""
+                try await api.movePolicy(id: id, toCategoryID: targetCatId, categoryName: targetName)
                 await loadData()
             } catch {
                 print("Failed to move policy: \(error)")

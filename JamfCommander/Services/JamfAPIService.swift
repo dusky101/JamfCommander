@@ -261,7 +261,11 @@ class JamfAPIService: ObservableObject {
             try await genericRequest(method: "DELETE", endpoint: "JSSResource/policies/id/\(id)")
         }
         
-        func movePolicy(id: Int, toCategoryID: Int) async throws {
+        /// Move a policy to a new category. Also updates the policy's Self Service category
+        /// to match so the listing in Self Service stays consistent. A policy that is not
+        /// surfaced in Self Service simply ignores the second block — no harm done.
+        func movePolicy(id: Int, toCategoryID: Int, categoryName: String) async throws {
+            let escapedName = Self.xmlEscape(categoryName)
             let xml = """
             <policy>
                 <general>
@@ -269,9 +273,52 @@ class JamfAPIService: ObservableObject {
                         <id>\(toCategoryID)</id>
                     </category>
                 </general>
+                <self_service>
+                    <self_service_categories>
+                        <category>
+                            <id>\(toCategoryID)</id>
+                            <name>\(escapedName)</name>
+                            <display_in>true</display_in>
+                            <feature_in>false</feature_in>
+                        </category>
+                    </self_service_categories>
+                </self_service>
             </policy>
             """
             try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
+        }
+
+        /// Update only the policy's Self Service category. Used by "Match Self Service
+        /// Category" to bring out-of-sync policies in line with their main category
+        /// without moving them.
+        func setPolicySelfServiceCategory(id: Int, toCategoryID: Int, categoryName: String) async throws {
+            let escapedName = Self.xmlEscape(categoryName)
+            let xml = """
+            <policy>
+                <self_service>
+                    <self_service_categories>
+                        <category>
+                            <id>\(toCategoryID)</id>
+                            <name>\(escapedName)</name>
+                            <display_in>true</display_in>
+                            <feature_in>false</feature_in>
+                        </category>
+                    </self_service_categories>
+                </self_service>
+            </policy>
+            """
+            try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
+        }
+
+        /// Minimal XML-escape for string values interpolated into Classic-API XML bodies.
+        static func xmlEscape(_ s: String) -> String {
+            var out = s
+            out = out.replacingOccurrences(of: "&", with: "&amp;")
+            out = out.replacingOccurrences(of: "<", with: "&lt;")
+            out = out.replacingOccurrences(of: ">", with: "&gt;")
+            out = out.replacingOccurrences(of: "\"", with: "&quot;")
+            out = out.replacingOccurrences(of: "'", with: "&apos;")
+            return out
         }
     
     // MARK: - Computer Functions
