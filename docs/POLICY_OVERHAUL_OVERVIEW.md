@@ -28,12 +28,11 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 
 ## Progress
 
-**Current status:** Phase 3.1 complete (code) — single-policy Self Service **fields** editor
-(`PolicySelfServiceEditorView`: availability, display name, button text, description, force-view,
-feature-on-main-page, and categories with `display_in`/`feature_in`) wired into the inspector's Settings
-tab; save is confirmed and reports a real per-item result; current icon shown read-only and preserved on
-save. macOS build passes; live verification awaiting manual test. **Phase 3.2 (icons: spike + upload +
-reuse) is next.**
+**Current status:** Phase 3 complete (code) — Self Service **fields** editor (3.1) plus **icons** (3.2:
+upload a local PNG/GIF via the Jamf Pro API `POST /api/v1/icon`, or reuse an existing icon by id), with a
+live icon preview via `GET /api/v1/icon/download/{id}`. The policy `PUT` (fields + icon id) is confirmed
+and reports a real per-item result. macOS build passes; live verification (fields, uploaded icon, reused
+icon) awaiting manual test on a non-production tenant. Awaiting review before Phase 4.
 **Last updated:** 2026-06-07.
 
 ### Phase 1 — Models + read/write API (little/no UI)
@@ -65,11 +64,17 @@ reuse) is next.**
 - [x] Save → confirm → `updatePolicySelfService` → results → refresh (fields + categories)
 - [~] Verified in Jamf (fields + categories) — pending manual test on a non-production tenant
 
-**Phase 3.2 — Icons (next):**
-- [ ] Spike the `fileuploads` multipart shape + required Jamf privileges (before building UI)
-- [ ] Icon: upload local image (`NSOpenPanel` → multipart)
-- [ ] Icon: pick an existing Jamf icon
-- [ ] Assign icon to the policy; verify uploaded **and** reused icon in Jamf
+**Phase 3.2 — Icons (done):**
+- [x] Spiked the upload: Jamf Pro API `POST /api/v1/icon` (multipart part `file`) → `{ id, url }`;
+  preview via `GET /api/v1/icon/download/{id}`. No dedicated icon privilege is documented (a valid token
+  suffices); **Update Policies** is needed to attach. Chosen over the legacy Classic `fileuploads`
+  endpoint (see "Added during the overhaul").
+- [x] Icon: upload local image (`NSOpenPanel` → `POST /api/v1/icon` → staged) — attached on Save
+- [x] Icon: reuse an existing icon **by id** (live preview by id; applied on Save) — no "list icons"
+  endpoint exists, so selection is by id
+- [x] Two-stage assign: upload to the icon library → write the icon id to the policy via
+  `updatePolicySelfService`
+- [~] Verify uploaded **and** reused icon in Jamf — pending manual test on a non-production tenant
 
 ### Phase 4 — Multi-select bulk clone with naming + custom-trigger templates
 - [ ] "Clone Selected (N)" action wired into the policies multi-selection
@@ -147,6 +152,22 @@ _(New scope discovered while building goes here, with the date it was added.)_
   `display_in`/`feature_in`. So `PolicySelfServiceEditorView` reuses `api.fetchCategories()` with an
   "Add Category" menu + per-row Display/Feature checkboxes. The inspector fetches the category list
   resiliently (a failure leaves an empty picker rather than blanking the inspector).
+- 2026-06-07 — **Icon-upload spike result (corrected).** Initially built against the Classic
+  `POST /JSSResource/fileuploads/policies/id/{id}` (multipart part `name`), but switched on review to the
+  modern Jamf Pro API: **`POST /api/v1/icon`** (multipart part **`file`**) → `{ id, url }`, then attach
+  the id to the policy via `updatePolicySelfService`. This decouples the icon from the policy (true
+  reuse) and enables a live **preview-by-id** through `GET /api/v1/icon/download/{id}?res=…`. Per the
+  OpenAPI spec the icon endpoints need only authentication (no dedicated privilege); **Update Policies**
+  is required to attach. The library upload is inert, so it isn't gated by a confirmation; the policy
+  `PUT` (which actually assigns the icon, alongside the SS fields) is the confirmed write.
+- 2026-06-07 — **No "list all icons" endpoint**, so "reuse an existing icon" is reuse-**by-id**. Because
+  the download endpoint takes an id, both uploaded and reused icons preview immediately (before Save). A
+  future enhancement could enumerate icons from existing policies, but that is heavy and out of scope.
+- 2026-06-07 — **Icon preview is fetched with an auth guard.** `downloadIconData` only attaches the
+  bearer token when the URL host matches the configured Jamf instance (the `api/v1/icon/download` URL is
+  on the tenant host → token attached; the upload-response `url` is an icon-CDN host → token withheld).
+  Sandbox file read works via the existing `ENABLE_USER_SELECTED_FILES = readwrite` build setting —
+  entitlements/sandbox were **not** changed.
 
 ## Progress log
 
@@ -171,3 +192,9 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   `OperationResultView` → refresh). Inspector now fetches the category list and embeds the editor in the
   Settings tab; current icon shown read-only and preserved on save. macOS build passes; live verification
   pending manual test. Icons (3.2) still to do.
+- 2026-06-07 — Phase 3.2 — Added `JamfAPIService+Icons.swift` using the Jamf Pro API (`uploadIcon` via
+  `POST /api/v1/icon`, `iconDownloadURLString` + `downloadIconData` via `GET /api/v1/icon/download/{id}`,
+  same-host token guard) and upgraded the Self Service editor's icon section: live preview-by-id,
+  "Upload Image…" (NSOpenPanel → upload to icon library → staged), and "Reuse Existing…" (by id). The
+  icon id is attached to the policy on the confirmed Save Self Service. (Replaced an initial Classic
+  `fileuploads` attempt after review.) macOS build passes; live verification pending manual test.

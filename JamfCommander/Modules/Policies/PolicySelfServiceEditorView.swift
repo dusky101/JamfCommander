@@ -20,6 +20,8 @@
 //
 
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 struct PolicySelfServiceEditorView: View {
     @ObservedObject var api: JamfAPIService
@@ -39,7 +41,16 @@ struct PolicySelfServiceEditorView: View {
     @State private var results: [OperationResult] = []
     @State private var showResults = false
 
+    // Icon state
+    @State private var iconImage: NSImage?
+    @State private var isUploadingIcon = false
+    @State private var showReuseSheet = false
+    @State private var reuseIconIdText = ""
+    @State private var iconError: String?
+
     @AppStorage("jamfInstanceURL") private var instanceURL = ""
+
+    private var instanceLabel: String { instanceURL.isEmpty ? "your Jamf instance" : instanceURL }
 
     init(api: JamfAPIService,
          policyId: Int,
@@ -87,6 +98,8 @@ struct PolicySelfServiceEditorView: View {
                 }
             )
         }
+        .sheet(isPresented: $showReuseSheet) { reuseIconSheet }
+        .task(id: settings.icon?.id) { await loadIconPreview() }
     }
 
     // MARK: - Availability
@@ -227,31 +240,187 @@ struct PolicySelfServiceEditorView: View {
         settings.categories.removeAll { $0.id == category.id }
     }
 
-    // MARK: - Icon (read-only here; upload/reuse is Phase 3.2)
+    // MARK: - Icon (upload or reuse)
 
     private var iconSection: some View {
         InfoSection(title: "Icon", icon: "photo") {
-            HStack {
-                Text("Current icon")
-                    .font(.callout)
-                    .foregroundColor(.secondary)
+            HStack(spacing: 12) {
+                iconPreview
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(iconSummary(settings.icon))
+                        .font(.callout)
+                        .fontWeight(.medium)
+                    if let id = settings.icon?.id {
+                        Text("Icon ID \(id)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .fontDesign(.monospaced)
+                    }
+                }
                 Spacer()
-                Text(iconSummary(settings.icon))
-                    .font(.callout)
-                    .fontWeight(.medium)
+                if isUploadingIcon {
+                    ProgressView().controlSize(.small)
+                }
             }
-            Text("Uploading a new icon and reusing an existing one arrive in the next sub-phase. The current icon is preserved on save.")
+
+            Divider()
+
+            HStack {
+                Button { pickAndUploadImage() } label: {
+                    Label("Upload Image…", systemImage: "square.and.arrow.up")
+                }
+                .disabled(isSaving || isUploadingIcon)
+
+                Button {
+                    reuseIconIdText = settings.icon?.id.map(String.init) ?? ""
+                    showReuseSheet = true
+                } label: {
+                    Label("Reuse Existing…", systemImage: "photo.on.rectangle")
+                }
+                .disabled(isSaving || isUploadingIcon)
+
+                Spacer()
+            }
+
+            if let iconError {
+                Text(iconError)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Text("Upload adds the image to Jamf's icon library and selects it; Reuse selects an existing icon by id. The icon is attached to the policy when you save the Self Service settings.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
+    @ViewBuilder
+    private var iconPreview: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .frame(width: 64, height: 64)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+            if let iconImage {
+                Image(nsImage: iconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 54, height: 54)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Image(systemName: "photo")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .accessibilityLabel(iconImage == nil ? "No icon" : "Current Self Service icon")
+    }
+
     private func iconSummary(_ icon: SelfServiceIcon?) -> String {
-        guard let icon, icon.isAssigned else { return "None" }
+        guard let icon, icon.isAssigned else { return "No icon set" }
         if let filename = icon.filename, !filename.isEmpty { return filename }
-        if let id = icon.id { return "ID \(id)" }
+        if let id = icon.id { return "Icon ID \(id)" }
         return "Assigned"
+    }
+
+    // MARK: - Reuse existing icon
+
+    private var reuseIconSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Reuse an Existing Icon")
+                .font(.headline)
+            Text("Enter the id of an icon already in Jamf (for example one shown on another policy). It is applied when you save the Self Service settings.")
+                .font(.callout)
+                .foregroundColor(.secondary)
+            TextField("Icon ID", text: $reuseIconIdText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 160)
+                .accessibilityLabel("Existing icon id")
+            HStack {
+                Spacer()
+                Button("Cancel") { showReuseSheet = false }
+                    .keyboardShortcut(.escape, modifiers: [])
+                Button("Use Icon") { applyReuseIcon() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(Int(reuseIconIdText.trimmingCharacters(in: .whitespaces)) == nil)
+            }
+        }
+        .padding(20)
+        .frame(width: 380)
+    }
+
+    private func applyReuseIcon() {
+        guard let id = Int(reuseIconIdText.trimmingCharacters(in: .whitespaces)) else { return }
+        iconError = nil
+        settings.icon = SelfServiceIcon(id: id)
+        showReuseSheet = false
+    }
+
+    // MARK: - Icon preview / upload helpers
+
+    private func loadIconPreview() async {
+        guard let id = settings.icon?.id else {
+            await MainActor.run { iconImage = nil }
+            return
+        }
+        let urlString = api.iconDownloadURLString(id: id)
+        if let data = try? await api.downloadIconData(from: urlString), let image = NSImage(data: data) {
+            await MainActor.run { iconImage = image }
+        } else {
+            await MainActor.run { iconImage = nil }
+        }
+    }
+
+    private func pickAndUploadImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .gif, .jpeg]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.message = "Choose a Self Service icon (PNG or GIF recommended, ≈512×512)."
+        panel.prompt = "Upload"
+
+        guard panel.runModal() == .OK, let fileURL = panel.url else { return }
+        uploadIcon(from: fileURL)
+    }
+
+    /// Uploads the chosen image to Jamf's icon library and stages it as the policy's icon.
+    /// The icon is only attached to the policy when the user saves the Self Service
+    /// settings (the confirmed write), so the inert library upload isn't itself gated by a
+    /// confirmation.
+    private func uploadIcon(from fileURL: URL) {
+        isUploadingIcon = true
+        iconError = nil
+        let filename = fileURL.lastPathComponent
+        let mime = mimeType(forPathExtension: fileURL.pathExtension)
+
+        Task {
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let icon = try await api.uploadIcon(imageData: data, filename: filename, mimeType: mime)
+                await MainActor.run {
+                    isUploadingIcon = false
+                    settings.icon = icon   // staged; attached to the policy on Save
+                }
+            } catch {
+                await MainActor.run {
+                    isUploadingIcon = false
+                    iconError = "Couldn't upload the icon. Check the image format (PNG or GIF) and your Jamf permissions, then try again."
+                }
+            }
+        }
+    }
+
+    private func mimeType(forPathExtension ext: String) -> String {
+        switch ext.lowercased() {
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "jpg", "jpeg": return "image/jpeg"
+        default: return "application/octet-stream"
+        }
     }
 
     // MARK: - Save / Revert
@@ -286,10 +455,9 @@ struct PolicySelfServiceEditorView: View {
     // MARK: - Logic
 
     private func requestSave() {
-        let instance = instanceURL.isEmpty ? "your Jamf instance" : instanceURL
         confirmation = ConfirmationData(
             title: "Confirm Self Service Update",
-            message: "You are about to update the Self Service page for '\(policyName)' on \(instance).\n\nThis changes what users see in Self Service. Please confirm.",
+            message: "You are about to update the Self Service page for '\(policyName)' on \(instanceLabel).\n\nThis changes what users see in Self Service. Please confirm.",
             actionTitle: "Save Self Service",
             role: .none,
             action: { performSave() }
