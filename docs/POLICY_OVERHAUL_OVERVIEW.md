@@ -28,8 +28,10 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 
 ## Progress
 
-**Current status:** Phase 1 complete (code) — models + read/write API built; macOS build passes; live
-round-trip awaiting manual test on a non-production tenant. Awaiting review before Phase 2.
+**Current status:** Phase 2 complete (code) — single-policy Frequency + Triggers form editor
+(`PolicyEditorView`) wired into the inspector with Settings/Advanced(JSON) tabs; save is confirmed and
+reports a real per-item result. macOS build passes; live verification awaiting manual test on a
+non-production tenant. Awaiting review before Phase 3.
 **Last updated:** 2026-06-07.
 
 ### Phase 1 — Models + read/write API (little/no UI)
@@ -44,12 +46,13 @@ round-trip awaiting manual test on a non-production tenant. Awaiting review befo
   real policy pending manual test on a non-production tenant
 
 ### Phase 2 — Single-policy form editor: Frequency + Triggers
-- [ ] Form editor (`PolicyEditorView` or extended inspector)
-- [ ] Execution Frequency rolling `Picker`
-- [ ] Triggers button/toggle selector (six standard) + optional custom-trigger field
-- [ ] Save → confirm → `updatePolicyGeneral` → results → refresh
-- [ ] Raw JSON kept as Advanced (read-only) tab
-- [ ] Verified: change frequency + add custom trigger, confirmed in Jamf
+- [x] Form editor (`PolicyEditorView`, embedded in the inspector's Settings tab)
+- [x] Execution Frequency `Picker` (native macOS popup — `.wheel` is unavailable on macOS)
+- [x] Triggers toggle selector (six standard) + optional custom-trigger field
+- [x] Save → confirm → `updatePolicyGeneral` → results → refresh
+- [x] Raw JSON kept as Advanced (read-only) tab
+- [~] Verified: change frequency + add custom trigger, confirmed in Jamf — pending manual test on a
+  non-production tenant
 
 ### Phase 3 — Single-policy Self Service editor + icons
 - [ ] SS fields: enable, display name, install/reinstall button text, description, force view, feature on main page
@@ -101,6 +104,12 @@ _(New scope discovered while building goes here, with the date it was added.)_
   `JamfCommander/` are compiled automatically; no `.pbxproj` edits are needed when adding files.
 - 2026-06-07 — **`updatePolicySelfService` already writes the icon by id** (reuse-existing path) when an
   icon id is present, but local-image **upload** remains a Phase 3 multipart spike (not yet implemented).
+- 2026-06-07 — **No wheel picker on macOS.** The brief's "rolling/wheel" frequency selector is
+  implemented with the native macOS popup `Picker` (`.menu`); `WheelPickerStyle` is iOS/watchOS-only and
+  would not compile. This matches Jamf's own admin-console dropdown.
+- 2026-06-07 — **Inspector is now tabbed** (Settings / Advanced). The Phase 1 read-only Execution +
+  Triggers blocks were replaced by the editable form; a read-only **Self Service** summary remains as a
+  placeholder until the Phase 3 editor. The raw JSON view is now genuinely read-only (no `onSave`).
 
 ## Progress log
 
@@ -112,3 +121,8 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   `JamfAPIService+PolicyEditing.swift` (`fetchPolicyEditable`, `updatePolicyGeneral`,
   `updatePolicySelfService` — escaped XML PUTs); surfaced parsed settings read-only in
   `PoliciesInspectorView`. macOS build passes; live round-trip pending manual test.
+- 2026-06-07 — Phase 2 — Added `PolicyEditorView` (Execution Frequency popup `Picker` + six trigger
+  toggles + optional custom-trigger field; Save → `CommanderConfirmation` → `updatePolicyGeneral` →
+  `OperationResultView` → inspector refresh). Reworked `PoliciesInspectorView` into Settings / Advanced
+  (read-only JSON) tabs and kept a read-only Self Service summary. macOS build passes; live verification
+  pending manual test.

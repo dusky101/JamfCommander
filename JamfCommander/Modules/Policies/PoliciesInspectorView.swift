@@ -16,15 +16,27 @@ struct PoliciesInspectorView: View {
     // Data State
     @State private var jsonContent: String = "Loading..."
     @State private var policyDetail: PolicyDetailXML?
-    // Phase 1 verification: parsed frequency / triggers / Self Service (read-only).
     @State private var editable: PolicyEditable?
-    
+
     @State private var isLoading = true
-    @State private var isSaving = false
     @State private var errorMessage: String?
-    
+
     // Edit State
     @State private var isEditingScope = false
+
+    // View State
+    @State private var selectedTab: InspectorTab = .settings
+
+    enum InspectorTab: String, CaseIterable, Identifiable {
+        case settings, advanced
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .settings: return "Settings"
+            case .advanced: return "Advanced (JSON)"
+            }
+        }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -60,9 +72,6 @@ struct PoliciesInspectorView: View {
                 // Right
                 HStack {
                     Spacer()
-                    if isSaving {
-                        ProgressView().controlSize(.small).padding(.trailing, 8)
-                    }
                     Button("Close") { dismiss() }
                         .buttonStyle(.bordered)
                         .keyboardShortcut(.escape, modifiers: [])
@@ -83,28 +92,57 @@ struct PoliciesInspectorView: View {
                 }
                 .frame(maxHeight: .infinity)
             } else {
-                HSplitView {
-                    // LEFT: Info & Scope
-                    VStack(spacing: 0) {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 24) {
-                                settingsSection
-                                scopeSection
-                            }
-                            .padding()
+                // Tab selector — Settings (editable) vs Advanced (read-only JSON).
+                HStack {
+                    Picker("View", selection: $selectedTab) {
+                        ForEach(InspectorTab.allCases) { tab in
+                            Text(tab.title).tag(tab)
                         }
                     }
-                    .frame(width: 320)
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 320)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+
+                Divider()
+
+                switch selectedTab {
+                case .settings:
+                    ScrollView {
+                        HStack(alignment: .top, spacing: 0) {
+                            Spacer(minLength: 0)
+                            VStack(alignment: .leading, spacing: 24) {
+                                if let editable {
+                                    PolicyEditorView(
+                                        api: api,
+                                        policyId: policyId,
+                                        policyName: editable.name,
+                                        initialFrequency: editable.frequency,
+                                        initialTriggers: editable.triggers,
+                                        onSaved: { await reload() }
+                                    )
+                                }
+                                selfServiceSummarySection
+                                scopeSection
+                            }
+                            .frame(maxWidth: 680)
+                            Spacer(minLength: 0)
+                        }
+                        .padding()
+                    }
                     .frame(maxHeight: .infinity)
                     .background(Color.white.opacity(0.02))
-                    
-                    // RIGHT: JSON Source
+
+                case .advanced:
+                    // Raw JSON — read-only (no onSave ⇒ no edit affordance).
                     JSONEditorView(
                         title: "Raw Source (JSON)",
-                        text: $jsonContent,
-                        onSave: { _ in isSaving = false } // Mock save
+                        text: $jsonContent
                     )
-                    .frame(minWidth: 400, maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
         }
@@ -161,34 +199,12 @@ struct PoliciesInspectorView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.2), lineWidth: 1))
     }
     
-    // MARK: - Parsed Settings (read-only, Phase 1 verification)
+    // MARK: - Self Service summary (read-only until the Phase 3 editor)
 
     @ViewBuilder
-    var settingsSection: some View {
+    var selfServiceSummarySection: some View {
         if let editable {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Parsed policy settings — read-only")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .textCase(.uppercase)
-
-                InfoSection(title: "Execution", icon: "clock.arrow.circlepath") {
-                    InfoRow(label: "Frequency", value: editable.frequency.displayName)
-                    InfoRow(
-                        label: "Custom Trigger",
-                        value: editable.triggers.hasCustomTrigger ? editable.triggers.trimmedCustomTrigger : "None"
-                    )
-                }
-
-                InfoSection(title: "Triggers", icon: "bolt.fill") {
-                    InfoRow(label: "Recurring Check-in", value: onOff(editable.triggers.checkin))
-                    InfoRow(label: "Enrolment Complete", value: onOff(editable.triggers.enrollmentComplete))
-                    InfoRow(label: "Login", value: onOff(editable.triggers.login))
-                    InfoRow(label: "Logout", value: onOff(editable.triggers.logout))
-                    InfoRow(label: "Network State Change", value: onOff(editable.triggers.networkStateChanged))
-                    InfoRow(label: "Startup", value: onOff(editable.triggers.startup))
-                }
-
+            VStack(alignment: .leading, spacing: 6) {
                 InfoSection(title: "Self Service", icon: "bag.fill") {
                     InfoRow(label: "Available", value: editable.selfService.useForSelfService ? "Yes" : "No")
                     InfoRow(
@@ -199,11 +215,12 @@ struct PoliciesInspectorView: View {
                     InfoRow(label: "Feature on Main Page", value: editable.selfService.featureOnMainPage ? "Yes" : "No")
                     InfoRow(label: "Icon", value: iconSummary(editable.selfService.icon))
                 }
+                Text("Self Service editing arrives in a later phase.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
         }
     }
-
-    private func onOff(_ value: Bool) -> String { value ? "On" : "Off" }
 
     private func iconSummary(_ icon: SelfServiceIcon?) -> String {
         guard let icon, icon.isAssigned else { return "None" }
@@ -224,6 +241,22 @@ struct PoliciesInspectorView: View {
             self.isLoading = false
         } catch {
             self.isLoading = false
+        }
+    }
+
+    /// Refreshes the inspector's data after an in-place edit, without flashing the full
+    /// loading state. On failure the last good data is retained.
+    func reload() async {
+        do {
+            async let fetchedJSON = api.fetchPolicyJSON(id: policyId)
+            async let fetchedDetail = api.fetchPolicyDetail(id: policyId)
+            async let fetchedEditable = api.fetchPolicyEditable(id: policyId)
+            let (json, detail, editablePolicy) = try await (fetchedJSON, fetchedDetail, fetchedEditable)
+            self.jsonContent = json
+            self.policyDetail = detail
+            self.editable = editablePolicy
+        } catch {
+            // Keep the last good data on a refresh failure.
         }
     }
 }
