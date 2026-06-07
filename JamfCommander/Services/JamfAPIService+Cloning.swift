@@ -173,7 +173,84 @@ extension JamfAPIService {
         let newID = try parseIDFromXMLResponse(data: data, elementName: "id")
         return newID
     }
-    
+
+    // MARK: - Bulk Policy Cloning
+
+    /// Clones each policy in the plan and then applies its templated custom trigger (and,
+    /// when configured, a frequency) to the new clone. Rate-limited (batches of 5 + 0.5s
+    /// gaps); a per-item failure is captured and the batch continues. Returns one
+    /// `OperationResult` per item for `OperationResultView`.
+    func bulkClonePolicies(_ items: [BulkClonePlanItem], config: BulkCloneConfig) async -> [OperationResult] {
+        var results: [OperationResult] = []
+        let batchSize = 5
+        let batches = stride(from: 0, to: items.count, by: batchSize).map {
+            Array(items[$0..<min($0 + batchSize, items.count)])
+        }
+
+        for (batchIndex, batch) in batches.enumerated() {
+            await withTaskGroup(of: OperationResult.self) { group in
+                for item in batch {
+                    group.addTask {
+                        let newId: Int
+                        do {
+                            newId = try await self.clonePolicy(
+                                id: item.policyId,
+                                newName: item.newName,
+                                toCategoryID: config.targetCategoryID,
+                                stripScope: config.stripScope,
+                                stripTriggers: config.stripTriggers,
+                                stripFrequency: config.stripFrequency,
+                                disableSelfService: config.disableSelfService
+                            )
+                        } catch {
+                            return OperationResult(itemName: item.newName, success: false, error: "Clone failed: \(error)")
+                        }
+
+                        // Apply the templated custom trigger and/or the chosen frequency.
+                        let trigger = item.trimmedCustomTrigger.isEmpty ? nil : item.trimmedCustomTrigger
+                        if config.applyFrequency != nil || trigger != nil {
+                            do {
+                                try await self.applyClonedGeneral(id: newId, frequency: config.applyFrequency, customTrigger: trigger)
+                            } catch {
+                                return OperationResult(
+                                    itemName: item.newName,
+                                    success: false,
+                                    error: "Created (ID \(newId)) but couldn't set trigger/frequency — set it manually."
+                                )
+                            }
+                        }
+
+                        return OperationResult(itemName: item.newName, success: true, error: nil, toCategory: "Created (ID: \(newId))")
+                    }
+                }
+                for await result in group {
+                    results.append(result)
+                }
+            }
+
+            if batchIndex < batches.count - 1 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        return results
+    }
+
+    /// Writes only the supplied `<general>` elements (a partial update) so a clone's
+    /// custom trigger / frequency can be set without clobbering its other general fields.
+    /// Every dynamic value is XML-escaped.
+    private func applyClonedGeneral(id: Int, frequency: PolicyFrequency?, customTrigger: String?) async throws {
+        var elements = ""
+        if let frequency {
+            elements += "<frequency>\(Self.xmlEscape(frequency.jamfValue))</frequency>"
+        }
+        if let customTrigger, !customTrigger.isEmpty {
+            elements += "<trigger_other>\(Self.xmlEscape(customTrigger))</trigger_other>"
+        }
+        guard !elements.isEmpty else { return }
+        let xml = "<policy><general>\(elements)</general></policy>"
+        try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
+    }
+
     // MARK: - Helper Methods
     
     /// Fetches complete raw XML for a profile including all payloads

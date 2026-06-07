@@ -28,11 +28,12 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 
 ## Progress
 
-**Current status:** Phase 3 complete (code) — Self Service **fields** editor (3.1), **icons** via the
-Jamf Pro API (3.2: upload `POST /api/v1/icon` or reuse), and a **searchable icon picker + reliable
-preview + on-disk cache** (3.3). Previews resolve each icon's CDN URL via `GET /api/v1/icon/{id}`; the
-policy `PUT` (fields + icon id) is confirmed and reports a real per-item result. macOS build passes; live
-verification awaiting manual test on a non-production tenant. Awaiting review before Phase 4.
+**Current status:** Phase 4 complete (code) — multi-select **bulk clone** for policies (`BulkCloneSheet`
++ `bulkClonePolicies`): target category, prefix/suffix naming with live per-row preview, slugified
+`install-{appName}` custom-trigger template with per-row override, safety strips, and an optional
+frequency to apply. Rate-limited batch, single confirmation, real per-item results; clones created
+disabled. (Standard-trigger and full Self Service templating to clones deferred — see notes.) macOS build
+passes; live verification awaiting manual test on a non-production tenant. Awaiting review before Phase 5.
 **Last updated:** 2026-06-07.
 
 ### Phase 1 — Models + read/write API (little/no UI)
@@ -87,14 +88,18 @@ verification awaiting manual test on a non-production tenant. Awaiting review be
 - [~] Verify preview, post-upload refresh, and the picker in Jamf — pending manual test
 
 ### Phase 4 — Multi-select bulk clone with naming + custom-trigger templates
-- [ ] "Clone Selected (N)" action wired into the policies multi-selection
-- [ ] `BulkCloneSheet`: target category
-- [ ] Naming template (prefix/suffix + `{originalName}`) with live per-row preview
-- [ ] Custom-trigger template (`install-{appName}`) slugified + per-row preview/override + blank allowed
-- [ ] Carry over safety options (clones disabled by default; optional strip scope/triggers/frequency/SS)
-- [ ] Apply chosen frequency/triggers/custom trigger/SS to each new clone
-- [ ] `JamfAPIService+Cloning` batch clone — rate-limited, per-item results, single confirmation
-- [ ] Verified: 3 policies → 3 disabled, correctly named clones with the right `install-…` triggers
+- [x] "Clone Selected (N)" action wired into the policies multi-selection (`ActionPanelView`)
+- [x] `BulkCloneSheet`: target category
+- [x] Naming template — prefix + original + suffix (the `{originalName}` is the middle), live per-row
+  preview; validates that a prefix or suffix is set so clones are uniquely named
+- [x] Custom-trigger template (`install-{appName}`) slugified + per-row preview/override + blank allowed
+- [x] Carry over safety options (clones disabled by default; optional strip scope/triggers/frequency/SS)
+- [~] Apply chosen settings to each clone — **custom trigger + optional frequency applied**; applying
+  standard event triggers and full Self Service templating to clones is **deferred** (see note)
+- [x] `JamfAPIService+Cloning` batch clone (`bulkClonePolicies`) — rate-limited (batches of 5 + 0.5s),
+  per-item `OperationResultView` results, single confirmation
+- [~] Verified: 3 policies → 3 disabled, correctly named clones with the right `install-…` triggers —
+  pending manual test on a non-production tenant
 
 ### Phase 5 — Bulk in-place settings editor
 - [ ] Bulk set frequency for selected policies
@@ -182,6 +187,16 @@ _(New scope discovered while building goes here, with the date it was added.)_
   (memory + `~/Library/Caches/.../JamfCommanderIcons/{id}.img`) never goes stale; the *available* icons
   are fetched live per search, so a "count check to refresh" isn't needed. The picker caps hydration at
   50 matching policies per search to respect rate limits.
+- 2026-06-07 — **Bulk-clone naming uses prefix + original + suffix** (not a free `{originalName}`
+  template string), which keeps clone names unique by construction and still preserves the original name.
+  The Clone button is disabled until a prefix or suffix is set. The custom trigger is applied to each
+  clone via a **partial `<general>` PUT** (`trigger_other`, plus `frequency` when chosen) so the clone's
+  other general fields aren't clobbered — no extra read needed.
+- 2026-06-07 — **Deferred in Phase 4:** applying *standard event triggers* and *full Self Service*
+  settings as bulk-clone templates. The headline acceptance (named, disabled clones with the right
+  custom trigger) plus optional frequency is covered; standard-trigger templating is an unusual workflow
+  and SS templating across clones is heavy. Both can be added on request (would extend `BulkCloneConfig`
+  + `applyClonedGeneral` and add a sheet section).
 - 2026-06-07 — **Icon preview is fetched with an auth guard.** `downloadIconData` only attaches the
   bearer token when the URL host matches the configured Jamf instance (the `api/v1/icon/download` URL is
   on the tenant host → token attached; the upload-response `url` is an icon-CDN host → token withheld).
@@ -220,4 +235,10 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   without auth) and made upload cache its bytes for an instant thumbnail. Added `IconImageCache`
   (memory + disk, by icon id), `fetchIconURL`/`fetchPolicyList`/`fetchSelfServiceIcons` (throttled), and
   `SelfServiceIconPickerView` — a searchable grid picker over icons used by matching policies. macOS
+  build passes; live verification pending manual test.
+- 2026-06-07 — Phase 4 — Added `BulkCloneModels` (plan/config + slug & template helpers), a throttled
+  `bulkClonePolicies` (+ partial-`<general>` `applyClonedGeneral`) in `+Cloning`, and `BulkCloneSheet`
+  (category, prefix/suffix naming with per-row preview, `install-{appName}` custom-trigger template with
+  per-row override, safety strips, optional frequency). Wired "Clone Selected (N)" in `ActionPanelView`
+  (policies → `BulkCloneSheet`; profiles unchanged) with a single confirmation + per-item results. macOS
   build passes; live verification pending manual test.

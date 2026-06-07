@@ -48,6 +48,15 @@ struct ActionPanelView: View {
     @State private var showCloneSheet = false
     @State private var cloneConfig: CloneConfiguration?
     @State private var mutableCategories: [Category] = []
+
+    // Bulk Clone State (policies — templated naming + custom triggers)
+    @State private var showBulkCloneSheet = false
+    @State private var bulkClonePlan: [BulkClonePlanItem] = []
+    @State private var bulkCloneConfig: BulkCloneConfig?
+
+    private var selectedPolicies: [Policy] {
+        policies.filter { selectedIDs.contains($0.id) }
+    }
     
     // Define scope actions
     enum ScopeAction: String, CaseIterable, Identifiable {
@@ -234,10 +243,10 @@ struct ActionPanelView: View {
                     .fontWeight(.medium)
                     .foregroundColor(.secondary)
                 
-                Button(action: { showCloneSheet = true }) {
+                Button(action: { if mode == .policies { showBulkCloneSheet = true } else { showCloneSheet = true } }) {
                     HStack {
                         Image(systemName: "doc.on.doc")
-                        Text("Clone Selection")
+                        Text(mode == .policies ? "Clone Selected (\(selectedIDs.count))" : "Clone Selection")
                     }
                     .fontWeight(.medium)
                     .padding(.horizontal, 16)
@@ -293,12 +302,14 @@ struct ActionPanelView: View {
                     selectedTargetCategory = nil
                     selectedScopeAction = nil // Clear scope action too
                     cloneConfig = nil // Clear clone config
+                    bulkCloneConfig = nil
+                    bulkClonePlan = []
                     Task { await onRefresh() }
                 }
             )
         }
         
-        // Clone Configuration Sheet
+        // Clone Configuration Sheet (profiles)
         .sheet(isPresented: $showCloneSheet) {
             CloneConfigSheet(
                 api: api,
@@ -309,6 +320,20 @@ struct ActionPanelView: View {
                     cloneConfig = config
                     showCloneSheet = false
                     requestClone()
+                }
+            )
+        }
+        // Bulk Clone Sheet (policies — templated naming + custom triggers)
+        .sheet(isPresented: $showBulkCloneSheet) {
+            BulkCloneSheet(
+                api: api,
+                categories: mutableCategories,
+                policies: selectedPolicies,
+                onConfirm: { plan, config in
+                    bulkClonePlan = plan
+                    bulkCloneConfig = config
+                    showBulkCloneSheet = false
+                    requestBulkClone()
                 }
             )
         }
@@ -574,7 +599,41 @@ struct ActionPanelView: View {
             action: { performBulkClone() }
         )
     }
-    
+
+    // MARK: - Bulk Clone (policies, templated)
+
+    func requestBulkClone() {
+        guard let config = bulkCloneConfig else { return }
+        let count = bulkClonePlan.count
+        let plural = count == 1 ? "y" : "ies"
+        let url = instanceURL.isEmpty ? "your Jamf instance" : instanceURL
+
+        confirmation = ConfirmationData(
+            title: "Confirm Bulk Clone",
+            message: "You are about to clone \(count) polic\(plural) into '\(config.targetCategoryName)' on \(url).\n\nClones are created disabled. The templated names and custom triggers will be applied.\n\nPlease confirm.",
+            actionTitle: "Clone \(count) Polic\(plural)",
+            role: .none,
+            action: { performBulkCloneTemplated() }
+        )
+    }
+
+    func performBulkCloneTemplated() {
+        guard let config = bulkCloneConfig else { return }
+        isBusy = true
+        statusMessage = "Cloning…"
+        resultsLog = []
+
+        Task {
+            let results = await api.bulkClonePolicies(bulkClonePlan, config: config)
+            await MainActor.run {
+                resultsLog = results
+                isBusy = false
+                statusMessage = "Done."
+                showResultsSheet = true
+            }
+        }
+    }
+
     func performBulkClone() {
         guard let config = cloneConfig else { return }
         isBusy = true
