@@ -105,4 +105,69 @@ extension JamfAPIService {
         """
         try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
     }
+
+    // MARK: - Bulk in-place settings
+
+    /// Writes only the supplied `<general>` fields (a partial update) so other general
+    /// fields aren't clobbered. A non-nil `customTrigger` writes `trigger_other` (an empty
+    /// string clears it); nil skips it. Every dynamic value is XML-escaped.
+    func updatePolicyGeneralFields(id: Int, frequency: PolicyFrequency?, customTrigger: String?) async throws {
+        var elements = ""
+        if let frequency {
+            elements += "<frequency>\(Self.xmlEscape(frequency.jamfValue))</frequency>"
+        }
+        if let customTrigger {
+            elements += "<trigger_other>\(Self.xmlEscape(customTrigger))</trigger_other>"
+        }
+        guard !elements.isEmpty else { return }
+        let xml = "<policy><general>\(elements)</general></policy>"
+        try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
+    }
+
+    /// Applies the chosen settings (frequency / custom trigger / Self Service category) to
+    /// each selected policy in place. Rate-limited (batches of 5 + 0.5s gaps); per-item
+    /// failures are captured and the batch continues. Returns one `OperationResult` per
+    /// item for `OperationResultView`.
+    func bulkUpdatePolicySettings(_ items: [BulkSettingsPlanItem], config: BulkSettingsConfig) async -> [OperationResult] {
+        var results: [OperationResult] = []
+        let batchSize = 5
+        let batches = stride(from: 0, to: items.count, by: batchSize).map {
+            Array(items[$0..<min($0 + batchSize, items.count)])
+        }
+
+        for (batchIndex, batch) in batches.enumerated() {
+            await withTaskGroup(of: OperationResult.self) { group in
+                for item in batch {
+                    group.addTask {
+                        do {
+                            // General: frequency and/or custom trigger (partial PUT).
+                            if config.applyFrequency != nil || config.applyCustomTrigger {
+                                let trigger: String? = config.applyCustomTrigger ? item.trimmedCustomTrigger : nil
+                                try await self.updatePolicyGeneralFields(
+                                    id: item.policyId,
+                                    frequency: config.applyFrequency,
+                                    customTrigger: trigger
+                                )
+                            }
+                            // Self Service category (reuses the existing matcher method).
+                            if let categoryID = config.selfServiceCategoryID, let categoryName = config.selfServiceCategoryName {
+                                try await self.setPolicySelfServiceCategory(id: item.policyId, toCategoryID: categoryID, categoryName: categoryName)
+                            }
+                            return OperationResult(itemName: item.policyName, success: true, error: nil)
+                        } catch {
+                            return OperationResult(itemName: item.policyName, success: false, error: "\(error)")
+                        }
+                    }
+                }
+                for await result in group {
+                    results.append(result)
+                }
+            }
+
+            if batchIndex < batches.count - 1 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        return results
+    }
 }

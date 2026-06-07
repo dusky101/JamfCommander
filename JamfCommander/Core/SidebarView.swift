@@ -9,12 +9,12 @@ import SwiftUI
 
 enum AppModule: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
-    case profiles = "Profiles"
     case policies = "Policies"
+    case profiles = "Profiles"
     case computers = "Computers"
-    case scripts = "Scripts"
     case packages = "Packages" // Added Packages
-    
+    case scripts = "Scripts"
+
     var id: String { rawValue }
     
     var icon: String {

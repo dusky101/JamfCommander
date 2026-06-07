@@ -54,6 +54,11 @@ struct ActionPanelView: View {
     @State private var bulkClonePlan: [BulkClonePlanItem] = []
     @State private var bulkCloneConfig: BulkCloneConfig?
 
+    // Bulk Settings State (policies — in-place frequency / trigger / Self Service category)
+    @State private var showBulkSettingsSheet = false
+    @State private var bulkSettingsPlan: [BulkSettingsPlanItem] = []
+    @State private var bulkSettingsConfig: BulkSettingsConfig?
+
     private var selectedPolicies: [Policy] {
         policies.filter { selectedIDs.contains($0.id) }
     }
@@ -174,6 +179,32 @@ struct ActionPanelView: View {
                     .tint(.teal)
                     .disabled(isBusy)
                     .help("Set each selected policy's Self Service category to match its current main category. Policies without a category are skipped.")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+
+                // MARK: - Bulk Settings (Policies Only)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Settings")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+
+                    Button(action: { showBulkSettingsSheet = true }) {
+                        HStack {
+                            Image(systemName: "slider.horizontal.3")
+                            Text("Edit Settings (\(selectedIDs.count))")
+                        }
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.indigo)
+                    .disabled(isBusy)
+                    .help("Bulk-set frequency, a templated custom trigger, and/or a Self Service category across the selected policies.")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -304,6 +335,8 @@ struct ActionPanelView: View {
                     cloneConfig = nil // Clear clone config
                     bulkCloneConfig = nil
                     bulkClonePlan = []
+                    bulkSettingsConfig = nil
+                    bulkSettingsPlan = []
                     Task { await onRefresh() }
                 }
             )
@@ -334,6 +367,20 @@ struct ActionPanelView: View {
                     bulkCloneConfig = config
                     showBulkCloneSheet = false
                     requestBulkClone()
+                }
+            )
+        }
+        // Bulk Settings Sheet (policies — in-place frequency / trigger / Self Service category)
+        .sheet(isPresented: $showBulkSettingsSheet) {
+            BulkSettingsSheet(
+                api: api,
+                categories: mutableCategories,
+                policies: selectedPolicies,
+                onConfirm: { plan, config in
+                    bulkSettingsPlan = plan
+                    bulkSettingsConfig = config
+                    showBulkSettingsSheet = false
+                    requestBulkSettings()
                 }
             )
         }
@@ -625,6 +672,46 @@ struct ActionPanelView: View {
 
         Task {
             let results = await api.bulkClonePolicies(bulkClonePlan, config: config)
+            await MainActor.run {
+                resultsLog = results
+                isBusy = false
+                statusMessage = "Done."
+                showResultsSheet = true
+            }
+        }
+    }
+
+    // MARK: - Bulk Settings (policies, in-place)
+
+    func requestBulkSettings() {
+        guard let config = bulkSettingsConfig else { return }
+        let count = bulkSettingsPlan.count
+        let plural = count == 1 ? "y" : "ies"
+        let url = instanceURL.isEmpty ? "your Jamf instance" : instanceURL
+
+        var changes: [String] = []
+        if let freq = config.applyFrequency { changes.append("• Frequency → \(freq.displayName)") }
+        if config.applyCustomTrigger { changes.append("• Set custom trigger (from the template / per-row overrides)") }
+        if let ssName = config.selfServiceCategoryName { changes.append("• Self Service category → \(ssName)") }
+        let summary = changes.isEmpty ? "• Update settings." : changes.joined(separator: "\n")
+
+        confirmation = ConfirmationData(
+            title: "Confirm Bulk Edit",
+            message: "You are about to update \(count) polic\(plural) on \(url):\n\n\(summary)\n\nThis affects live policies. Please confirm.",
+            actionTitle: "Apply to \(count) Polic\(plural)",
+            role: .none,
+            action: { performBulkSettings() }
+        )
+    }
+
+    func performBulkSettings() {
+        guard let config = bulkSettingsConfig else { return }
+        isBusy = true
+        statusMessage = "Applying…"
+        resultsLog = []
+
+        Task {
+            let results = await api.bulkUpdatePolicySettings(bulkSettingsPlan, config: config)
             await MainActor.run {
                 resultsLog = results
                 isBusy = false

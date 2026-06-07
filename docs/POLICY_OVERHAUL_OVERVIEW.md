@@ -28,12 +28,12 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 
 ## Progress
 
-**Current status:** Phase 4 complete (code) — multi-select **bulk clone** for policies (`BulkCloneSheet`
-+ `bulkClonePolicies`): target category, prefix/suffix naming with live per-row preview, slugified
-`install-{appName}` custom-trigger template with per-row override, safety strips, and an optional
-frequency to apply. Rate-limited batch, single confirmation, real per-item results; clones created
-disabled. (Standard-trigger and full Self Service templating to clones deferred — see notes.) macOS build
-passes; live verification awaiting manual test on a non-production tenant. Awaiting review before Phase 5.
+**Current status:** Phases 1–5 complete (code) — the full functional overhaul. Phase 5 adds the bulk
+in-place settings editor (`BulkSettingsSheet` + `bulkUpdatePolicySettings`): apply a frequency, a
+templated custom trigger (per-row preview/override), and/or a Self Service category across the selected
+policies, via the rate-limited batch with a single confirmation and real per-item results. **Only
+Phase 6 (visual polish & Liquid Glass design pass) remains.** macOS build passes; live verification of
+all phases awaiting manual test on a non-production tenant.
 **Last updated:** 2026-06-07.
 
 ### Phase 1 — Models + read/write API (little/no UI)
@@ -102,11 +102,12 @@ passes; live verification awaiting manual test on a non-production tenant. Await
   pending manual test on a non-production tenant
 
 ### Phase 5 — Bulk in-place settings editor
-- [ ] Bulk set frequency for selected policies
-- [ ] Bulk add/set a templated custom trigger for selected policies
-- [ ] Bulk set/sync Self Service settings/category (build on `setPolicySelfServiceCategory`)
-- [ ] Reuse Phase 2/3 writes + Phase 4 batch plumbing + confirmation + results
-- [ ] Verified in Jamf
+- [x] Bulk set frequency for selected policies
+- [x] Bulk add/set a templated custom trigger for selected policies (per-row preview + override)
+- [x] Bulk set/sync Self Service category (reuses `setPolicySelfServiceCategory`)
+- [x] Reuses the Phase 4 batch plumbing (throttled) + `CommanderConfirmation` + `OperationResultView`;
+  general writes use a partial `<general>` PUT so untouched fields aren't clobbered
+- [~] Verified in Jamf — pending manual test on a non-production tenant
 
 ### Phase 6 — Visual polish & Liquid Glass design pass
 > A dedicated design pass over **all** the new policy-overhaul UI, to make it look polished and native
@@ -126,11 +127,11 @@ passes; live verification awaiting manual test on a non-production tenant. Await
 - [ ] Builds; British English throughout; no functional regressions
 
 ### Cross-cutting acceptance criteria
-- [ ] No raw-JSON editing required for frequency, triggers, or Self Service
-- [ ] Every write is confirmed and reports real per-item results
-- [ ] Bulk operations are throttled and degrade gracefully on partial failure
-- [ ] All new copy is British English; UI uses existing `SharedUI`/Liquid Glass components
-- [ ] App builds at the end of every phase; nothing committed or pushed
+- [x] No raw-JSON editing required for frequency, triggers, or Self Service (JSON is read-only "Advanced")
+- [x] Every write is confirmed (`CommanderConfirmation`) and reports real per-item results (`OperationResultView`)
+- [x] Bulk operations are throttled (batches + delays) and degrade gracefully on partial failure
+- [x] All new copy is British English; UI uses existing `SharedUI`/Liquid Glass components
+- [x] App builds at the end of every phase; nothing committed or pushed by the assistant
 
 ## Added during the overhaul
 
@@ -242,3 +243,9 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   per-row override, safety strips, optional frequency). Wired "Clone Selected (N)" in `ActionPanelView`
   (policies → `BulkCloneSheet`; profiles unchanged) with a single confirmation + per-item results. macOS
   build passes; live verification pending manual test.
+- 2026-06-07 — Phase 5 — Added `BulkSettingsModels`, `updatePolicyGeneralFields` (partial `<general>`
+  PUT) + throttled `bulkUpdatePolicySettings` in `+PolicyEditing` (reuses `setPolicySelfServiceCategory`
+  for the SS category), and `BulkSettingsSheet` (independently-toggled frequency / templated custom
+  trigger with per-row override / Self Service category). Wired "Edit Settings (N)" in `ActionPanelView`
+  (policies) with a single confirmation + per-item results. Completes phases 1–5; macOS build passes;
+  live verification pending manual test.
