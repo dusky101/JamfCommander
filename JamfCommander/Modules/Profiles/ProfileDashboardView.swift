@@ -56,23 +56,38 @@ struct ProfileDashboardView: View {
     var body: some View {
         VStack(spacing: 0) {
             // --- Top Bar (Switches between Filter and Actions) ---
-            if !selectedProfileIDs.isEmpty {
-                // Show Action Panel when items are selected
+            if selectedProfileIDs.count == 1,
+               let singleProfile = profiles.first(where: { $0.id == selectedProfileIDs.first }) {
+                // Single-item Action Bar (singular wording; Edit opens the inspector)
+                SingleProfileActionBar(
+                    api: api,
+                    profile: singleProfile,
+                    categories: categories,
+                    isBusy: $isBusy,
+                    statusMessage: $actionStatus,
+                    onEdit: { id in inspectorSelection = InspectorSelection(id: id) },
+                    onClearSelection: { withAnimation { selectedProfileIDs.removeAll() } },
+                    onRefresh: { await refreshAction() }
+                )
+                .frame(height: 180)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(2)
+            } else if !selectedProfileIDs.isEmpty {
+                // Show Action Panel when 2+ items are selected
                 ActionPanelView(
                     api: api,
-                    mode: .profiles, // Add this
+                    mode: .profiles,
                     categories: categories,
                     profiles: profiles,
-                    selectedIDs: $selectedProfileIDs, // Rename this argument
+                    selectedIDs: $selectedProfileIDs,
                     isBusy: $isBusy,
                     statusMessage: $actionStatus,
                     onRefresh: {
-                        await refreshAction() // <--- Restored Refresh Call
+                        await refreshAction()
                     }
                 )
                 .frame(height: 180)
                 .transition(.move(edge: .top).combined(with: .opacity))
-                .background(Color(nsColor: .controlBackgroundColor))
                 .zIndex(2)
             } else {
                 // Show Filter Bar normally

@@ -313,9 +313,7 @@ struct ActionPanelView: View {
             .frame(width: 160)
         }
         .padding(20)
-        .background(.ultraThinMaterial)
-        .cornerRadius(16)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.1), lineWidth: 1))
+        .appBarBackground(cornerRadius: 16)
         .padding(.horizontal)
         .padding(.bottom, 10)
         

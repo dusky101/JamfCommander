@@ -293,3 +293,14 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
 - 2026-06-07 — Phase 6 (move popover polish) — Widened the move-to-category popover to 600pt, gave each
   category chip a capsule outline (distinct tappable areas), and made the card auto-size to the chips via
   `.onGeometryChange` (grows as categories are added, capped at 480pt then scrolls). macOS build passes.
+- 2026-06-08 — Phase 6 (move chips restyle) — Category chips now use the blue selected-category look
+  (blue fill/text/outline capsule) instead of the glass tint, fixing the "capsule + opaque square"
+  double-layer. macOS build passes.
+- 2026-06-08 — Phase 6 (Profiles single bar + bar backgrounds) — Added `SingleProfileActionBar`
+  (Move/Set Scope/Edit/Clone/Delete, same look as the policies single bar) and wired
+  `ProfileDashboardView` (1 profile → single bar, 2+ → `ActionPanelView`). Added an `elevated`
+  `AppBackground` variant + `.appBarBackground()` (frosted gradient, blurs behind) and applied it to
+  `SingleActionBar`/`SingleProfileActionBar`/`ActionPanelView`; removed the `controlBackgroundColor`
+  black band behind the bars in both dashboards. macOS build passes. **Still to do:** restyle the bulk
+  `ActionPanelView` buttons to the single-bar icon+header tile look (it currently has the new background
+  but the original button layout).

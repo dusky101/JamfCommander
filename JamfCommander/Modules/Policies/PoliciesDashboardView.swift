@@ -66,7 +66,6 @@ struct PoliciesDashboardView: View {
                 )
                 .frame(height: 180)
                 .transition(.move(edge: .top).combined(with: .opacity))
-                .background(Color(nsColor: .controlBackgroundColor))
                 .zIndex(2)
             } else if !selectedPolicyIDs.isEmpty {
                 // Action Panel (Policies Mode — bulk, 2+ selected)
@@ -82,7 +81,6 @@ struct PoliciesDashboardView: View {
                 )
                 .frame(height: 180)
                 .transition(.move(edge: .top).combined(with: .opacity))
-                .background(Color(nsColor: .controlBackgroundColor))
                 .zIndex(2)
             } else {
                 // Filter Bar
