@@ -60,12 +60,6 @@ extension JamfAPIService {
         return SelfServiceIcon(id: decoded.id, filename: safeFilename, uri: decoded.url)
     }
 
-    /// Tenant URL that serves an icon's image bytes at a given resolution
-    /// (`GET /api/v1/icon/download/{id}`, `res` = `original` | `300` | `512`). For previews.
-    func iconDownloadURLString(id: Int, resolution: String = "300") -> String {
-        "\(baseURL)/api/v1/icon/download/\(id)?res=\(resolution)"
-    }
-
     /// Authenticated download of an icon's image bytes for preview. The bearer token is
     /// only attached when the URL is on the same host as the configured Jamf instance, so
     /// it is never sent to a third-party host (e.g. the icon CDN).
@@ -85,6 +79,63 @@ extension JamfAPIService {
         }
         return data
     }
+
+    /// Resolves an icon's CDN URL via `GET /api/v1/icon/{id}` (used for previews/caching).
+    func fetchIconURL(id: Int) async throws -> String {
+        let response = try await genericFetch(endpoint: "api/v1/icon/\(id)", responseType: JamfIconResponse.self)
+        return response.url
+    }
+
+    /// Lightweight policy list (id + name only) for searching — one request, no detail
+    /// hydration.
+    func fetchPolicyList() async throws -> [PolicyListItem] {
+        try await genericFetch(endpoint: "JSSResource/policies", responseType: PolicyListResponse.self).policies
+    }
+
+    /// Fetches the Self Service icon for each given policy id, returning only those that
+    /// have one. Rate-limited (batches of 10 + 0.5s gaps + bounded retry) and degrades on
+    /// per-item failure rather than aborting — see services-and-networking.md.
+    func fetchSelfServiceIcons(forPolicyIDs ids: [Int]) async -> [PolicyIconHit] {
+        var hits: [PolicyIconHit] = []
+        let batchSize = 10
+        let batches = stride(from: 0, to: ids.count, by: batchSize).map {
+            Array(ids[$0..<min($0 + batchSize, ids.count)])
+        }
+
+        for (batchIndex, batch) in batches.enumerated() {
+            await withTaskGroup(of: PolicyIconHit?.self) { group in
+                for policyId in batch {
+                    group.addTask {
+                        for attempt in 1...3 {
+                            do {
+                                let editable = try await self.fetchPolicyEditable(id: policyId)
+                                guard let icon = editable.selfService.icon, icon.id != nil else { return nil }
+                                return PolicyIconHit(policyId: policyId, policyName: editable.name, icon: icon)
+                            } catch {
+                                if attempt == 3 { return nil }
+                                try? await Task.sleep(nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000))
+                            }
+                        }
+                        return nil
+                    }
+                }
+                for await result in group {
+                    if let result { hits.append(result) }
+                }
+            }
+            if batchIndex < batches.count - 1 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        return hits
+    }
+}
+
+/// One policy's Self Service icon, surfaced by the icon picker's search.
+struct PolicyIconHit: Sendable {
+    let policyId: Int
+    let policyName: String
+    let icon: SelfServiceIcon
 }
 
 private extension Data {

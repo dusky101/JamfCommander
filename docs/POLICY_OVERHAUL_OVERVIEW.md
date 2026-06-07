@@ -28,11 +28,11 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 
 ## Progress
 
-**Current status:** Phase 3 complete (code) — Self Service **fields** editor (3.1) plus **icons** (3.2:
-upload a local PNG/GIF via the Jamf Pro API `POST /api/v1/icon`, or reuse an existing icon by id), with a
-live icon preview via `GET /api/v1/icon/download/{id}`. The policy `PUT` (fields + icon id) is confirmed
-and reports a real per-item result. macOS build passes; live verification (fields, uploaded icon, reused
-icon) awaiting manual test on a non-production tenant. Awaiting review before Phase 4.
+**Current status:** Phase 3 complete (code) — Self Service **fields** editor (3.1), **icons** via the
+Jamf Pro API (3.2: upload `POST /api/v1/icon` or reuse), and a **searchable icon picker + reliable
+preview + on-disk cache** (3.3). Previews resolve each icon's CDN URL via `GET /api/v1/icon/{id}`; the
+policy `PUT` (fields + icon id) is confirmed and reports a real per-item result. macOS build passes; live
+verification awaiting manual test on a non-production tenant. Awaiting review before Phase 4.
 **Last updated:** 2026-06-07.
 
 ### Phase 1 — Models + read/write API (little/no UI)
@@ -70,11 +70,21 @@ icon) awaiting manual test on a non-production tenant. Awaiting review before Ph
   suffices); **Update Policies** is needed to attach. Chosen over the legacy Classic `fileuploads`
   endpoint (see "Added during the overhaul").
 - [x] Icon: upload local image (`NSOpenPanel` → `POST /api/v1/icon` → staged) — attached on Save
-- [x] Icon: reuse an existing icon **by id** (live preview by id; applied on Save) — no "list icons"
-  endpoint exists, so selection is by id
+- [x] Icon: reuse an existing icon (initially by id — replaced by a searchable picker in 3.3)
 - [x] Two-stage assign: upload to the icon library → write the icon id to the policy via
   `updatePolicySelfService`
 - [~] Verify uploaded **and** reused icon in Jamf — pending manual test on a non-production tenant
+
+**Phase 3.3 — Icon picker + reliable preview (done):**
+- [x] Fixed the preview: resolve each icon's CDN URL via `GET /api/v1/icon/{id}` and render that (the
+  `…/icon/download/{id}` endpoint was failing on the auth-redirect to the CDN)
+- [x] Instant refresh after upload — the uploaded bytes are cached under the new icon id so the
+  thumbnail appears immediately
+- [x] `SelfServiceIconPickerView`: search policies by name/id → fetch icons from matching policies →
+  de-dupe by icon id → grid picker (replaces entering an id by hand)
+- [x] On-disk image cache (`IconImageCache`) keyed by icon id (immutable → never stale); the available
+  icon set is fetched live per search, capped at 50 matching policies for rate limits
+- [~] Verify preview, post-upload refresh, and the picker in Jamf — pending manual test
 
 ### Phase 4 — Multi-select bulk clone with naming + custom-trigger templates
 - [ ] "Clone Selected (N)" action wired into the policies multi-selection
@@ -160,9 +170,18 @@ _(New scope discovered while building goes here, with the date it was added.)_
   OpenAPI spec the icon endpoints need only authentication (no dedicated privilege); **Update Policies**
   is required to attach. The library upload is inert, so it isn't gated by a confirmation; the policy
   `PUT` (which actually assigns the icon, alongside the SS fields) is the confirmed write.
-- 2026-06-07 — **No "list all icons" endpoint**, so "reuse an existing icon" is reuse-**by-id**. Because
-  the download endpoint takes an id, both uploaded and reused icons preview immediately (before Save). A
-  future enhancement could enumerate icons from existing policies, but that is heavy and out of scope.
+- 2026-06-07 — **No "list all icons" endpoint**, so the icon picker (3.3) enumerates icons from the
+  policies matching a name/id search instead. Reuse-by-id (3.2) was replaced by this searchable grid.
+- 2026-06-07 — **Preview root cause + fix (3.3).** The first preview attempt used
+  `GET /api/v1/icon/download/{id}`, which 302-redirects to the icon CDN; `URLSession` carried the bearer
+  token across the redirect, breaking it (blank thumbnail, as seen on the uploaded icon). Fix: resolve
+  the icon's public CDN URL via `GET /api/v1/icon/{id}` (authenticated) and download that **without**
+  auth (foreign host → token withheld by the existing guard). Uploaded bytes are also cached immediately
+  under the new id, so the thumbnail appears at once.
+- 2026-06-07 — **Icon cache is by-id, not count-based.** Icons are immutable by id, so `IconImageCache`
+  (memory + `~/Library/Caches/.../JamfCommanderIcons/{id}.img`) never goes stale; the *available* icons
+  are fetched live per search, so a "count check to refresh" isn't needed. The picker caps hydration at
+  50 matching policies per search to respect rate limits.
 - 2026-06-07 — **Icon preview is fetched with an auth guard.** `downloadIconData` only attaches the
   bearer token when the URL host matches the configured Jamf instance (the `api/v1/icon/download` URL is
   on the tenant host → token attached; the upload-response `url` is an icon-CDN host → token withheld).
@@ -193,8 +212,12 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   Settings tab; current icon shown read-only and preserved on save. macOS build passes; live verification
   pending manual test. Icons (3.2) still to do.
 - 2026-06-07 — Phase 3.2 — Added `JamfAPIService+Icons.swift` using the Jamf Pro API (`uploadIcon` via
-  `POST /api/v1/icon`, `iconDownloadURLString` + `downloadIconData` via `GET /api/v1/icon/download/{id}`,
-  same-host token guard) and upgraded the Self Service editor's icon section: live preview-by-id,
-  "Upload Image…" (NSOpenPanel → upload to icon library → staged), and "Reuse Existing…" (by id). The
-  icon id is attached to the policy on the confirmed Save Self Service. (Replaced an initial Classic
-  `fileuploads` attempt after review.) macOS build passes; live verification pending manual test.
+  `POST /api/v1/icon`, `downloadIconData` with a same-host token guard) and upgraded the Self Service
+  editor's icon section: "Upload Image…" (NSOpenPanel → upload to icon library → staged) and "Reuse
+  Existing…". The icon id is attached to the policy on the confirmed Save Self Service. (Replaced an
+  initial Classic `fileuploads` attempt after review.) macOS build passes.
+- 2026-06-07 — Phase 3.3 — Fixed the icon preview (resolve CDN URL via `GET /api/v1/icon/{id}`, download
+  without auth) and made upload cache its bytes for an instant thumbnail. Added `IconImageCache`
+  (memory + disk, by icon id), `fetchIconURL`/`fetchPolicyList`/`fetchSelfServiceIcons` (throttled), and
+  `SelfServiceIconPickerView` — a searchable grid picker over icons used by matching policies. macOS
+  build passes; live verification pending manual test.

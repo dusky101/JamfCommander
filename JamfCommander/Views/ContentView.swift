@@ -117,6 +117,10 @@ struct ContentView: View {
                     case .dashboard:
                         DashboardView(api: api, currentModule: $currentModule)
                         
+                    
+                    case .policies:
+                        PoliciesDashboardView(api: api)
+                    
                     case .profiles:
                         ProfileDashboardView(
                             profiles: profiles,
@@ -129,8 +133,7 @@ struct ContentView: View {
                     case .computers:
                         ComputersDashboardView(api: api)
                         
-                    case .policies:
-                        PoliciesDashboardView(api: api)
+                    
                         
                     case .scripts:
                         ScriptsDashboardView(api: api)

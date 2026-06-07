@@ -44,8 +44,7 @@ struct PolicySelfServiceEditorView: View {
     // Icon state
     @State private var iconImage: NSImage?
     @State private var isUploadingIcon = false
-    @State private var showReuseSheet = false
-    @State private var reuseIconIdText = ""
+    @State private var showIconPicker = false
     @State private var iconError: String?
 
     @AppStorage("jamfInstanceURL") private var instanceURL = ""
@@ -98,7 +97,17 @@ struct PolicySelfServiceEditorView: View {
                 }
             )
         }
-        .sheet(isPresented: $showReuseSheet) { reuseIconSheet }
+        .sheet(isPresented: $showIconPicker) {
+            SelfServiceIconPickerView(
+                api: api,
+                onPick: { icon in
+                    iconError = nil
+                    settings.icon = icon
+                    showIconPicker = false
+                },
+                onCancel: { showIconPicker = false }
+            )
+        }
         .task(id: settings.icon?.id) { await loadIconPreview() }
     }
 
@@ -272,8 +281,7 @@ struct PolicySelfServiceEditorView: View {
                 .disabled(isSaving || isUploadingIcon)
 
                 Button {
-                    reuseIconIdText = settings.icon?.id.map(String.init) ?? ""
-                    showReuseSheet = true
+                    showIconPicker = true
                 } label: {
                     Label("Reuse Existing…", systemImage: "photo.on.rectangle")
                 }
@@ -326,52 +334,14 @@ struct PolicySelfServiceEditorView: View {
         return "Assigned"
     }
 
-    // MARK: - Reuse existing icon
-
-    private var reuseIconSheet: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Reuse an Existing Icon")
-                .font(.headline)
-            Text("Enter the id of an icon already in Jamf (for example one shown on another policy). It is applied when you save the Self Service settings.")
-                .font(.callout)
-                .foregroundColor(.secondary)
-            TextField("Icon ID", text: $reuseIconIdText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 160)
-                .accessibilityLabel("Existing icon id")
-            HStack {
-                Spacer()
-                Button("Cancel") { showReuseSheet = false }
-                    .keyboardShortcut(.escape, modifiers: [])
-                Button("Use Icon") { applyReuseIcon() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(Int(reuseIconIdText.trimmingCharacters(in: .whitespaces)) == nil)
-            }
-        }
-        .padding(20)
-        .frame(width: 380)
-    }
-
-    private func applyReuseIcon() {
-        guard let id = Int(reuseIconIdText.trimmingCharacters(in: .whitespaces)) else { return }
-        iconError = nil
-        settings.icon = SelfServiceIcon(id: id)
-        showReuseSheet = false
-    }
-
     // MARK: - Icon preview / upload helpers
 
     private func loadIconPreview() async {
         guard let id = settings.icon?.id else {
-            await MainActor.run { iconImage = nil }
+            iconImage = nil
             return
         }
-        let urlString = api.iconDownloadURLString(id: id)
-        if let data = try? await api.downloadIconData(from: urlString), let image = NSImage(data: data) {
-            await MainActor.run { iconImage = image }
-        } else {
-            await MainActor.run { iconImage = nil }
-        }
+        iconImage = await IconImageCache.shared.loadImage(id: id, using: api)
     }
 
     private func pickAndUploadImage() {
@@ -403,6 +373,10 @@ struct PolicySelfServiceEditorView: View {
                 let icon = try await api.uploadIcon(imageData: data, filename: filename, mimeType: mime)
                 await MainActor.run {
                     isUploadingIcon = false
+                    if let iconId = icon.id {
+                        // Cache the bytes we just uploaded so the preview is instant.
+                        IconImageCache.shared.store(id: iconId, data: data)
+                    }
                     settings.icon = icon   // staged; attached to the policy on Save
                 }
             } catch {
