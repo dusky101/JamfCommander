@@ -17,6 +17,7 @@ struct PoliciesInspectorView: View {
     @State private var jsonContent: String = "Loading..."
     @State private var policyDetail: PolicyDetailXML?
     @State private var editable: PolicyEditable?
+    @State private var categories: [Category] = []
 
     @State private var isLoading = true
     @State private var errorMessage: String?
@@ -124,8 +125,16 @@ struct PoliciesInspectorView: View {
                                         initialTriggers: editable.triggers,
                                         onSaved: { await reload() }
                                     )
+
+                                    PolicySelfServiceEditorView(
+                                        api: api,
+                                        policyId: policyId,
+                                        policyName: editable.name,
+                                        categories: categories,
+                                        initialSettings: editable.selfService,
+                                        onSaved: { await reload() }
+                                    )
                                 }
-                                selfServiceSummarySection
                                 scopeSection
                             }
                             .frame(maxWidth: 680)
@@ -199,45 +208,18 @@ struct PoliciesInspectorView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.2), lineWidth: 1))
     }
     
-    // MARK: - Self Service summary (read-only until the Phase 3 editor)
-
-    @ViewBuilder
-    var selfServiceSummarySection: some View {
-        if let editable {
-            VStack(alignment: .leading, spacing: 6) {
-                InfoSection(title: "Self Service", icon: "bag.fill") {
-                    InfoRow(label: "Available", value: editable.selfService.useForSelfService ? "Yes" : "No")
-                    InfoRow(
-                        label: "Display Name",
-                        value: editable.selfService.displayName.isEmpty ? "—" : editable.selfService.displayName
-                    )
-                    InfoRow(label: "Categories", value: "\(editable.selfService.categories.count)")
-                    InfoRow(label: "Feature on Main Page", value: editable.selfService.featureOnMainPage ? "Yes" : "No")
-                    InfoRow(label: "Icon", value: iconSummary(editable.selfService.icon))
-                }
-                Text("Self Service editing arrives in a later phase.")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-        }
-    }
-
-    private func iconSummary(_ icon: SelfServiceIcon?) -> String {
-        guard let icon, icon.isAssigned else { return "None" }
-        if let filename = icon.filename, !filename.isEmpty { return filename }
-        if let id = icon.id { return "ID \(id)" }
-        return "Assigned"
-    }
-
     func loadData() async {
         do {
             async let fetchedJSON = api.fetchPolicyJSON(id: policyId)
             async let fetchedDetail = api.fetchPolicyDetail(id: policyId)
             async let fetchedEditable = api.fetchPolicyEditable(id: policyId)
-            let (json, detail, editablePolicy) = try await (fetchedJSON, fetchedDetail, fetchedEditable)
+            // Categories are non-critical: a failure must not blank the inspector.
+            async let fetchedCategories: [Category] = (try? await api.fetchCategories()) ?? []
+            let (json, detail, editablePolicy, cats) = try await (fetchedJSON, fetchedDetail, fetchedEditable, fetchedCategories)
             self.jsonContent = json
             self.policyDetail = detail
             self.editable = editablePolicy
+            self.categories = cats
             self.isLoading = false
         } catch {
             self.isLoading = false
@@ -251,10 +233,12 @@ struct PoliciesInspectorView: View {
             async let fetchedJSON = api.fetchPolicyJSON(id: policyId)
             async let fetchedDetail = api.fetchPolicyDetail(id: policyId)
             async let fetchedEditable = api.fetchPolicyEditable(id: policyId)
-            let (json, detail, editablePolicy) = try await (fetchedJSON, fetchedDetail, fetchedEditable)
+            async let fetchedCategories: [Category] = (try? await api.fetchCategories()) ?? []
+            let (json, detail, editablePolicy, cats) = try await (fetchedJSON, fetchedDetail, fetchedEditable, fetchedCategories)
             self.jsonContent = json
             self.policyDetail = detail
             self.editable = editablePolicy
+            self.categories = cats
         } catch {
             // Keep the last good data on a refresh failure.
         }

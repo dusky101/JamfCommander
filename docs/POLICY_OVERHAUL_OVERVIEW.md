@@ -28,10 +28,12 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 
 ## Progress
 
-**Current status:** Phase 2 complete (code) — single-policy Frequency + Triggers form editor
-(`PolicyEditorView`) wired into the inspector with Settings/Advanced(JSON) tabs; save is confirmed and
-reports a real per-item result. macOS build passes; live verification awaiting manual test on a
-non-production tenant. Awaiting review before Phase 3.
+**Current status:** Phase 3.1 complete (code) — single-policy Self Service **fields** editor
+(`PolicySelfServiceEditorView`: availability, display name, button text, description, force-view,
+feature-on-main-page, and categories with `display_in`/`feature_in`) wired into the inspector's Settings
+tab; save is confirmed and reports a real per-item result; current icon shown read-only and preserved on
+save. macOS build passes; live verification awaiting manual test. **Phase 3.2 (icons: spike + upload +
+reuse) is next.**
 **Last updated:** 2026-06-07.
 
 ### Phase 1 — Models + read/write API (little/no UI)
@@ -55,13 +57,19 @@ non-production tenant. Awaiting review before Phase 3.
   non-production tenant
 
 ### Phase 3 — Single-policy Self Service editor + icons
-- [ ] SS fields: enable, display name, install/reinstall button text, description, force view, feature on main page
-- [ ] SS categories (reuse `CategorySelectionSheet`; `display_in`/`feature_in`)
-- [ ] Show current icon
-- [ ] Icon: upload local image (`NSOpenPanel` → multipart) — *spike the endpoint/privileges first*
+**Phase 3.1 — Self Service fields (done):**
+- [x] SS fields: enable, display name, install/reinstall button text, description, force view, feature on main page
+- [x] SS categories with `display_in`/`feature_in` (used the category *list* + an "Add Category" menu, not
+  `CategorySelectionSheet` — see note in "Added during the overhaul")
+- [x] Show current icon (read-only)
+- [x] Save → confirm → `updatePolicySelfService` → results → refresh (fields + categories)
+- [~] Verified in Jamf (fields + categories) — pending manual test on a non-production tenant
+
+**Phase 3.2 — Icons (next):**
+- [ ] Spike the `fileuploads` multipart shape + required Jamf privileges (before building UI)
+- [ ] Icon: upload local image (`NSOpenPanel` → multipart)
 - [ ] Icon: pick an existing Jamf icon
-- [ ] Save → confirm → `updatePolicySelfService` (+ icon assignment) → results
-- [ ] Verified in Jamf (fields + uploaded icon + reused icon)
+- [ ] Assign icon to the policy; verify uploaded **and** reused icon in Jamf
 
 ### Phase 4 — Multi-select bulk clone with naming + custom-trigger templates
 - [ ] "Clone Selected (N)" action wired into the policies multi-selection
@@ -131,6 +139,14 @@ _(New scope discovered while building goes here, with the date it was added.)_
   phases 1–5 as functional only, with visual quality covered solely by the cross-cutting "reuse
   SharedUI/Liquid Glass components" line. After reviewing the Phase 2 editor, a dedicated polish phase was
   requested and added to both this tracker and `POLICY_OVERHAUL_PROMPT.md`.
+- 2026-06-07 — **Phase 3 split into 3.1 (fields) and 3.2 (icons).** Icon upload/reuse needs a fileuploads
+  multipart spike and has API uncertainty (there is no documented "list all Self Service icons"
+  endpoint), so it is isolated as 3.2 per the brief's sub-phase allowance.
+- 2026-06-07 — **Self Service categories use the category list, not `CategorySelectionSheet`.** That
+  sheet is themed for move/deploy and returns only a category *name*; Self Service needs the id plus
+  `display_in`/`feature_in`. So `PolicySelfServiceEditorView` reuses `api.fetchCategories()` with an
+  "Add Category" menu + per-row Display/Feature checkboxes. The inspector fetches the category list
+  resiliently (a failure leaves an empty picker rather than blanking the inspector).
 
 ## Progress log
 
@@ -149,3 +165,9 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   pending manual test.
 - 2026-06-07 — Planning — Added **Phase 6 (Visual polish & Liquid Glass design pass)** to the plan after
   review of the Phase 2 editor UI; documentation only, no code yet.
+- 2026-06-07 — Phase 3.1 — Added `PolicySelfServiceEditorView` (availability, display name, install/
+  reinstall button text, description, force-view, feature-on-main-page, and Self Service categories with
+  Display/Feature toggles; Save → `CommanderConfirmation` → `updatePolicySelfService` →
+  `OperationResultView` → refresh). Inspector now fetches the category list and embeds the editor in the
+  Settings tab; current icon shown read-only and preserved on save. macOS build passes; live verification
+  pending manual test. Icons (3.2) still to do.
