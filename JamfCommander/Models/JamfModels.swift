@@ -53,6 +53,59 @@ struct Category: Identifiable, Codable, Hashable {
 struct ComputerGroup: Identifiable, Codable, Hashable {
     let id: Int
     let name: String
+    let smartGroup: Bool?
+    let memberCount: Int?
+    
+    var groupTypeLabel: String {
+        smartGroup == true ? "Smart" : "Static"
+    }
+    
+    var groupTypeIcon: String {
+        smartGroup == true ? "gearshape.2.fill" : "person.3.fill"
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case smartGroup
+        case isSmart
+        case is_smart
+        case memberCount
+        case computerCount
+        case count
+    }
+    
+    init(id: Int, name: String, smartGroup: Bool? = nil, memberCount: Int? = nil) {
+        self.id = id
+        self.name = name
+        self.smartGroup = smartGroup
+        self.memberCount = memberCount
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let intID = try? container.decode(Int.self, forKey: .id) {
+            id = intID
+        } else {
+            let stringID = try container.decode(String.self, forKey: .id)
+            id = Int(stringID) ?? 0
+        }
+        name = try container.decode(String.self, forKey: .name)
+        smartGroup = try container.decodeIfPresent(Bool.self, forKey: .smartGroup)
+            ?? container.decodeIfPresent(Bool.self, forKey: .isSmart)
+            ?? container.decodeIfPresent(Bool.self, forKey: .is_smart)
+        memberCount = try container.decodeIfPresent(Int.self, forKey: .memberCount)
+            ?? container.decodeIfPresent(Int.self, forKey: .computerCount)
+            ?? container.decodeIfPresent(Int.self, forKey: .count)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(smartGroup, forKey: .smartGroup)
+        try container.encodeIfPresent(memberCount, forKey: .memberCount)
+    }
 }
 
 // MARK: - Detailed Models (For Crawling & Inspector)

@@ -142,7 +142,35 @@ struct ActionPanelView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             
             Divider()
-            
+
+            // MARK: - Center-Right: Self Service Sync (Policies Only)
+            if mode == .policies {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Self Service")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+
+                    Button(action: requestSelfServiceSync) {
+                        HStack {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                            Text("Match Self Service Category")
+                        }
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.teal)
+                    .disabled(isBusy)
+                    .help("Set each selected policy's Self Service category to match its current main category. Policies without a category are skipped.")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+            }
+
             // MARK: - Center-Right: Scope Management (Profiles Only)
             if mode == .profiles {
                 VStack(alignment: .leading, spacing: 12) {
@@ -312,6 +340,70 @@ struct ActionPanelView: View {
         )
     }
     
+    func requestSelfServiceSync() {
+        let count = selectedIDs.count
+        confirmation = ConfirmationData(
+            title: "Match Self Service Categories",
+            message: "You are about to update the Self Service category for \(count) polic\(count == 1 ? "y" : "ies") so it matches each policy's current main category.\n\nPolicies without a main category will be skipped.\n\nPlease confirm this action.",
+            actionTitle: "Match Categories",
+            role: .none,
+            action: { performBulkSelfServiceSync() }
+        )
+    }
+
+    func performBulkSelfServiceSync() {
+        isBusy = true
+        statusMessage = "Syncing Self Service categories..."
+        resultsLog = []
+
+        Task {
+            for id in selectedIDs {
+                guard let policy = policies.first(where: { $0.id == id }) else {
+                    resultsLog.append(OperationResult(
+                        itemName: "ID \(id)",
+                        success: false,
+                        error: "Policy not found in current view"
+                    ))
+                    continue
+                }
+
+                // Skip policies with no category or the Jamf "Unknown" placeholder (id -1).
+                guard let catId = policy.categoryId, catId != -1,
+                      let catName = policy.categoryName, !catName.isEmpty else {
+                    resultsLog.append(OperationResult(
+                        itemName: policy.name,
+                        success: false,
+                        error: "Skipped — no main category set"
+                    ))
+                    continue
+                }
+
+                do {
+                    try await api.setPolicySelfServiceCategory(id: id, toCategoryID: catId, categoryName: catName)
+                    resultsLog.append(OperationResult(
+                        itemName: policy.name,
+                        success: true,
+                        error: nil,
+                        fromCategory: nil,
+                        toCategory: "SS → \(catName)"
+                    ))
+                } catch {
+                    resultsLog.append(OperationResult(
+                        itemName: policy.name,
+                        success: false,
+                        error: "\(error)"
+                    ))
+                }
+            }
+
+            await MainActor.run {
+                isBusy = false
+                statusMessage = "Done."
+                showResultsSheet = true
+            }
+        }
+    }
+
     func requestMove() {
         guard let category = selectedTargetCategory else { return }
         let count = selectedIDs.count
@@ -417,7 +509,7 @@ struct ActionPanelView: View {
                     if mode == .profiles {
                         try await api.moveProfile(id, toCategoryID: targetCategory.id)
                     } else {
-                        try await api.movePolicy(id: id, toCategoryID: targetCategory.id) // Corrected Label Usage
+                        try await api.movePolicy(id: id, toCategoryID: targetCategory.id, categoryName: targetCategory.name)
                     }
                     
                     resultsLog.append(OperationResult(
