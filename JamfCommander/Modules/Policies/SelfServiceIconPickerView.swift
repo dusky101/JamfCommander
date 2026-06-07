@@ -50,7 +50,7 @@ struct SelfServiceIconPickerView: View {
             content
         }
         .frame(width: 660, height: 580)
-        .liquidGlass(cornerRadius: 16)
+        .appBackground()
         .task { await loadPolicyList() }
     }
 

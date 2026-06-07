@@ -68,7 +68,7 @@ struct BulkSettingsSheet: View {
             footer
         }
         .frame(width: 580, height: 660)
-        .background(.ultraThinMaterial)
+        .appBackground()
         .onAppear(perform: seedRows)
         .onChange(of: triggerTemplate) { _, newTemplate in
             for index in rows.indices where !rows[index].isOverridden {

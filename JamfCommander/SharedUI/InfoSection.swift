@@ -26,9 +26,10 @@ struct InfoSection<Content: View>: View {
                 .font(.headline)
                 .foregroundColor(.primary)
             
-            VStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
                 content
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
             .cornerRadius(10)

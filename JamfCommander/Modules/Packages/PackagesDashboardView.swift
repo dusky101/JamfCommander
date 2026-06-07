@@ -9,7 +9,8 @@ import SwiftUI
 
 struct PackagesDashboardView: View {
     @ObservedObject var api: JamfAPIService
-    
+    @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
+
     // Data
     @State private var allItems: [InstallomatorItem] = []
     @State private var isLoading = false
@@ -120,6 +121,7 @@ struct PackagesDashboardView: View {
         .task {
             await loadData()
         }
+        .onChange(of: refreshCoordinator.token) { Task { await loadData() } }
         .sheet(isPresented: $showConfigSheet) {
             DeploymentConfigSheet(
                 api: api,

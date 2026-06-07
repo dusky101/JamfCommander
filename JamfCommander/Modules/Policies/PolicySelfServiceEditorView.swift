@@ -120,6 +120,7 @@ struct PolicySelfServiceEditorView: View {
                     .font(.callout)
             }
             .toggleStyle(.switch)
+            .frame(maxWidth: .infinity)
             .disabled(isSaving)
         }
     }

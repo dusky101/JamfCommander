@@ -89,17 +89,9 @@ struct ContentView: View {
         } detail: {
             // MARK: - MAIN CONTENT
             ZStack {
-                // Main Background - Beautiful gradient like DevDump
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.35, green: 0.15, blue: 0.65).opacity(0.15),
-                        Color(red: 0.10, green: 0.25, blue: 0.70).opacity(0.10),
-                        Color(red: 0.05, green: 0.40, blue: 0.75).opacity(0.08)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                // Main Background — the app's signature gradient (shared with all sheets).
+                AppBackground()
+                    .ignoresSafeArea()
                 
                 if !isLoggedIn {
                     LoginView(

@@ -102,6 +102,7 @@ extension JamfAPIService {
         
         // 4. Parse response to extract new ID
         let newID = try parseIDFromXMLResponse(data: data, elementName: "id")
+        RefreshCoordinator.shared.requestRefresh()
         return newID
     }
     
@@ -171,6 +172,7 @@ extension JamfAPIService {
         
         // 4. Parse response to extract new ID
         let newID = try parseIDFromXMLResponse(data: data, elementName: "id")
+        RefreshCoordinator.shared.requestRefresh()
         return newID
     }
 

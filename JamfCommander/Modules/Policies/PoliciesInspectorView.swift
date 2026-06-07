@@ -143,7 +143,6 @@ struct PoliciesInspectorView: View {
                         .padding()
                     }
                     .frame(maxHeight: .infinity)
-                    .background(Color.white.opacity(0.02))
 
                 case .advanced:
                     // Raw JSON — read-only (no onSave ⇒ no edit affordance).
@@ -156,7 +155,7 @@ struct PoliciesInspectorView: View {
             }
         }
         .frame(width: 950, height: 700)
-        .liquidGlass(cornerRadius: 16)
+        .appBackground()
         .task {
             await loadData()
         }

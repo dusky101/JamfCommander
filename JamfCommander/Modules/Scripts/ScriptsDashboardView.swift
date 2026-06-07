@@ -9,7 +9,8 @@ import SwiftUI
 
 struct ScriptsDashboardView: View {
     @ObservedObject var api: JamfAPIService
-    
+    @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
+
     @State private var scripts: [ScriptRecord] = []
     @State private var searchText = ""
     @State private var isLoading = true
@@ -83,6 +84,7 @@ struct ScriptsDashboardView: View {
         .task {
             await refreshData()
         }
+        .onChange(of: refreshCoordinator.token) { Task { await refreshData() } }
         .sheet(item: $inspectorSelection) { selection in
             ScriptInspectorView(scriptId: selection.id, api: api)
         }

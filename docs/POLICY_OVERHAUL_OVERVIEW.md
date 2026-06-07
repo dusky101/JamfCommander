@@ -28,12 +28,11 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 
 ## Progress
 
-**Current status:** Phases 1–5 complete (code) — the full functional overhaul. Phase 5 adds the bulk
-in-place settings editor (`BulkSettingsSheet` + `bulkUpdatePolicySettings`): apply a frequency, a
-templated custom trigger (per-row preview/override), and/or a Self Service category across the selected
-policies, via the rate-limited batch with a single confirmation and real per-item results. **Only
-Phase 6 (visual polish & Liquid Glass design pass) remains.** macOS build passes; live verification of
-all phases awaiting manual test on a non-production tenant.
+**Current status:** Phases 1–5 complete; **Phase 6 in progress** — a shared `AppBackground` (the home
+gradient) now sits behind every sheet and the detail pane (no flat black), and the editor's centred
+toggles are fixed (left-aligned, full-width rows). Remaining Phase 6 polish (typography hierarchy,
+inspector header/tab/save-bar refinement, richer Liquid Glass cards, loading/empty-state polish, a
+Dynamic Type/contrast pass) is still open. macOS build passes; live verification awaiting manual test.
 **Last updated:** 2026-06-07.
 
 ### Phase 1 — Models + read/write API (little/no UI)
@@ -114,18 +113,21 @@ all phases awaiting manual test on a non-production tenant.
 > A dedicated design pass over **all** the new policy-overhaul UI, to make it look polished and native
 > rather than merely functional. Can run as a final pass or be folded into each phase as surfaces are
 > built. Added after review (see "Added during the overhaul").
-- [ ] Replace the plain `InfoSection`/default-control layout in the editor with the Liquid Glass helpers
-  (`liquidGlassRect`, `liquidGlassCapsule`) and a consistent card/section treatment
-- [ ] Fix layout & alignment: full-width, left-aligned trigger rows (leading icon + label, trailing
-  switch), aligned frequency control, consistent spacing/padding
+- [x] Shared `AppBackground` — the home gradient behind **every** sheet and the detail pane; no flat
+  black anywhere (adaptive window base + the signature purple→blue wash, applied via `.appBackground()`)
+- [x] Fix layout & alignment: `InfoSection` content is now left-aligned + full-width and the editor's
+  trigger switches span the row (no more centred toggles)
+- [~] Replace the plain `InfoSection`/default-control layout with richer Liquid Glass cards — alignment +
+  shared backdrop done; deeper card restyle still possible
+- [x] Apply the shared backdrop across every new surface (inspector, single-policy editor, Self Service
+  editor, icon picker, `BulkCloneSheet`, bulk in-place editor) **and** the older sheets (clone/config/
+  category/deployment/configuration)
 - [ ] Stronger typography hierarchy, semantic colours, and refined section headers
 - [ ] Polish the inspector header, segmented tab control, and save/revert bar (idle / unsaved / saving)
 - [ ] Polished loading / empty / saving / error states
-- [ ] Apply the same treatment across every new surface (single-policy editor, Self Service editor,
-  `BulkCloneSheet`, bulk in-place editor)
-- [ ] Accessibility preserved (labels/hints, Dynamic Type, keyboard focus, never colour-alone); restrained
-  Apple-26 treatment (no gratuitous blur/transparency/motion)
-- [ ] Builds; British English throughout; no functional regressions
+- [~] Accessibility preserved (labels/hints already present; Dynamic Type/contrast pass pending);
+  restrained Apple-26 treatment (no gratuitous blur/transparency/motion)
+- [x] Builds; British English throughout; no functional regressions
 
 ### Cross-cutting acceptance criteria
 - [x] No raw-JSON editing required for frequency, triggers, or Self Service (JSON is read-only "Advanced")
@@ -253,3 +255,16 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
 - 2026-06-07 — Phase 5 (addition) — Added a bulk **Remove scope** toggle to `BulkSettingsSheet` +
   `removePolicyScope(id:)` in `+PolicyEditing` (empty-scope PUT, same shape as `clonePolicy`'s strip),
   wired through `bulkUpdatePolicySettings` and the confirmation summary. macOS build passes.
+- 2026-06-07 — Auto-refresh — Added `Services/RefreshCoordinator.swift` (debounced app-wide "data
+  changed" signal). `JamfAPIService.genericRequest` (every Classic write/delete) and the clone POSTs call
+  `requestRefresh()`, and the Policies/Profiles/Scripts/Packages dashboards reload on it via
+  `.onChange(of: refreshCoordinator.token)`. So inspector edits, bulk actions, clones, deletes, moves,
+  etc. now refresh the list automatically (a 0.6s debounce coalesces write bursts into one reload). The
+  manual refresh button already worked; the `ViewBridge … NSViewBridgeErrorCanceled` console line is a
+  benign macOS message (system view-controller dismissal), not a refresh failure.
+- 2026-06-07 — Phase 6 (part 1) — Added `SharedUI/AppBackground.swift` (the app's single signature
+  gradient) + `.appBackground()`. Refactored `ContentView` to use it and applied it behind every sheet
+  (inspector, BulkClone/BulkSettings/IconPicker, OperationResultView, CloneConfig/Deployment/Category/
+  Configuration) so nothing is a flat black background. Fixed the centred-toggle layout (`InfoSection`
+  now left-aligned + full-width; editor trigger switches span the row). macOS build passes. Remaining
+  Phase 6 polish (typography, inspector chrome, richer cards, state polish) still open.

@@ -264,7 +264,7 @@ struct CloneConfigSheet: View {
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
         }
         .frame(width: 500, height: 600)
-        .background(.ultraThinMaterial)
+        .appBackground()
     }
     
     // MARK: - Actions

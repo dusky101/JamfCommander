@@ -12,7 +12,8 @@ struct ProfileDashboardView: View {
     let profiles: [ConfigProfile]
     let categories: [Category]
     @ObservedObject var api: JamfAPIService
-    
+    @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
+
     // Filter State
     @State private var searchText = ""
     @State private var selectedCategory: Category?
@@ -126,6 +127,7 @@ struct ProfileDashboardView: View {
         }
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.2), value: selectedProfileIDs.isEmpty)
+        .onChange(of: refreshCoordinator.token) { Task { await refreshAction() } }
         .sheet(item: $inspectorSelection) { selection in
             ProfileInspectorView(profileId: selection.id, api: api)
         }

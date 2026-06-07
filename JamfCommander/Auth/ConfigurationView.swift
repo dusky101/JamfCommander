@@ -148,6 +148,7 @@ struct ConfigurationView: View {
         }
         .padding()
         .frame(width: 500, height: 600)
+        .appBackground()
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") { }
         } message: {

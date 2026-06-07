@@ -10,7 +10,8 @@ import AppKit
 
 struct PoliciesDashboardView: View {
     @ObservedObject var api: JamfAPIService
-    
+    @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
+
     // Data
     @State private var policies: [Policy] = []
     @State private var categories: [Category] = []
@@ -111,6 +112,7 @@ struct PoliciesDashboardView: View {
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.2), value: selectedPolicyIDs.isEmpty)
         .task { await loadData() }
+        .onChange(of: refreshCoordinator.token) { Task { await loadData() } }
         .sheet(item: $inspectorSelection) { selection in
             PoliciesInspectorView(policyId: selection.id, api: api)
         }

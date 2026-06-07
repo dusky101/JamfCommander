@@ -117,6 +117,7 @@ struct CategorySelectionSheet: View {
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(width: 400, height: 500)
+        .appBackground()
         .onAppear(perform: loadCategories)
     }
     

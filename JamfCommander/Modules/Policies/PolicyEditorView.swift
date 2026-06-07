@@ -131,6 +131,7 @@ struct PolicyEditorView: View {
                 .font(.callout)
         }
         .toggleStyle(.switch)
+        .frame(maxWidth: .infinity)
         .disabled(isSaving)
     }
 

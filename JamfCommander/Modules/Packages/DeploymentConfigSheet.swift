@@ -383,6 +383,7 @@ struct DeploymentConfigSheet: View {
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(width: 750, height: 620)
+        .appBackground()
         .onAppear(perform: loadData)
     }
     

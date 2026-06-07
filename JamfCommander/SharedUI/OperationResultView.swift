@@ -55,10 +55,9 @@ struct OperationResultView: View {
                 }
                 .padding(.vertical)
             }
-            .background(Color(nsColor: .controlBackgroundColor)) // Subtle background difference
         }
         .frame(width: 550, height: 650) // Slightly wider to accommodate the extra info
-        .liquidGlass(cornerRadius: 16)
+        .appBackground()
     }
 }
 
