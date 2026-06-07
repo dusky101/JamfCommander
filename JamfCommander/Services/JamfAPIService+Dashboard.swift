@@ -44,7 +44,7 @@ extension JamfAPIService {
     
     func fetchDashboardComputers() async throws -> [BasicComputerRecord] {
         // First, get the list of all computers (fast, basic info only)
-        let endpoint = "api/v1/computers-inventory?section=GENERAL&section=USER_AND_LOCATION&page-size=2000"
+        let endpoint = "api/v3/computers-inventory?section=GENERAL&section=USER_AND_LOCATION&page-size=2000"
         
         let response = try await genericFetch(
             endpoint: endpoint,

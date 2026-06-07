@@ -39,8 +39,15 @@ class ExportService {
 
     // MARK: - Computer Export Delegation
 
+    /// Synchronous variant — does not resolve Building/Department IDs to names.
+    /// Prefer the async overload below when an API instance is available.
     static func exportComputersToCSV(computers: [ComputerInventoryRecord]) -> String {
         return ComputerExportService.exportToCSV(computers: computers)
+    }
+
+    /// Async variant — resolves Building and Department IDs to readable names via the API.
+    static func exportComputersToCSV(computers: [ComputerInventoryRecord], api: JamfAPIService) async -> String {
+        return await ComputerExportService.exportToCSV(computers: computers, api: api)
     }
 
     // MARK: - Export All Data
@@ -64,7 +71,7 @@ class ExportService {
 
             // Generate CSVs
             progress?.setCurrentTask("Generating CSV files...")
-            let computerCSV = ComputerExportService.exportToCSV(computers: computerData)
+            let computerCSV = await ComputerExportService.exportToCSV(computers: computerData, api: api)
             let scriptCSV = ScriptExportService.exportToCSV(scripts: scriptData)
 
             // Generate detailed exports for policies and profiles (with progress updates)

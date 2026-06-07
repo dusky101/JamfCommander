@@ -12,7 +12,8 @@ import SwiftUI
 enum DeploymentScopeType: String, CaseIterable, Identifiable {
     case allComputers = "All Computers"
     case specificComputers = "Specific Computers"
-    case computerGroups = "Computer Groups"
+    case smartComputerGroups = "Smart Groups"
+    case staticComputerGroups = "Static Groups"
     
     var id: String { rawValue }
     
@@ -20,7 +21,8 @@ enum DeploymentScopeType: String, CaseIterable, Identifiable {
         switch self {
         case .allComputers: return "desktopcomputer"
         case .specificComputers: return "laptopcomputer"
-        case .computerGroups: return "person.3.fill"
+        case .smartComputerGroups: return "gearshape.2.fill"
+        case .staticComputerGroups: return "person.3.fill"
         }
     }
 }
@@ -51,7 +53,7 @@ struct DeploymentScopeConfig {
                     </computers>
                 </scope>
             """
-        case .computerGroups:
+        case .smartComputerGroups, .staticComputerGroups:
             let groupsXML = selectedGroupIDs.map {
                 "<computer_group><id>\($0)</id></computer_group>"
             }.joined(separator: "\n                    ")
@@ -73,8 +75,10 @@ struct DeploymentScopeConfig {
             return "All Computers"
         case .specificComputers:
             return "\(selectedComputerIDs.count) computer(s)"
-        case .computerGroups:
-            return "\(selectedGroupIDs.count) group(s)"
+        case .smartComputerGroups:
+            return "\(selectedGroupIDs.count) smart group(s)"
+        case .staticComputerGroups:
+            return "\(selectedGroupIDs.count) static group(s)"
         }
     }
 }
@@ -127,8 +131,19 @@ struct DeploymentConfigSheet: View {
     }
     
     var filteredGroups: [ComputerGroup] {
-        if scopeSearchText.isEmpty { return computerGroups }
-        return computerGroups.filter {
+        let groupsForScope = computerGroups.filter { group in
+            switch scopeConfig.scopeType {
+            case .smartComputerGroups:
+                return group.smartGroup == true
+            case .staticComputerGroups:
+                return group.smartGroup != true
+            case .allComputers, .specificComputers:
+                return false
+            }
+        }
+        
+        if scopeSearchText.isEmpty { return groupsForScope }
+        return groupsForScope.filter {
             $0.name.localizedCaseInsensitiveContains(scopeSearchText)
         }
     }
@@ -284,6 +299,7 @@ struct DeploymentConfigSheet: View {
                                 .labelsHidden()
                                 .onChange(of: scopeConfig.scopeType) {
                                     scopeSearchText = ""
+                                    scopeConfig.selectedGroupIDs.removeAll()
                                 }
                                 
                                 // Scope Target Selection
@@ -304,7 +320,7 @@ struct DeploymentConfigSheet: View {
                                 case .specificComputers:
                                     scopeComputerPicker
                                     
-                                case .computerGroups:
+                                case .smartComputerGroups, .staticComputerGroups:
                                     scopeGroupPicker
                                 }
                             }
@@ -444,7 +460,7 @@ struct DeploymentConfigSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                TextField("Search groups...", text: $scopeSearchText)
+                TextField("Search \(scopeConfig.scopeType.rawValue.lowercased())...", text: $scopeSearchText)
                     .textFieldStyle(.plain)
             }
             .padding(6)
@@ -470,27 +486,49 @@ struct DeploymentConfigSheet: View {
             
             ScrollView {
                 LazyVStack(spacing: 2) {
+                    if filteredGroups.isEmpty {
+                        Text(scopeSearchText.isEmpty ? "No \(scopeConfig.scopeType.rawValue.lowercased()) found." : "No matching groups found.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                    }
+                    
                     ForEach(filteredGroups) { group in
                         let isSelected = scopeConfig.selectedGroupIDs.contains(group.id)
-                        HStack(spacing: 8) {
-                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(isSelected ? .blue : .gray.opacity(0.4))
-                            Text(group.name)
-                                .font(.caption)
-                            Spacer()
-                        }
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-                        .background(isSelected ? Color.blue.opacity(0.08) : Color.clear)
-                        .cornerRadius(4)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
+                        Button {
                             if isSelected {
                                 scopeConfig.selectedGroupIDs.remove(group.id)
                             } else {
                                 scopeConfig.selectedGroupIDs.insert(group.id)
                             }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                                    .foregroundColor(isSelected ? .blue : .gray.opacity(0.4))
+                                Image(systemName: group.groupTypeIcon)
+                                    .foregroundColor(group.smartGroup == true ? .purple : .secondary)
+                                Text(group.name)
+                                    .font(.caption)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Text(group.groupTypeLabel)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                if let memberCount = group.memberCount {
+                                    Text("\(memberCount)")
+                                        .font(.caption2)
+                                        .monospacedDigit()
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 6)
+                            .background(isSelected ? Color.blue.opacity(0.08) : Color.clear)
+                            .cornerRadius(4)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -509,7 +547,7 @@ struct DeploymentConfigSheet: View {
             return true
         case .specificComputers:
             return !scopeConfig.selectedComputerIDs.isEmpty
-        case .computerGroups:
+        case .smartComputerGroups, .staticComputerGroups:
             return !scopeConfig.selectedGroupIDs.isEmpty
         }
     }
@@ -533,7 +571,12 @@ struct DeploymentConfigSheet: View {
                     self.categories = cats.sorted { $0.name < $1.name }
                     self.scripts = scrts.sorted { $0.name < $1.name }
                     self.computers = comps
-                    self.computerGroups = grps.sorted { $0.name < $1.name }
+                    self.computerGroups = grps.sorted { lhs, rhs in
+                        if lhs.smartGroup != rhs.smartGroup {
+                            return lhs.smartGroup == true
+                        }
+                        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                    }
                     
                     if let match = scrts.first(where: { $0.name.localizedCaseInsensitiveContains("Installomator") }) {
                         self.selectedScriptID = match.id

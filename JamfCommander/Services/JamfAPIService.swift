@@ -117,13 +117,51 @@ class JamfAPIService: ObservableObject {
         return try await genericFetch(endpoint: "JSSResource/categories", responseType: CategoryListResponse.self).categories
     }
     
-    // MARK: - Computer Groups (for future scope targeting)
+    // MARK: - Computer Groups (for scope targeting)
     
     func fetchComputerGroups() async throws -> [ComputerGroup] {
-        struct ComputerGroupListResponse: Codable {
-            let computer_groups: [ComputerGroup]
+        struct ComputerGroupResponse: Codable {
+            let groups: [ComputerGroup]
+            
+            enum CodingKeys: String, CodingKey {
+                case results
+                case groups
+                case computerGroups
+                case computer_groups
+            }
+            
+            init(from decoder: Decoder) throws {
+                if let arrayContainer = try? decoder.singleValueContainer(),
+                   let groups = try? arrayContainer.decode([ComputerGroup].self) {
+                    self.groups = groups
+                    return
+                }
+                
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                groups = try container.decodeIfPresent([ComputerGroup].self, forKey: .results)
+                    ?? container.decodeIfPresent([ComputerGroup].self, forKey: .groups)
+                    ?? container.decodeIfPresent([ComputerGroup].self, forKey: .computerGroups)
+                    ?? container.decodeIfPresent([ComputerGroup].self, forKey: .computer_groups)
+                    ?? []
+            }
+            
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(groups, forKey: .results)
+            }
         }
-        return try await genericFetch(endpoint: "JSSResource/computergroups", responseType: ComputerGroupListResponse.self).computer_groups
+        
+        do {
+            return try await genericFetch(
+                endpoint: "api/v1/computer-groups",
+                responseType: ComputerGroupResponse.self
+            ).groups
+        } catch {
+            return try await genericFetch(
+                endpoint: "JSSResource/computergroups",
+                responseType: ComputerGroupResponse.self
+            ).groups
+        }
     }
     
     // MARK: - Script Functions (Pro API)
@@ -223,7 +261,11 @@ class JamfAPIService: ObservableObject {
             try await genericRequest(method: "DELETE", endpoint: "JSSResource/policies/id/\(id)")
         }
         
-        func movePolicy(id: Int, toCategoryID: Int) async throws {
+        /// Move a policy to a new category. Also updates the policy's Self Service category
+        /// to match so the listing in Self Service stays consistent. A policy that is not
+        /// surfaced in Self Service simply ignores the second block — no harm done.
+        func movePolicy(id: Int, toCategoryID: Int, categoryName: String) async throws {
+            let escapedName = Self.xmlEscape(categoryName)
             let xml = """
             <policy>
                 <general>
@@ -231,18 +273,61 @@ class JamfAPIService: ObservableObject {
                         <id>\(toCategoryID)</id>
                     </category>
                 </general>
+                <self_service>
+                    <self_service_categories>
+                        <category>
+                            <id>\(toCategoryID)</id>
+                            <name>\(escapedName)</name>
+                            <display_in>true</display_in>
+                            <feature_in>false</feature_in>
+                        </category>
+                    </self_service_categories>
+                </self_service>
             </policy>
             """
             try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
         }
+
+        /// Update only the policy's Self Service category. Used by "Match Self Service
+        /// Category" to bring out-of-sync policies in line with their main category
+        /// without moving them.
+        func setPolicySelfServiceCategory(id: Int, toCategoryID: Int, categoryName: String) async throws {
+            let escapedName = Self.xmlEscape(categoryName)
+            let xml = """
+            <policy>
+                <self_service>
+                    <self_service_categories>
+                        <category>
+                            <id>\(toCategoryID)</id>
+                            <name>\(escapedName)</name>
+                            <display_in>true</display_in>
+                            <feature_in>false</feature_in>
+                        </category>
+                    </self_service_categories>
+                </self_service>
+            </policy>
+            """
+            try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
+        }
+
+        /// Minimal XML-escape for string values interpolated into Classic-API XML bodies.
+        static func xmlEscape(_ s: String) -> String {
+            var out = s
+            out = out.replacingOccurrences(of: "&", with: "&amp;")
+            out = out.replacingOccurrences(of: "<", with: "&lt;")
+            out = out.replacingOccurrences(of: ">", with: "&gt;")
+            out = out.replacingOccurrences(of: "\"", with: "&quot;")
+            out = out.replacingOccurrences(of: "'", with: "&apos;")
+            return out
+        }
     
     // MARK: - Computer Functions
         
-    // Pro API (v1) - Returns detailed inventory records for the Dashboard
+    // Pro API (v3) - Returns detailed inventory records for the Dashboard
     func fetchComputers() async throws -> [ComputerInventoryRecord] {
-        // We MUST request specific sections (GENERAL, HARDWARE) to get Name, Serial, and Managed Status.
-        // We also add page-size=2000 to ensure we get the whole fleet in one go.
-        let endpoint = "api/v1/computers-inventory?section=GENERAL&section=HARDWARE&page-size=2000"
+        // Request GENERAL + HARDWARE for name/serial/managed status, plus USER_AND_LOCATION so the
+        // list view and CSV export can surface the assigned user and location details.
+        let endpoint = "api/v3/computers-inventory?section=GENERAL&section=HARDWARE&section=USER_AND_LOCATION&page-size=2000"
         
         let response = try await genericFetch(
             endpoint: endpoint,
@@ -252,12 +337,12 @@ class JamfAPIService: ObservableObject {
         return response.results.sorted { ($0.general?.name ?? "") < ($1.general?.name ?? "") }
     }
     
-    // Pro API (v1) - Fetch single computer detail for the Inspector
+    // Pro API (v3) - Fetch single computer detail for the Inspector
     func fetchComputerDetail(id: Int) async throws -> ComputerInventoryRecord {
         // We MUST request CONFIGURATION_PROFILES to populate the "Profiles" tab.
         // We also request OS and Hardware for the "Info" tab.
         // Added USER_AND_LOCATION for user details
-        let endpoint = "api/v1/computers-inventory/\(id)?section=GENERAL&section=HARDWARE&section=OPERATING_SYSTEM&section=CONFIGURATION_PROFILES&section=USER_AND_LOCATION"
+        let endpoint = "api/v3/computers-inventory/\(id)?section=GENERAL&section=HARDWARE&section=OPERATING_SYSTEM&section=CONFIGURATION_PROFILES&section=USER_AND_LOCATION"
         
         return try await genericFetch(
             endpoint: endpoint,
