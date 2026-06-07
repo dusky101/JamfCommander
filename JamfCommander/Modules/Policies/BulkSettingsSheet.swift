@@ -117,10 +117,7 @@ struct BulkSettingsSheet: View {
 
     private var frequencySection: some View {
         card {
-            Toggle(isOn: $applyFrequency) {
-                Label("Set execution frequency", systemImage: "clock.arrow.circlepath").font(.headline)
-            }
-            .toggleStyle(.switch)
+            sectionToggle("Set execution frequency", systemImage: "clock.arrow.circlepath", isOn: $applyFrequency)
             if applyFrequency {
                 Picker("Frequency", selection: $chosenFrequency) {
                     ForEach(PolicyFrequency.allCases) { freq in
@@ -136,10 +133,7 @@ struct BulkSettingsSheet: View {
 
     private var triggerSection: some View {
         card {
-            Toggle(isOn: $applyCustomTrigger) {
-                Label("Set custom trigger", systemImage: "terminal").font(.headline)
-            }
-            .toggleStyle(.switch)
+            sectionToggle("Set custom trigger", systemImage: "terminal", isOn: $applyCustomTrigger)
 
             if applyCustomTrigger {
                 Text("Use {appName} for the slugified app name (e.g. install-{appName}). Edit any row to override; leave a row blank to clear that policy's custom trigger.")
@@ -180,10 +174,7 @@ struct BulkSettingsSheet: View {
 
     private var selfServiceSection: some View {
         card {
-            Toggle(isOn: $applySSCategory) {
-                Label("Set Self Service category", systemImage: "bag").font(.headline)
-            }
-            .toggleStyle(.switch)
+            sectionToggle("Set Self Service category", systemImage: "bag", isOn: $applySSCategory)
 
             if applySSCategory {
                 Text("Sets each policy's Self Service category to the one chosen (display in Self Service).")
@@ -212,15 +203,24 @@ struct BulkSettingsSheet: View {
 
     private var removeScopeSection: some View {
         card {
-            Toggle(isOn: $applyRemoveScope) {
-                Label("Remove scope", systemImage: "scope").font(.headline)
-            }
-            .toggleStyle(.switch)
+            sectionToggle("Remove scope", systemImage: "scope", isOn: $applyRemoveScope)
             if applyRemoveScope {
                 Text("Unscopes every selected policy (all computers off, no targets, no exclusions). They will stop deploying until re-scoped.")
                     .font(.caption)
                     .foregroundColor(.orange)
             }
+        }
+    }
+
+    /// A section header row: leading label, the switch pinned to the trailing edge.
+    private func sectionToggle(_ title: String, systemImage: String, isOn: Binding<Bool>) -> some View {
+        HStack {
+            Label(title, systemImage: systemImage)
+                .font(.headline)
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
         }
     }
 
