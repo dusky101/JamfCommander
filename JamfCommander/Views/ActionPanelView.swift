@@ -194,7 +194,7 @@ struct ActionPanelView: View {
                     Button(action: { showBulkSettingsSheet = true }) {
                         HStack {
                             Image(systemName: "slider.horizontal.3")
-                            Text("Edit Settings (\(selectedIDs.count))")
+                            Text("Edit Policies (\(selectedIDs.count))")
                         }
                         .fontWeight(.medium)
                         .padding(.horizontal, 16)

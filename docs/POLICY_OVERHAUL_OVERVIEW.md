@@ -279,3 +279,10 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   so list rows only registered taps on their text and the right-click menu was lost. Added
   `.contentShape(Rectangle())` to `PolicyCardView`/`ProfileCardView`/`ScriptCardView`/`PackageCardView`
   to restore full-row tap + context-menu hit-testing. macOS build passes.
+- 2026-06-07 — Phase 6 (single action bar) — Added `SingleActionBar` (shown when exactly one policy is
+  selected) + a reusable `ActionTileButton` (icon + centred two-line label + tooltip, no truncation).
+  Singular wording; **"Edit Policy" opens the inspector** (the right-click → Inspect view) rather than
+  the bulk sheet; Move/Match Self Service/Clone/Delete operate on the one policy (confirmed + results).
+  Bulk bar (2+) renamed "Edit Settings" → **"Edit Policies"**. Right-aligned the Bulk Edit Settings
+  toggles. Wired for policies only for review; the tile style can be pushed to the bulk bar + other
+  modules next. macOS build passes.

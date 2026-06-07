@@ -51,8 +51,25 @@ struct PoliciesDashboardView: View {
     var body: some View {
         VStack(spacing: 0) {
             // --- Top Bar ---
-            if !selectedPolicyIDs.isEmpty {
-                // Action Panel (Policies Mode)
+            if selectedPolicyIDs.count == 1,
+               let singlePolicy = policies.first(where: { $0.id == selectedPolicyIDs.first }) {
+                // Single-item Action Bar (singular wording; Edit opens the inspector)
+                SingleActionBar(
+                    api: api,
+                    policy: singlePolicy,
+                    categories: categories,
+                    isBusy: $isBusy,
+                    statusMessage: $actionStatus,
+                    onEdit: { id in inspectorSelection = InspectorSelection(id: id) },
+                    onClearSelection: { withAnimation { selectedPolicyIDs.removeAll() } },
+                    onRefresh: { await loadData() }
+                )
+                .frame(height: 180)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .background(Color(nsColor: .controlBackgroundColor))
+                .zIndex(2)
+            } else if !selectedPolicyIDs.isEmpty {
+                // Action Panel (Policies Mode — bulk, 2+ selected)
                 ActionPanelView(
                     api: api,
                     mode: .policies,
