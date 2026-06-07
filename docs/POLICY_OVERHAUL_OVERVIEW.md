@@ -105,6 +105,7 @@ all phases awaiting manual test on a non-production tenant.
 - [x] Bulk set frequency for selected policies
 - [x] Bulk add/set a templated custom trigger for selected policies (per-row preview + override)
 - [x] Bulk set/sync Self Service category (reuses `setPolicySelfServiceCategory`)
+- [x] Bulk **remove scope** (unscope in place — added on request; uses the proven empty-scope shape)
 - [x] Reuses the Phase 4 batch plumbing (throttled) + `CommanderConfirmation` + `OperationResultView`;
   general writes use a partial `<general>` PUT so untouched fields aren't clobbered
 - [~] Verified in Jamf — pending manual test on a non-production tenant
@@ -249,3 +250,6 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   trigger with per-row override / Self Service category). Wired "Edit Settings (N)" in `ActionPanelView`
   (policies) with a single confirmation + per-item results. Completes phases 1–5; macOS build passes;
   live verification pending manual test.
+- 2026-06-07 — Phase 5 (addition) — Added a bulk **Remove scope** toggle to `BulkSettingsSheet` +
+  `removePolicyScope(id:)` in `+PolicyEditing` (empty-scope PUT, same shape as `clonePolicy`'s strip),
+  wired through `bulkUpdatePolicySettings` and the confirmation summary. macOS build passes.

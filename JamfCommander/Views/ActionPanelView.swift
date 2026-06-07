@@ -693,6 +693,7 @@ struct ActionPanelView: View {
         if let freq = config.applyFrequency { changes.append("• Frequency → \(freq.displayName)") }
         if config.applyCustomTrigger { changes.append("• Set custom trigger (from the template / per-row overrides)") }
         if let ssName = config.selfServiceCategoryName { changes.append("• Self Service category → \(ssName)") }
+        if config.removeScope { changes.append("• Remove scope (unscope — policies will stop deploying)") }
         let summary = changes.isEmpty ? "• Update settings." : changes.joined(separator: "\n")
 
         confirmation = ConfirmationData(

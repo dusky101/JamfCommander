@@ -31,6 +31,8 @@ struct BulkSettingsSheet: View {
     @State private var applySSCategory = false
     @State private var selectedSSCategory: Category?
 
+    @State private var applyRemoveScope = false
+
     @State private var rows: [Row] = []
 
     struct Row: Identifiable {
@@ -44,7 +46,7 @@ struct BulkSettingsSheet: View {
     /// At least one change selected, and if the SS toggle is on a category must be chosen.
     private var canApply: Bool {
         guard !policies.isEmpty else { return false }
-        let somethingChosen = applyFrequency || applyCustomTrigger || applySSCategory
+        let somethingChosen = applyFrequency || applyCustomTrigger || applySSCategory || applyRemoveScope
         let ssValid = !applySSCategory || selectedSSCategory != nil
         return somethingChosen && ssValid
     }
@@ -58,6 +60,7 @@ struct BulkSettingsSheet: View {
                     frequencySection
                     triggerSection
                     selfServiceSection
+                    removeScopeSection
                 }
                 .padding()
             }
@@ -207,6 +210,20 @@ struct BulkSettingsSheet: View {
         }
     }
 
+    private var removeScopeSection: some View {
+        card {
+            Toggle(isOn: $applyRemoveScope) {
+                Label("Remove scope", systemImage: "scope").font(.headline)
+            }
+            .toggleStyle(.switch)
+            if applyRemoveScope {
+                Text("Unscopes every selected policy (all computers off, no targets, no exclusions). They will stop deploying until re-scoped.")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
+        }
+    }
+
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             content()
@@ -257,7 +274,8 @@ struct BulkSettingsSheet: View {
             applyFrequency: applyFrequency ? chosenFrequency : nil,
             applyCustomTrigger: applyCustomTrigger,
             selfServiceCategoryID: applySSCategory ? selectedSSCategory?.id : nil,
-            selfServiceCategoryName: applySSCategory ? selectedSSCategory?.name : nil
+            selfServiceCategoryName: applySSCategory ? selectedSSCategory?.name : nil,
+            removeScope: applyRemoveScope
         )
         onConfirm(items, config)
         dismiss()

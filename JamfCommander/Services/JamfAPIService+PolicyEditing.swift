@@ -124,6 +124,26 @@ extension JamfAPIService {
         try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
     }
 
+    /// Removes a policy's scope in place (unscopes it — it will no longer deploy). Writes
+    /// only the `<scope>` section, using the same empty-scope shape proven in `clonePolicy`.
+    func removePolicyScope(id: Int) async throws {
+        let xml = """
+        <policy>
+            <scope>
+                <all_computers>false</all_computers>
+                <computers/>
+                <computer_groups/>
+                <buildings/>
+                <departments/>
+                <limit_to_users/>
+                <limitations/>
+                <exclusions/>
+            </scope>
+        </policy>
+        """
+        try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
+    }
+
     /// Applies the chosen settings (frequency / custom trigger / Self Service category) to
     /// each selected policy in place. Rate-limited (batches of 5 + 0.5s gaps); per-item
     /// failures are captured and the batch continues. Returns one `OperationResult` per
@@ -152,6 +172,10 @@ extension JamfAPIService {
                             // Self Service category (reuses the existing matcher method).
                             if let categoryID = config.selfServiceCategoryID, let categoryName = config.selfServiceCategoryName {
                                 try await self.setPolicySelfServiceCategory(id: item.policyId, toCategoryID: categoryID, categoryName: categoryName)
+                            }
+                            // Remove scope (unscope in place).
+                            if config.removeScope {
+                                try await self.removePolicyScope(id: item.policyId)
                             }
                             return OperationResult(itemName: item.policyName, success: true, error: nil)
                         } catch {

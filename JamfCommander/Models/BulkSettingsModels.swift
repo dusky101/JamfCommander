@@ -35,8 +35,10 @@ struct BulkSettingsConfig: Sendable {
     /// `setPolicySelfServiceCategory`).
     let selfServiceCategoryID: Int?
     let selfServiceCategoryName: String?
+    /// When true, every policy is unscoped in place (it will stop deploying).
+    let removeScope: Bool
 
     var hasAnyChange: Bool {
-        applyFrequency != nil || applyCustomTrigger || selfServiceCategoryID != nil
+        applyFrequency != nil || applyCustomTrigger || selfServiceCategoryID != nil || removeScope
     }
 }
