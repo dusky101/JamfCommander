@@ -4,11 +4,12 @@
 //
 //  Action bar shown when exactly one policy is selected. Mirrors the bulk action bar but
 //  with singular wording, and "Edit Policy" opens the full inspector/editor (the same view
-//  the right-click → Inspect shows) rather than the bulk settings sheet.
+//  the right-click → Inspect shows).
 //
-//  Buttons are equal-width `ActionTileButton`s (icon + centred two-line label + tooltip),
-//  under centred section headers. Every write is confirmed and reports a real result.
-//  Built to be reusable across the app once the design is approved.
+//  Each action is a centred header (the action name) above a compact, icon-only tinted
+//  button with the action as its tooltip. "Move to Category" opens a glass popover of
+//  searchable Liquid Glass category chips. Every write is confirmed and reports a real
+//  result. Built to be reusable across the app once the design is approved.
 //
 
 import SwiftUI
@@ -31,6 +32,9 @@ struct SingleActionBar: View {
     @State private var resultsLog: [OperationResult] = []
     @State private var showResultsSheet = false
 
+    @State private var showMovePopover = false
+    @State private var categorySearch = ""
+
     @State private var showCloneSheet = false
     @State private var bulkClonePlan: [BulkClonePlanItem] = []
     @State private var bulkCloneConfig: BulkCloneConfig?
@@ -44,36 +48,36 @@ struct SingleActionBar: View {
 
             Divider()
 
-            column("Category") { moveMenu }
+            actionColumn("Move to Category") { moveButton }
 
             Divider()
 
-            column("Self Service") {
-                ActionTileButton(title: "Match Self Service Category", systemImage: "arrow.triangle.2.circlepath", tint: .teal, isDisabled: isBusy) {
+            actionColumn("Match Self Service Category") {
+                iconButton("arrow.triangle.2.circlepath", tint: .teal, help: "Match Self Service Category") {
                     requestMatchSelfService()
                 }
             }
 
             Divider()
 
-            column("Edit") {
-                ActionTileButton(title: "Edit Policy", systemImage: "slider.horizontal.3", tint: .blue, isDisabled: isBusy) {
+            actionColumn("Edit Policy") {
+                iconButton("slider.horizontal.3", tint: .blue, help: "Edit this policy") {
                     onEdit(policy.id)
                 }
             }
 
             Divider()
 
-            column("Clone") {
-                ActionTileButton(title: "Clone Policy", systemImage: "doc.on.doc", tint: .purple, isDisabled: isBusy) {
+            actionColumn("Clone Policy") {
+                iconButton("doc.on.doc", tint: .purple, help: "Clone this policy") {
                     showCloneSheet = true
                 }
             }
 
             Divider()
 
-            column("Danger Zone") {
-                ActionTileButton(title: "Delete Policy", systemImage: "trash.fill", tint: .red, role: .destructive, isDisabled: isBusy) {
+            actionColumn("Delete Policy") {
+                iconButton("trash.fill", tint: .red, role: .destructive, help: "Delete this policy") {
                     requestDelete()
                 }
             }
@@ -143,44 +147,104 @@ struct SingleActionBar: View {
         .frame(width: 150, alignment: .leading)
     }
 
-    private func column<Content: View>(_ header: String, @ViewBuilder content: () -> Content) -> some View {
+    /// Centred action-name header above its control.
+    private func actionColumn<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(spacing: 8) {
-            Text(header.uppercased())
-                .font(.caption2)
+            Text(title)
+                .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
             content()
         }
         .frame(maxWidth: .infinity)
     }
 
-    private var moveMenu: some View {
-        Menu {
-            ForEach(categories) { category in
-                Button(category.name) { requestMove(to: category) }
-            }
-        } label: {
-            VStack(spacing: 5) {
-                Image(systemName: "folder")
-                    .font(.system(size: 15, weight: .semibold))
-                Text("Move to Category")
-                    .font(.callout)
-                    .fontWeight(.medium)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, minHeight: 46)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 10)
+    /// Compact, icon-only tinted action button with a tooltip.
+    private func iconButton(_ systemImage: String, tint: Color, role: ButtonRole? = nil, help: String, action: @escaping () -> Void) -> some View {
+        Button(role: role, action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 60, height: 38)
         }
-        .menuStyle(.button)
+        .buttonStyle(.borderedProminent)
+        .tint(tint)
+        .controlSize(.large)
+        .disabled(isBusy)
+        .help(help)
+    }
+
+    private var moveButton: some View {
+        Button { showMovePopover = true } label: {
+            Image(systemName: "folder")
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 60, height: 38)
+        }
         .buttonStyle(.borderedProminent)
         .tint(.indigo)
         .controlSize(.large)
         .disabled(isBusy || categories.isEmpty)
         .help("Move this policy to a category")
+        .popover(isPresented: $showMovePopover, arrowEdge: .top) {
+            moveCategoryPopover
+        }
+    }
+
+    private var filteredCategories: [Category] {
+        let query = categorySearch.trimmingCharacters(in: .whitespaces)
+        let base = query.isEmpty ? categories : categories.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        return base.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var moveCategoryPopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Move to Category")
+                .font(.headline)
+
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+                TextField("Search categories", text: $categorySearch)
+                    .textFieldStyle(.plain)
+            }
+            .padding(8)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+            .cornerRadius(8)
+
+            if filteredCategories.isEmpty {
+                Text("No categories match “\(categorySearch)”.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 12)
+            } else {
+                ScrollView {
+                    GlassEffectContainer(spacing: 8) {
+                        FlowLayout(spacing: 8, alignment: .leading) {
+                            ForEach(filteredCategories) { category in
+                                Button {
+                                    showMovePopover = false
+                                    requestMove(to: category)
+                                } label: {
+                                    Text(category.name)
+                                        .font(.callout)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 7)
+                                }
+                                .buttonStyle(.plain)
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                            }
+                        }
+                        .padding(2)
+                    }
+                }
+                .frame(maxHeight: 300)
+            }
+        }
+        .padding(16)
+        .frame(width: 380)
     }
 
     // MARK: - Actions

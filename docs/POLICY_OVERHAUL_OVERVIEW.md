@@ -280,9 +280,13 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   `.contentShape(Rectangle())` to `PolicyCardView`/`ProfileCardView`/`ScriptCardView`/`PackageCardView`
   to restore full-row tap + context-menu hit-testing. macOS build passes.
 - 2026-06-07 — Phase 6 (single action bar) — Added `SingleActionBar` (shown when exactly one policy is
-  selected) + a reusable `ActionTileButton` (icon + centred two-line label + tooltip, no truncation).
-  Singular wording; **"Edit Policy" opens the inspector** (the right-click → Inspect view) rather than
-  the bulk sheet; Move/Match Self Service/Clone/Delete operate on the one policy (confirmed + results).
-  Bulk bar (2+) renamed "Edit Settings" → **"Edit Policies"**. Right-aligned the Bulk Edit Settings
-  toggles. Wired for policies only for review; the tile style can be pushed to the bulk bar + other
-  modules next. macOS build passes.
+  selected). Singular wording; **"Edit Policy" opens the inspector** (the right-click → Inspect view)
+  rather than the bulk sheet; Move/Match Self Service/Clone/Delete operate on the one policy (confirmed +
+  results). Bulk bar (2+) renamed "Edit Settings" → **"Edit Policies"**; right-aligned the Bulk Edit
+  Settings toggles. Wired for policies only for review.
+- 2026-06-07 — Phase 6 (single bar refinement) — Action text moved into centred per-column **headers**;
+  buttons are now compact **icon-only** tinted buttons with tooltips. **Move to Category** opens a
+  `.popover` glass card with searchable Liquid Glass category chips (`GlassEffectContainer`) that
+  animates from the button and dismisses on outside-click; picking a chip confirms + moves. (A full
+  "morph to screen-centre and back" was deferred — a native popover gives the same interaction
+  reliably.) Removed the unused `ActionTileButton`. macOS build passes.
