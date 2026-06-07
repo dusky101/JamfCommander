@@ -3,6 +3,11 @@
 > Deep, read-on-demand reference. The root `CLAUDE.md` summarises this; `.claude/rules/*` hold the
 > durable "musts"/"must-nots". This file is the orientation document for a new contributor or a future
 > Claude session.
+>
+> There is also a maintainer-authored **`JamfCommander/README.md`** that describes the app from a
+> **user/feature** angle (every module, workflow, required Jamf privileges, limitations). This document
+> is the **internal/architecture** companion to it — read the README for "what it does", read here for
+> "how it's built". If you change behaviour, keep both consistent.
 
 ## 1. What it is and who it's for
 
@@ -29,7 +34,7 @@ invariants in the root `CLAUDE.md`.
 - **OS target:** macOS 26.0+ (`MACOSX_DEPLOYMENT_TARGET = 26.1`).
 - **Language:** Swift 5.0; SwiftUI; Combine (`ObservableObject`).
 - **Project:** `JamfCommander.xcodeproj`, single target & scheme `JamfCommander`,
-  bundle id `com.marcoliff.JamfCommander`, marketing version 4.5, team `9RE9AKHMY9`.
+  bundle id `com.marcoliff.JamfCommander`, marketing version 5.1, team `9RE9AKHMY9`.
 - **Security posture:** App Sandbox **on**, Hardened Runtime **on** (via build settings; no standalone
   `.entitlements` file — Xcode-managed). The app requires outgoing network access to reach Jamf.
 - **App icon:** Icon Composer `.icon` bundle (`JamfCommander.icon/`), the macOS 26 icon format.
@@ -56,8 +61,9 @@ Single-target SwiftUI app with a deliberately simple shape:
 - **Entry:** `JamfCommanderApp` → `ContentView` in a `WindowGroup`.
 - **Root:** `ContentView` owns the one `JamfAPIService` (`@StateObject`), gates on login, runs
   auto-login, and manually switches the detail pane by `AppModule`. There is **no router/coordinator**.
-- **Service layer:** `JamfAPIService` (+ `+Dashboard`, `+Packages`, `+Cloning` extensions) is the only
-  thing that talks to Jamf. `SettingsService` handles `.jamfconfig`. `ExportService` coordinates CSV.
+- **Service layer:** `JamfAPIService` (+ `+Dashboard`, `+Packages`, `+Cloning`, `+UserLocation`
+  extensions) is the only thing that talks to Jamf. `SettingsService` handles `.jamfconfig`.
+  `ExportService` coordinates CSV/ZIP export.
 - **Feature modules:** `Modules/<Feature>/` each follow a **Dashboard → Card → Inspector** triad.
 - **Reusable UI:** `SharedUI/` (Liquid Glass helpers, status badges, filter bar, inspector shell,
   confirmation/result views, JSON viewer).
@@ -81,32 +87,41 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
 - **Dashboard** — fleet landing view; computer overview with email-domain grouping; loading screen.
 - **Profiles** — `osxconfigurationprofiles` (Classic). List + scope/category bulk actions + inspector
   with raw JSON; scope can be set to all computers, cleared, or targeted at computer groups.
-- **Computers** — `computers-inventory` (Pro). Inventory list + inspector (general/hardware/OS/profiles/
-  user & location).
+- **Computers** — `computers-inventory` (Pro, **v3**). Table-style list (no `CardView`; that file was
+  removed) + inspector (general/hardware/OS/profiles/scripts/policies/user & location). Building and
+  Department IDs from `userAndLocation` are resolved to names via `+UserLocation`
+  (`fetchBuildings`/`fetchDepartments`).
 - **Policies** — `policies` (Classic). List (hydrated for category/enabled), move category, delete,
-  clone, raw JSON.
+  clone, raw JSON. Moving a policy keeps its **Self Service category in sync**, and a bulk
+  **"Match Self Service"** action realigns policies whose two categories have drifted.
 - **Scripts** — `api/v1/scripts` (Pro). List + inspector (contents/category) + delete.
 - **Packages** — Installomator-centric: discovers deployed Installomator policies and the available
   label set from GitHub, then creates Self Service install policies (`DeploymentConfigSheet`,
   `PackageModels.InstallomatorLabelFormatter`).
 - **Cloning** — `CloneConfigSheet` + `JamfAPIService+Cloning` (regex XML surgery).
-- **Export** — `ExportProgressSheet` + `ExportService`/`Services/Exports/*`.
+- **Export** — `ExportProgressSheet` + `ExportService`/`Services/Exports/*`. Per-domain CSV plus an
+  "Export All" that bundles every CSV into a single timestamped **ZIP** (`exportAllDataToZip`).
 
 ## 6. Key types / entities
 
 - `JamfAPIService` — API client (auth, fetch, write, generic helpers, error enums).
 - `AppModule` — the navigable sections enum (drives the sidebar and the `ContentView` switch).
-- `ConfigProfile`, `Policy`, `ScriptRecord`, `ComputerInventoryRecord`, `Category`, `ComputerGroup`,
-  `ScopeInfo`/`ProfileDetail` — domain models.
+- `ConfigProfile`, `Policy`, `ScriptRecord`, `ComputerInventoryRecord`, `Category`, `ComputerGroup`
+  (now carries smart/static + member count, decoded defensively), `ScopeInfo`/`ProfileDetail` — domain
+  models.
+- `JamfLookupItem` / `JamfBuildingsResponse` / `JamfDepartmentsResponse` (in `+UserLocation`) — id→name
+  lookups for Buildings and Departments.
 - `JamfItemStatus` — shared status enum (Scoped/Unscoped/Pending/Failed/Unknown) with colour + icon.
 - `InstallomatorItem` / `InstallomatorLabelFormatter` — package label model + display-name mapping.
 - `JamfConfiguration` (in `SettingsService`) — the `.jamfconfig` payload.
 
 ## 7. External services
 
-- **Jamf Pro API** — both Classic (`JSSResource/…`, XML writes) and Pro (`api/v1/…`, JSON). OAuth
-  client-credentials token from `/api/v1/oauth/token`. Full endpoint list in
-  `docs/JAMF_API_REFERENCE.md`.
+- **Jamf Pro API** — both Classic (`JSSResource/…`, XML writes) and Pro (`api/v{n}/…`, JSON). OAuth
+  client-credentials token from `/api/v1/oauth/token`. The Pro version varies by resource: computer
+  inventory is **v3** (`api/v3/computers-inventory`); scripts, buildings, departments, and
+  computer-groups are **v1**. Buildings/Departments (`api/v1/buildings`, `api/v1/departments`) resolve
+  the IDs in `userAndLocation` to names. Full endpoint list in `docs/JAMF_API_REFERENCE.md`.
 - **Installomator GitHub** — fetches `https://raw.githubusercontent.com/Installomator/Installomator/main/Labels.txt`
   to populate the available-apps list (read-only, unauthenticated).
 
@@ -114,7 +129,9 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
 
 These are real characteristics of the current code. Respect them; flag before changing.
 
-- **Production-only target.** No test/staging instance is assumed; treat all writes as live.
+- **Live tenant by default.** The app points at whatever instance is configured (Zellis production by
+  default); treat all writes as live. The README's disclaimer recommends testing bulk actions against a
+  **non-production** Jamf tenant first — follow that.
 - **Credential storage.** Client ID/secret/URL live in `UserDefaults` (`@AppStorage`) in clear; the
   `.jamfconfig` export is base64 (obfuscation, not encryption). The token is in memory only. The
   documented hardening path is the **Keychain** (see `.claude/rules/auth-and-credentials.md`).
