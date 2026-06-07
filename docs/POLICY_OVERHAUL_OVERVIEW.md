@@ -28,18 +28,20 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 
 ## Progress
 
-**Current status:** Not started — brief written, awaiting Phase 1.
+**Current status:** Phase 1 complete (code) — models + read/write API built; macOS build passes; live
+round-trip awaiting manual test on a non-production tenant. Awaiting review before Phase 2.
 **Last updated:** 2026-06-07.
 
 ### Phase 1 — Models + read/write API (little/no UI)
-- [ ] `PolicyFrequency` enum (Jamf values + British labels, `Sendable`)
-- [ ] `PolicyTriggers` (six event booleans + `customTrigger`/`trigger_other`, `Sendable`)
-- [ ] `SelfServiceSettings` (fields incl. categories + icon reference, `Sendable`)
-- [ ] Policy detail decode reads these from `JSSResource/policies/id/{id}`
-- [ ] `JamfAPIService+PolicyEditing.swift`: `fetchPolicyEditable(id:)`
-- [ ] `updatePolicyGeneral(id:frequency:triggers:)` (escaped XML PUT)
-- [ ] `updatePolicySelfService(id:settings:)` (escaped XML PUT)
-- [ ] Builds; existing list/inspector unaffected; read round-trips a real policy
+- [x] `PolicyFrequency` enum (Jamf values + British labels, `Sendable`)
+- [x] `PolicyTriggers` (six event booleans + `customTrigger`/`trigger_other`, `Sendable`)
+- [x] `SelfServiceSettings` (fields incl. categories + icon reference, `Sendable`)
+- [x] Policy detail decode reads these from `JSSResource/policies/id/{id}`
+- [x] `JamfAPIService+PolicyEditing.swift`: `fetchPolicyEditable(id:)`
+- [x] `updatePolicyGeneral(id:frequency:triggers:)` (escaped XML PUT)
+- [x] `updatePolicySelfService(id:settings:)` (escaped XML PUT)
+- [~] Builds (✓) + existing list/inspector unaffected (additive only, ✓); live read round-trip on a
+  real policy pending manual test on a non-production tenant
 
 ### Phase 2 — Single-policy form editor: Frequency + Triggers
 - [ ] Form editor (`PolicyEditorView` or extended inspector)
@@ -86,10 +88,27 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 
 _(New scope discovered while building goes here, with the date it was added.)_
 
-- _none yet_
+- 2026-06-07 — **Decode-layer / edit-layer split.** Phase 1 keeps the snake_case, all-optional Classic
+  decode types (`PolicySelfServiceXML`, `PolicySelfServiceCategoryXML`, `PolicySelfServiceIconXML`) in
+  `Models/PolicyModels.swift`, and the clean, `Sendable`, UI/edit value types (`PolicyFrequency`,
+  `PolicyTriggers`, `SelfServiceSettings`, `SelfServiceCategory`, `SelfServiceIcon`, `PolicyEditable`) in
+  a new `Models/PolicyEditingModels.swift`. Mirrors the existing `PolicyDetailXML` (decode) vs `Policy`
+  (clean) pattern.
+- 2026-06-07 — **Temporary read-only inspector section.** `PoliciesInspectorView` now shows a
+  "Parsed policy settings — read-only" block (Execution / Triggers / Self Service) purely to verify the
+  Phase 1 read path. This is scaffolding and will be **replaced** by the real form editor in Phase 2/3.
+- 2026-06-07 — **Xcode project uses file-system-synchronized groups.** New `.swift` files under
+  `JamfCommander/` are compiled automatically; no `.pbxproj` edits are needed when adding files.
+- 2026-06-07 — **`updatePolicySelfService` already writes the icon by id** (reuse-existing path) when an
+  icon id is present, but local-image **upload** remains a Phase 3 multipart spike (not yet implemented).
 
 ## Progress log
 
 _(Append-only. One line per phase/sub-phase completion: date — phase — what changed.)_
 
 - 2026-06-07 — Setup — Brief (`POLICY_OVERHAUL_PROMPT.md`) and this status file created; no code yet.
+- 2026-06-07 — Phase 1 — Added `PolicyFrequency`/`PolicyTriggers`/`SelfServiceSettings`/`PolicyEditable`
+  (+ Self Service decode types); extended `PolicyDetailXML` to decode `self_service` defensively; added
+  `JamfAPIService+PolicyEditing.swift` (`fetchPolicyEditable`, `updatePolicyGeneral`,
+  `updatePolicySelfService` — escaped XML PUTs); surfaced parsed settings read-only in
+  `PoliciesInspectorView`. macOS build passes; live round-trip pending manual test.

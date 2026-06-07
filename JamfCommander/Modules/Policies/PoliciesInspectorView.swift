@@ -16,6 +16,8 @@ struct PoliciesInspectorView: View {
     // Data State
     @State private var jsonContent: String = "Loading..."
     @State private var policyDetail: PolicyDetailXML?
+    // Phase 1 verification: parsed frequency / triggers / Self Service (read-only).
+    @State private var editable: PolicyEditable?
     
     @State private var isLoading = true
     @State private var isSaving = false
@@ -86,6 +88,7 @@ struct PoliciesInspectorView: View {
                     VStack(spacing: 0) {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 24) {
+                                settingsSection
                                 scopeSection
                             }
                             .padding()
@@ -158,13 +161,66 @@ struct PoliciesInspectorView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.2), lineWidth: 1))
     }
     
+    // MARK: - Parsed Settings (read-only, Phase 1 verification)
+
+    @ViewBuilder
+    var settingsSection: some View {
+        if let editable {
+            VStack(alignment: .leading, spacing: 24) {
+                Text("Parsed policy settings — read-only")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .textCase(.uppercase)
+
+                InfoSection(title: "Execution", icon: "clock.arrow.circlepath") {
+                    InfoRow(label: "Frequency", value: editable.frequency.displayName)
+                    InfoRow(
+                        label: "Custom Trigger",
+                        value: editable.triggers.hasCustomTrigger ? editable.triggers.trimmedCustomTrigger : "None"
+                    )
+                }
+
+                InfoSection(title: "Triggers", icon: "bolt.fill") {
+                    InfoRow(label: "Recurring Check-in", value: onOff(editable.triggers.checkin))
+                    InfoRow(label: "Enrolment Complete", value: onOff(editable.triggers.enrollmentComplete))
+                    InfoRow(label: "Login", value: onOff(editable.triggers.login))
+                    InfoRow(label: "Logout", value: onOff(editable.triggers.logout))
+                    InfoRow(label: "Network State Change", value: onOff(editable.triggers.networkStateChanged))
+                    InfoRow(label: "Startup", value: onOff(editable.triggers.startup))
+                }
+
+                InfoSection(title: "Self Service", icon: "bag.fill") {
+                    InfoRow(label: "Available", value: editable.selfService.useForSelfService ? "Yes" : "No")
+                    InfoRow(
+                        label: "Display Name",
+                        value: editable.selfService.displayName.isEmpty ? "—" : editable.selfService.displayName
+                    )
+                    InfoRow(label: "Categories", value: "\(editable.selfService.categories.count)")
+                    InfoRow(label: "Feature on Main Page", value: editable.selfService.featureOnMainPage ? "Yes" : "No")
+                    InfoRow(label: "Icon", value: iconSummary(editable.selfService.icon))
+                }
+            }
+        }
+    }
+
+    private func onOff(_ value: Bool) -> String { value ? "On" : "Off" }
+
+    private func iconSummary(_ icon: SelfServiceIcon?) -> String {
+        guard let icon, icon.isAssigned else { return "None" }
+        if let filename = icon.filename, !filename.isEmpty { return filename }
+        if let id = icon.id { return "ID \(id)" }
+        return "Assigned"
+    }
+
     func loadData() async {
         do {
             async let fetchedJSON = api.fetchPolicyJSON(id: policyId)
             async let fetchedDetail = api.fetchPolicyDetail(id: policyId)
-            let (json, detail) = try await (fetchedJSON, fetchedDetail)
+            async let fetchedEditable = api.fetchPolicyEditable(id: policyId)
+            let (json, detail, editablePolicy) = try await (fetchedJSON, fetchedDetail, fetchedEditable)
             self.jsonContent = json
             self.policyDetail = detail
+            self.editable = editablePolicy
             self.isLoading = false
         } catch {
             self.isLoading = false
