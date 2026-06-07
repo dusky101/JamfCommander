@@ -31,9 +31,7 @@ struct InfoSection<Content: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-            .cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.1), lineWidth: 1))
+            .liquidGlassRect(cornerRadius: 12)
         }
     }
 }

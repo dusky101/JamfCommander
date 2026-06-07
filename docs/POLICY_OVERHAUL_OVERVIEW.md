@@ -117,8 +117,10 @@ Dynamic Type/contrast pass) is still open. macOS build passes; live verification
   black anywhere (adaptive window base + the signature purple→blue wash, applied via `.appBackground()`)
 - [x] Fix layout & alignment: `InfoSection` content is now left-aligned + full-width and the editor's
   trigger switches span the row (no more centred toggles)
-- [~] Replace the plain `InfoSection`/default-control layout with richer Liquid Glass cards — alignment +
-  shared backdrop done; deeper card restyle still possible
+- [x] Real Liquid Glass: `liquidGlass*` helpers now use the genuine `glassEffect` (macOS 26+), so every
+  `InfoSection` card and `.liquidGlass()` surface is real glass; the editor's Triggers are interactive
+  Liquid Glass **chips** (`GlassEffectContainer` + `.glassEffect(.regular.tint(.blue).interactive(), in: .capsule)`)
+  instead of plain switches
 - [x] Apply the shared backdrop across every new surface (inspector, single-policy editor, Self Service
   editor, icon picker, `BulkCloneSheet`, bulk in-place editor) **and** the older sheets (clone/config/
   category/deployment/configuration)
@@ -268,3 +270,12 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   Configuration) so nothing is a flat black background. Fixed the centred-toggle layout (`InfoSection`
   now left-aligned + full-width; editor trigger switches span the row). macOS build passes. Remaining
   Phase 6 polish (typography, inspector chrome, richer cards, state polish) still open.
+- 2026-06-07 — Phase 6 (part 2) — Adopted **real Liquid Glass** (per the `swiftui-liquid-glass` skill +
+  Apple docs): `LiquidGlassModifier` now uses `glassEffect(.regular, in:)` on macOS 26+, so every
+  `InfoSection`/`.liquidGlass()` card is genuine glass. Rebuilt the editor's **Triggers** as interactive
+  glass chips in a `GlassEffectContainer` (tap to toggle; accent-tinted + checkmark when on) and gave
+  `FlowLayout` a `.leading` alignment option. macOS build passes.
+- 2026-06-07 — Phase 6 (fix) — `glassEffect` (unlike a material `.background`) doesn't fill the hit area,
+  so list rows only registered taps on their text and the right-click menu was lost. Added
+  `.contentShape(Rectangle())` to `PolicyCardView`/`ProfileCardView`/`ScriptCardView`/`PackageCardView`
+  to restore full-row tap + context-menu hit-testing. macOS build passes.

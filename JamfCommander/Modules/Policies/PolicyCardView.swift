@@ -65,5 +65,8 @@ struct PolicyCardView: View {
         }
         .padding(12)
         .liquidGlass(cornerRadius: 12)
+        // Make the whole row hit-testable for tap + context menu (glassEffect, unlike a
+        // material background, doesn't fill the hit area on its own).
+        .contentShape(Rectangle())
     }
 }

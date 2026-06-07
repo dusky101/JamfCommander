@@ -90,5 +90,6 @@ struct PackageCardView: View {
         }
         .padding(12)
         .liquidGlass(cornerRadius: 12)
+        .contentShape(Rectangle())
     }
 }

@@ -12,11 +12,12 @@ extension View {
 
     /// Rounded-rect Liquid Glass. Apply AFTER padding so the padding acts as
     /// internal inset: content → .padding(n) → .liquidGlassRect()
+    /// Uses the real `glassEffect` on macOS 26+ (the app's deployment target); the
+    /// `ultraThinMaterial` branch is a defensive fallback only.
     @ViewBuilder
     func liquidGlassRect(cornerRadius: CGFloat = 22) -> some View {
-        if #available(macOS 15.0, *) {
-            self.background(.ultraThinMaterial,
-                            in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
         } else {
             self.background(.ultraThinMaterial,
                             in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -26,8 +27,8 @@ extension View {
     /// Capsule Liquid Glass — for pill buttons and tags.
     @ViewBuilder
     func liquidGlassCapsule() -> some View {
-        if #available(macOS 15.0, *) {
-            self.background(.ultraThinMaterial, in: Capsule())
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular, in: .capsule)
         } else {
             self.background(.ultraThinMaterial, in: Capsule())
         }

@@ -110,29 +110,50 @@ struct PolicyEditorView: View {
     // MARK: - Standard Triggers
 
     private var triggersSection: some View {
-        InfoSection(title: "Triggers", icon: "bolt.fill") {
-            triggerToggle("Recurring Check-in", systemImage: "arrow.triangle.2.circlepath", isOn: $triggers.checkin)
-            Divider()
-            triggerToggle("Enrolment Complete", systemImage: "checkmark.seal", isOn: $triggers.enrollmentComplete)
-            Divider()
-            triggerToggle("Login", systemImage: "person.badge.key", isOn: $triggers.login)
-            Divider()
-            triggerToggle("Logout", systemImage: "rectangle.portrait.and.arrow.right", isOn: $triggers.logout)
-            Divider()
-            triggerToggle("Network State Change", systemImage: "network", isOn: $triggers.networkStateChanged)
-            Divider()
-            triggerToggle("Startup", systemImage: "power", isOn: $triggers.startup)
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Triggers", systemImage: "bolt.fill")
+                .font(.headline)
+            Text("Tap to choose when this policy runs automatically.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            GlassEffectContainer(spacing: 10) {
+                FlowLayout(spacing: 10, alignment: .leading) {
+                    triggerChip("Recurring Check-in", systemImage: "arrow.triangle.2.circlepath", isOn: $triggers.checkin)
+                    triggerChip("Enrolment Complete", systemImage: "checkmark.seal", isOn: $triggers.enrollmentComplete)
+                    triggerChip("Login", systemImage: "person.badge.key", isOn: $triggers.login)
+                    triggerChip("Logout", systemImage: "rectangle.portrait.and.arrow.right", isOn: $triggers.logout)
+                    triggerChip("Network State Change", systemImage: "network", isOn: $triggers.networkStateChanged)
+                    triggerChip("Startup", systemImage: "power", isOn: $triggers.startup)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private func triggerToggle(_ label: String, systemImage: String, isOn: Binding<Bool>) -> some View {
-        Toggle(isOn: isOn) {
-            Label(label, systemImage: systemImage)
-                .font(.callout)
+    /// An interactive Liquid Glass chip: a glass capsule that fills with the accent tint
+    /// (and shows a checkmark) when its trigger is on.
+    private func triggerChip(_ label: String, systemImage: String, isOn: Binding<Bool>) -> some View {
+        let on = isOn.wrappedValue
+        return Button {
+            withAnimation(.snappy(duration: 0.25)) { isOn.wrappedValue.toggle() }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: on ? "checkmark" : systemImage)
+                Text(label)
+            }
+            .font(.callout)
+            .fontWeight(on ? .semibold : .regular)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .foregroundStyle(on ? Color.white : Color.primary)
         }
-        .toggleStyle(.switch)
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
+        .glassEffect(on ? .regular.tint(.blue).interactive() : .regular.interactive(), in: .capsule)
         .disabled(isSaving)
+        .accessibilityLabel(label)
+        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
     }
 
     // MARK: - Custom Trigger

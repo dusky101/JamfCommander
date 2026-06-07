@@ -181,7 +181,8 @@ struct FilterChip: View {
 // MARK: - Flow Layout Helper
 struct FlowLayout: Layout {
     var spacing: CGFloat
-    
+    var alignment: HorizontalAlignment = .center
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let result = flow(in: proposal.replacingUnspecifiedDimensions().width, subviews: subviews, spacing: spacing)
         return result.size
@@ -191,7 +192,7 @@ struct FlowLayout: Layout {
         let result = flow(in: proposal.replacingUnspecifiedDimensions().width, subviews: subviews, spacing: spacing)
         for (index, row) in result.rows.enumerated() {
             let rowWidth = row.map { $0.size.width }.reduce(0, +) + CGFloat(row.count - 1) * spacing
-            let xOffset = (bounds.width - rowWidth) / 2
+            let xOffset = alignment == .leading ? 0 : (bounds.width - rowWidth) / 2
             var currentX = bounds.minX + xOffset
             let y = bounds.minY + result.rowYs[index]
             for item in row {
