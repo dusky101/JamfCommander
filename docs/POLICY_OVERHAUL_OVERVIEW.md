@@ -290,3 +290,6 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   animates from the button and dismisses on outside-click; picking a chip confirms + moves. (A full
   "morph to screen-centre and back" was deferred — a native popover gives the same interaction
   reliably.) Removed the unused `ActionTileButton`. macOS build passes.
+- 2026-06-07 — Phase 6 (move popover polish) — Widened the move-to-category popover to 600pt, gave each
+  category chip a capsule outline (distinct tappable areas), and made the card auto-size to the chips via
+  `.onGeometryChange` (grows as categories are added, capped at 480pt then scrolls). macOS build passes.

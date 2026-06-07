@@ -34,6 +34,7 @@ struct SingleActionBar: View {
 
     @State private var showMovePopover = false
     @State private var categorySearch = ""
+    @State private var chipsContentHeight: CGFloat = 120
 
     @State private var showCloneSheet = false
     @State private var bulkClonePlan: [BulkClonePlanItem] = []
@@ -221,30 +222,45 @@ struct SingleActionBar: View {
                     .padding(.vertical, 12)
             } else {
                 ScrollView {
-                    GlassEffectContainer(spacing: 8) {
-                        FlowLayout(spacing: 8, alignment: .leading) {
-                            ForEach(filteredCategories) { category in
-                                Button {
-                                    showMovePopover = false
-                                    requestMove(to: category)
-                                } label: {
-                                    Text(category.name)
-                                        .font(.callout)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 7)
-                                }
-                                .buttonStyle(.plain)
-                                .glassEffect(.regular.interactive(), in: .capsule)
-                            }
+                    FlowLayout(spacing: 8, alignment: .leading) {
+                        ForEach(filteredCategories) { category in
+                            categoryChip(category)
                         }
-                        .padding(2)
+                    }
+                    .padding(2)
+                    // Measure the chips' natural height so the card grows to fit them.
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                        proxy.size.height
+                    } action: { newHeight in
+                        chipsContentHeight = newHeight
                     }
                 }
-                .frame(maxHeight: 300)
+                // Grow with the number of categories, up to a cap (then scroll).
+                .frame(height: min(chipsContentHeight + 4, 480))
             }
         }
         .padding(16)
-        .frame(width: 380)
+        .frame(width: 600)
+    }
+
+    private func categoryChip(_ category: Category) -> some View {
+        Button {
+            showMovePopover = false
+            requestMove(to: category)
+        } label: {
+            Text(category.name)
+                .font(.callout)
+                .fontWeight(.medium)
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.blue.opacity(0.15))
+                .foregroundStyle(Color.blue)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.blue.opacity(0.5), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .help("Move to “\(category.name)”")
     }
 
     // MARK: - Actions
