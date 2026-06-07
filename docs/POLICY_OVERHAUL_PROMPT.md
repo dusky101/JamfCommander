@@ -142,6 +142,23 @@ succeeds + the manual checks pass against a non-production tenant.
 - **Done when:** selecting N policies and setting frequency + a custom trigger across all of them is
   verified in Jamf.
 
+### Phase 6 — Visual polish & Liquid Glass design pass
+- A dedicated design pass over **all** the new policy-overhaul UI — the single-policy editor, the Self
+  Service editor, `BulkCloneSheet`, and the bulk in-place editor — to make it look polished and native,
+  not just functional. (Added after review; phases 1–5 are deliberately functional-first.)
+- Replace the plain `InfoSection`/default-control layout with the `SharedUI` Liquid Glass helpers
+  (`liquidGlassRect`, `liquidGlassCapsule`) and a consistent card/section treatment; fix alignment
+  (full-width, left-aligned trigger rows with leading icon + label and trailing switch), spacing, and
+  typography hierarchy.
+- Refine the inspector header, segmented tab control, and the save/revert bar (clear idle /
+  unsaved-changes / saving states), plus polished loading, empty, and error states.
+- Keep it restrained and Apple-26-appropriate (strong contrast and readability first; avoid gratuitous
+  blur/transparency/motion), British English throughout, and **preserve accessibility** (labels/hints,
+  Dynamic Type, keyboard focus; never colour alone).
+- May be run as a final pass or folded into each phase as surfaces are built.
+- **Done when:** the policy-overhaul screens look consistent and polished using the Liquid Glass design
+  system, with no functional regressions and the macOS build green.
+
 ## Cross-cutting acceptance criteria
 - No raw JSON editing required for frequency, triggers, or Self Service (JSON stays as read-only
   Advanced view).

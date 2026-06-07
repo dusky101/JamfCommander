@@ -80,6 +80,23 @@ non-production tenant. Awaiting review before Phase 3.
 - [ ] Reuse Phase 2/3 writes + Phase 4 batch plumbing + confirmation + results
 - [ ] Verified in Jamf
 
+### Phase 6 — Visual polish & Liquid Glass design pass
+> A dedicated design pass over **all** the new policy-overhaul UI, to make it look polished and native
+> rather than merely functional. Can run as a final pass or be folded into each phase as surfaces are
+> built. Added after review (see "Added during the overhaul").
+- [ ] Replace the plain `InfoSection`/default-control layout in the editor with the Liquid Glass helpers
+  (`liquidGlassRect`, `liquidGlassCapsule`) and a consistent card/section treatment
+- [ ] Fix layout & alignment: full-width, left-aligned trigger rows (leading icon + label, trailing
+  switch), aligned frequency control, consistent spacing/padding
+- [ ] Stronger typography hierarchy, semantic colours, and refined section headers
+- [ ] Polish the inspector header, segmented tab control, and save/revert bar (idle / unsaved / saving)
+- [ ] Polished loading / empty / saving / error states
+- [ ] Apply the same treatment across every new surface (single-policy editor, Self Service editor,
+  `BulkCloneSheet`, bulk in-place editor)
+- [ ] Accessibility preserved (labels/hints, Dynamic Type, keyboard focus, never colour-alone); restrained
+  Apple-26 treatment (no gratuitous blur/transparency/motion)
+- [ ] Builds; British English throughout; no functional regressions
+
 ### Cross-cutting acceptance criteria
 - [ ] No raw-JSON editing required for frequency, triggers, or Self Service
 - [ ] Every write is confirmed and reports real per-item results
@@ -110,6 +127,10 @@ _(New scope discovered while building goes here, with the date it was added.)_
 - 2026-06-07 — **Inspector is now tabbed** (Settings / Advanced). The Phase 1 read-only Execution +
   Triggers blocks were replaced by the editable form; a read-only **Self Service** summary remains as a
   placeholder until the Phase 3 editor. The raw JSON view is now genuinely read-only (no `onSave`).
+- 2026-06-07 — **New Phase 6 — Visual polish & Liquid Glass design pass.** The original brief scoped
+  phases 1–5 as functional only, with visual quality covered solely by the cross-cutting "reuse
+  SharedUI/Liquid Glass components" line. After reviewing the Phase 2 editor, a dedicated polish phase was
+  requested and added to both this tracker and `POLICY_OVERHAUL_PROMPT.md`.
 
 ## Progress log
 
@@ -126,3 +147,5 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   `OperationResultView` → inspector refresh). Reworked `PoliciesInspectorView` into Settings / Advanced
   (read-only JSON) tabs and kept a read-only Self Service summary. macOS build passes; live verification
   pending manual test.
+- 2026-06-07 — Planning — Added **Phase 6 (Visual polish & Liquid Glass design pass)** to the plan after
+  review of the Phase 2 editor UI; documentation only, no code yet.
