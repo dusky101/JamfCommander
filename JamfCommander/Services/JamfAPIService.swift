@@ -17,6 +17,9 @@ class JamfAPIService: ObservableObject {
         case invalidURL
         case authFailed
         case requestFailed
+        /// A non-2xx HTTP response, carrying the status code so callers/UI can show the real
+        /// reason (e.g. 500 for Jamf's Classic-API JSON serialisation failures on some policies).
+        case httpError(Int)
         case decodingFailed
         case unknown(String)
     }
@@ -244,17 +247,32 @@ class JamfAPIService: ObservableObject {
             return detailedPolicies.sorted { $0.name < $1.name }
         }
         
-        func fetchPolicyDetail(id: Int) async throws -> PolicyDetailXML {
+        /// Fetches a policy's detail. Pass `subsets` (e.g. `["General", "Scope", "SelfService"]`)
+        /// to request only those sections via the Classic API's `/subset/…` path — this both
+        /// returns less data and sidesteps the Classic-API JSON serialisation error (HTTP 500)
+        /// that some policies hit when the *whole* record is requested as JSON. A nil/empty
+        /// `subsets` fetches the full policy (the default — used by Installomator discovery, etc.).
+        func fetchPolicyDetail(id: Int, subsets: [String]? = nil) async throws -> PolicyDetailXML {
+            var endpoint = "JSSResource/policies/id/\(id)"
+            if let subsets, !subsets.isEmpty {
+                endpoint += "/subset/" + subsets.joined(separator: "&")
+            }
             let response = try await genericFetch(
-                endpoint: "JSSResource/policies/id/\(id)",
+                endpoint: endpoint,
                 responseType: PolicyDetailResponse.self
             )
             return response.policy
         }
-        
-        // Fetch Raw JSON for the Inspector Code View
+
+        // Fetch Raw JSON for the Inspector Code View. Some policies fail Jamf's Classic-API JSON
+        // serialisation (HTTP 500) but return fine as XML — fall back to XML so the raw record is
+        // always viewable.
         func fetchPolicyJSON(id: Int) async throws -> String {
-            return try await fetchRawJSON(endpoint: "JSSResource/policies/id/\(id)")
+            do {
+                return try await fetchRawJSON(endpoint: "JSSResource/policies/id/\(id)")
+            } catch {
+                return try await fetchRawXML(endpoint: "JSSResource/policies/id/\(id)")
+            }
         }
         
         func deletePolicy(id: Int) async throws {
@@ -455,29 +473,51 @@ class JamfAPIService: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else { throw APIError.requestFailed }
-        
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError((response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+
         return try JSONDecoder().decode(T.self, from: data)
     }
-    
+
     private func fetchRawJSON(endpoint: String) async throws -> String {
         guard let token = token, !baseURL.isEmpty else { throw APIError.authFailed }
         guard let url = URL(string: "\(baseURL)/\(endpoint)") else { throw APIError.invalidURL }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { throw APIError.requestFailed }
-        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw APIError.httpError((response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+
         if let jsonObject = try? JSONSerialization.jsonObject(with: data, options: []),
            let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted]),
            let prettyString = String(data: prettyData, encoding: .utf8) {
             return prettyString
         }
         return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    /// Authenticated GET that returns the response body as raw XML text. Used as a fallback for
+    /// the policy raw view when Jamf's Classic-API JSON serialisation fails for a record.
+    private func fetchRawXML(endpoint: String) async throws -> String {
+        guard let token = token, !baseURL.isEmpty else { throw APIError.authFailed }
+        guard let url = URL(string: "\(baseURL)/\(endpoint)") else { throw APIError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/xml", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError((response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        return String(data: data, encoding: .utf8) ?? ""
     }
     
     func genericRequest(method: String, endpoint: String, body: String? = nil) async throws {

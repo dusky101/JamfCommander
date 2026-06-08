@@ -247,44 +247,70 @@ struct PoliciesInspectorView: View {
         .padding()
     }
 
+    /// The subsets the inspector needs — General (name/frequency/triggers), Scope (deployment),
+    /// and SelfService. Requesting only these avoids the Classic-API JSON serialisation error
+    /// (HTTP 500) that some policies hit when the whole record is fetched as JSON.
+    private let inspectorSubsets = ["General", "Scope", "SelfService"]
+
     func loadData() async {
         errorMessage = nil
-        do {
-            async let fetchedJSON = api.fetchPolicyJSON(id: policyId)
-            async let fetchedDetail = api.fetchPolicyDetail(id: policyId)
-            async let fetchedEditable = api.fetchPolicyEditable(id: policyId)
-            // Categories are non-critical: a failure must not blank the inspector.
-            async let fetchedCategories: [Category] = (try? await api.fetchCategories()) ?? []
-            let (json, detail, editablePolicy, cats) = try await (fetchedJSON, fetchedDetail, fetchedEditable, fetchedCategories)
-            self.jsonContent = json
-            self.policyDetail = detail
-            self.editable = editablePolicy
-            self.categories = cats
-            self.isLoading = false
-        } catch {
-            // Never swallow silently — surface the reason in-UI and log a developer line. The
-            // error is a decode/transport failure, not an API body, so it carries no secrets.
-            print("PoliciesInspectorView: failed to load policy \(policyId): \(error)")
-            self.errorMessage = "\(error)"
-            self.isLoading = false
+        var loadError: Error?
+
+        // Raw source (fetchPolicyJSON falls back to XML internally) so the Advanced tab works even
+        // when a policy fails Jamf's Classic-API JSON serialisation.
+        let raw: String?
+        do { raw = try await api.fetchPolicyJSON(id: policyId) }
+        catch { raw = nil; loadError = error }
+
+        // Typed detail via the minimal subsets; `editable` is derived from the same detail so we
+        // never issue a second, full-record fetch (which is what was returning HTTP 500 here).
+        let detail: PolicyDetailXML?
+        do { detail = try await api.fetchPolicyDetail(id: policyId, subsets: inspectorSubsets) }
+        catch { detail = nil; loadError = error }
+
+        // Categories are non-critical: a failure must not blank the inspector.
+        let cats = (try? await api.fetchCategories()) ?? []
+
+        if let raw { self.jsonContent = raw }
+        self.policyDetail = detail
+        self.editable = detail.map { PolicyEditable(detail: $0) }
+        self.categories = cats
+
+        if raw == nil && detail == nil {
+            // Nothing loaded — surface the real reason (never swallow silently).
+            print("PoliciesInspectorView: failed to load policy \(policyId): \(loadError.map { "\($0)" } ?? "unknown")")
+            self.errorMessage = friendlyError(loadError)
+        } else if detail == nil {
+            // The editable detail didn't load but the raw record did — show that instead.
+            self.selectedTab = .advanced
         }
+        self.isLoading = false
     }
 
     /// Refreshes the inspector's data after an in-place edit, without flashing the full
     /// loading state. On failure the last good data is retained.
     func reload() async {
-        do {
-            async let fetchedJSON = api.fetchPolicyJSON(id: policyId)
-            async let fetchedDetail = api.fetchPolicyDetail(id: policyId)
-            async let fetchedEditable = api.fetchPolicyEditable(id: policyId)
-            async let fetchedCategories: [Category] = (try? await api.fetchCategories()) ?? []
-            let (json, detail, editablePolicy, cats) = try await (fetchedJSON, fetchedDetail, fetchedEditable, fetchedCategories)
-            self.jsonContent = json
-            self.policyDetail = detail
-            self.editable = editablePolicy
-            self.categories = cats
-        } catch {
-            // Keep the last good data on a refresh failure.
+        if let raw = try? await api.fetchPolicyJSON(id: policyId) {
+            self.jsonContent = raw
         }
+        if let detail = try? await api.fetchPolicyDetail(id: policyId, subsets: inspectorSubsets) {
+            self.policyDetail = detail
+            self.editable = PolicyEditable(detail: detail)
+        }
+        let cats = (try? await api.fetchCategories()) ?? []
+        if !cats.isEmpty { self.categories = cats }
+    }
+
+    /// Turns a load failure into calm, British-English copy. Jamf's known Classic-API JSON
+    /// serialisation failure (HTTP 500) gets a specific explanation.
+    private func friendlyError(_ error: Error?) -> String {
+        if case let JamfAPIService.APIError.httpError(code)? = error {
+            if code == 500 {
+                return "Jamf returned an error (HTTP 500) when reading this policy as JSON. This is a known Jamf Classic API limitation for certain policies. You can still view the raw record in the Jamf Pro console."
+            }
+            return "Jamf returned HTTP \(code) when reading this policy."
+        }
+        if let error { return "\(error)" }
+        return "The policy details couldn't be read."
     }
 }

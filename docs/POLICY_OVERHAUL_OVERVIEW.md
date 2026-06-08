@@ -346,3 +346,14 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   arrive as an array, a single object, or are absent. `PoliciesInspectorView` now surfaces a real error
   state (with the reason) and logs a developer line instead of silently swallowing. No payload-count
   limit existed; exports (which read the raw JSON dict) are unaffected. macOS build passes.
+- 2026-06-08 — Fix (actual root cause: Jamf Classic-API JSON 500) — With the error now surfaced, the
+  failing policies (44, 114) showed `requestFailed` → i.e. a non-2xx HTTP status, not a decode error.
+  Cause: Jamf's Classic API returns **HTTP 500 when serialising certain whole policies to JSON** (a
+  known Jamf limitation) even though XML is fine. Fix: `JamfAPIService` — `APIError.httpError(Int)`
+  (the GET helpers now throw the real status code); `fetchPolicyDetail(id:subsets:)` can request only
+  the `/subset/General&Scope&SelfService` sections (default nil = full fetch, so the Installomator
+  discovery path is unchanged); `fetchPolicyJSON` falls back to an XML fetch (`fetchRawXML`) when the
+  JSON GET fails, so the raw record is always viewable. `PoliciesInspectorView` now fetches only those
+  subsets, derives `editable` from that same detail (no second full fetch), degrades to whatever
+  loaded, and shows a clear HTTP-500 explanation. The earlier decode hardening stays as defence in
+  depth. macOS build passes; needs live verification against the affected policies.
