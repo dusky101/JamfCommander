@@ -334,3 +334,15 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   an endpoint (invariant #2), so "all" means **all icons currently in use across policies** — which, for
   a real estate, mirrors the Jamf picker. macOS build passes. The existing search-and-pick flow is
   unchanged.
+- 2026-06-08 — Fix (multi-payload policies wouldn't open in the inspector) — Policies with more than one
+  package/script (e.g. "Install Homebrew", "Zellis First Boot") loaded to a half-blank "Loading…" state
+  with nothing logged. Root cause: `PolicyDetailXML.init` decoded `package_configuration` and
+  `files_processes` with a *throwing* `try decodeIfPresent`, so any Jamf Classic-JSON shape variance
+  (the single-object-vs-array quirk) threw and failed the whole policy decode, which the inspector's
+  `loadData` then swallowed. Fix (`Models/PolicyModels.swift`): every optional section now decodes
+  non-throwing; added `KeyedDecodingContainer.decodeFlexibleArray` and tolerant `init(from:)` (in
+  extensions, preserving memberwise inits) for `PolicyScope`/`PolicyExclusions`/`PolicyPackageConfiguration`/
+  `PolicyPackage`, plus hardened `PolicyScript`, so packages/scripts/scope targets decode whether they
+  arrive as an array, a single object, or are absent. `PoliciesInspectorView` now surfaces a real error
+  state (with the reason) and logs a developer line instead of silently swallowing. No payload-count
+  limit existed; exports (which read the raw JSON dict) are unaffected. macOS build passes.

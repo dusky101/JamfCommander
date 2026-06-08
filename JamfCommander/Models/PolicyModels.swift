@@ -49,18 +49,22 @@ struct PolicyDetailXML: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        // `general` is the only section the UI cannot do without. Every other section degrades
+        // to nil / an empty default on any shape or type variation, so one odd payload section
+        // (e.g. a multi-package policy with a slightly different shape) can never throw and blank
+        // the inspector — the previous strict decode of these sections was the root cause.
         general = try container.decode(PolicyGeneral.self, forKey: .general)
-        scope = try container.decode(PolicyScope.self, forKey: .scope)
-        // Self Service is optional and its shape varies; never let it break the
-        // existing decode (list hydration / inspector). Degrade to nil on any problem.
+        scope = (try? container.decode(PolicyScope.self, forKey: .scope))
+            ?? PolicyScope(all_computers: false, computers: nil, computer_groups: nil, exclusions: nil)
         self_service = try? container.decode(PolicySelfServiceXML.self, forKey: .self_service)
-        files_processes = try container.decodeIfPresent(PolicyFilesProcesses.self, forKey: .files_processes)
-        package_configuration = try container.decodeIfPresent(PolicyPackageConfiguration.self, forKey: .package_configuration)
+        files_processes = try? container.decode(PolicyFilesProcesses.self, forKey: .files_processes)
+        package_configuration = try? container.decode(PolicyPackageConfiguration.self, forKey: .package_configuration)
 
-        // Handle arrays that might be empty or missing
-        scripts = try? container.decode([PolicyScript].self, forKey: .scripts)
-        printers = try? container.decode([PolicyPrinter].self, forKey: .printers)
-        dock_items = try? container.decode([PolicyDockItem].self, forKey: .dock_items)
+        // Repeatable sections: tolerate an array, a single object, or absence — Jamf Classic
+        // JSON renders one child as an object and several as an array (see decodeFlexibleArray).
+        scripts = container.decodeFlexibleArray(PolicyScript.self, forKey: .scripts)
+        printers = container.decodeFlexibleArray(PolicyPrinter.self, forKey: .printers)
+        dock_items = container.decodeFlexibleArray(PolicyDockItem.self, forKey: .dock_items)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -220,14 +224,17 @@ struct PolicyScript: Codable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        // Handle id being either Int or String
+        // Handle id being either Int or String; never throw (so a flexible array decode of a
+        // multi-script policy can't fail on one odd entry).
         if let intID = try? container.decode(Int.self, forKey: .id) {
             id = String(intID)
+        } else if let strID = try? container.decode(String.self, forKey: .id) {
+            id = strID
         } else {
-            id = try container.decode(String.self, forKey: .id)
+            id = "0"
         }
-        
-        name = try container.decode(String.self, forKey: .name)
+
+        name = (try? container.decode(String.self, forKey: .name)) ?? ""
         priority = try container.decodeIfPresent(String.self, forKey: .priority)
         parameter4 = try container.decodeIfPresent(String.self, forKey: .parameter4)
         parameter5 = try container.decodeIfPresent(String.self, forKey: .parameter5)
@@ -309,4 +316,83 @@ struct PolicyExclusions: Codable, Hashable {
 struct PolicyComputerTarget: Identifiable, Codable, Hashable {
     let id: Int
     let name: String
+}
+
+// MARK: - Defensive decoding (Jamf Classic JSON single-vs-array quirk)
+//
+// Jamf's Classic API JSON renders a repeatable element as an array when there are several
+// children, but can render it as a single object when there is exactly one (and omits it when
+// none). The decoders below tolerate every shape so a policy with multiple packages/scripts (or
+// a single scoped computer/group) can never throw and blank the inspector. Each `init(from:)`
+// lives in an extension so the structs keep their synthesised memberwise initialisers.
+
+extension KeyedDecodingContainer {
+    /// Decodes `key` as `[T]` whether it arrives as an array, a single object, or is absent.
+    /// Returns nil when missing or undecodable — never throws.
+    func decodeFlexibleArray<T: Decodable>(_ type: T.Type, forKey key: KeyedDecodingContainer.Key) -> [T]? {
+        if let array = try? decode([T].self, forKey: key) { return array }
+        if let single = try? decode(T.self, forKey: key) { return [single] }
+        return nil
+    }
+}
+
+extension PolicyScope {
+    enum CodingKeys: String, CodingKey {
+        case all_computers, computers, computer_groups, exclusions
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        all_computers = (try? c.decode(Bool.self, forKey: .all_computers)) ?? false
+        computers = c.decodeFlexibleArray(PolicyComputerTarget.self, forKey: .computers)
+        computer_groups = c.decodeFlexibleArray(PolicyComputerTarget.self, forKey: .computer_groups)
+        exclusions = try? c.decode(PolicyExclusions.self, forKey: .exclusions)
+    }
+}
+
+extension PolicyExclusions {
+    enum CodingKeys: String, CodingKey {
+        case computers, computer_groups
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        computers = c.decodeFlexibleArray(PolicyComputerTarget.self, forKey: .computers)
+        computer_groups = c.decodeFlexibleArray(PolicyComputerTarget.self, forKey: .computer_groups)
+    }
+}
+
+extension PolicyPackageConfiguration {
+    enum CodingKeys: String, CodingKey {
+        case packages, distribution_point
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        packages = c.decodeFlexibleArray(PolicyPackage.self, forKey: .packages)
+        distribution_point = try? c.decode(String.self, forKey: .distribution_point)
+    }
+}
+
+extension PolicyPackage {
+    enum CodingKeys: String, CodingKey {
+        case id, name, action, fut, feu, update_autorun
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // id may be an Int or a String depending on the API path; never throw.
+        if let intID = try? c.decode(Int.self, forKey: .id) {
+            id = intID
+        } else if let strID = try? c.decode(String.self, forKey: .id), let n = Int(strID) {
+            id = n
+        } else {
+            id = 0
+        }
+        name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        action = try? c.decode(String.self, forKey: .action)
+        fut = try? c.decode(Bool.self, forKey: .fut)
+        feu = try? c.decode(Bool.self, forKey: .feu)
+        update_autorun = try? c.decode(Bool.self, forKey: .update_autorun)
+    }
 }

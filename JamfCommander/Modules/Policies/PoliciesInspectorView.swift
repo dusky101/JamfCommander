@@ -92,6 +92,8 @@ struct PoliciesInspectorView: View {
                         .foregroundColor(.secondary)
                 }
                 .frame(maxHeight: .infinity)
+            } else if let errorMessage {
+                errorView(errorMessage)
             } else {
                 // Tab selector — Settings (editable) vs Advanced (read-only JSON).
                 HStack {
@@ -206,8 +208,47 @@ struct PoliciesInspectorView: View {
         .cornerRadius(8)
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(color.opacity(0.2), lineWidth: 1))
     }
-    
+
+    /// Shown when the policy detail can't be loaded. Surfaces a calm message plus the underlying
+    /// reason (selectable) so a failure is never silent — the raw JSON remains viewable in Jamf.
+    func errorView(_ message: String) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.largeTitle)
+                .foregroundColor(.orange)
+            Text("Couldn't load this policy")
+                .font(.headline)
+            Text("The policy details couldn't be read. The reason is shown below; you can still view the raw record in the Jamf Pro console.")
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            ScrollView {
+                Text(message)
+                    .font(.caption)
+                    .fontDesign(.monospaced)
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            }
+            .frame(maxHeight: 160)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.4))
+            .cornerRadius(8)
+            Button("Try Again") {
+                Task {
+                    isLoading = true
+                    await loadData()
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: 520)
+        .frame(maxHeight: .infinity)
+        .padding()
+    }
+
     func loadData() async {
+        errorMessage = nil
         do {
             async let fetchedJSON = api.fetchPolicyJSON(id: policyId)
             async let fetchedDetail = api.fetchPolicyDetail(id: policyId)
@@ -221,6 +262,10 @@ struct PoliciesInspectorView: View {
             self.categories = cats
             self.isLoading = false
         } catch {
+            // Never swallow silently — surface the reason in-UI and log a developer line. The
+            // error is a decode/transport failure, not an API body, so it carries no secrets.
+            print("PoliciesInspectorView: failed to load policy \(policyId): \(error)")
+            self.errorMessage = "\(error)"
             self.isLoading = false
         }
     }
