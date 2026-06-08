@@ -37,8 +37,11 @@ struct BulkSettingsConfig: Sendable {
     let selfServiceCategoryName: String?
     /// When true, every policy is unscoped in place (it will stop deploying).
     let removeScope: Bool
+    /// When true, every policy is scoped to all computers in place. Mutually exclusive with
+    /// `removeScope` (the editor only allows one of the two scope actions at a time).
+    let scopeToAllComputers: Bool
 
     var hasAnyChange: Bool {
-        applyFrequency != nil || applyCustomTrigger || selfServiceCategoryID != nil || removeScope
+        applyFrequency != nil || applyCustomTrigger || selfServiceCategoryID != nil || removeScope || scopeToAllComputers
     }
 }

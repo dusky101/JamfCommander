@@ -32,6 +32,7 @@ struct BulkSettingsSheet: View {
     @State private var selectedSSCategory: Category?
 
     @State private var applyRemoveScope = false
+    @State private var applyScopeToAll = false
 
     @State private var rows: [Row] = []
 
@@ -46,7 +47,7 @@ struct BulkSettingsSheet: View {
     /// At least one change selected, and if the SS toggle is on a category must be chosen.
     private var canApply: Bool {
         guard !policies.isEmpty else { return false }
-        let somethingChosen = applyFrequency || applyCustomTrigger || applySSCategory || applyRemoveScope
+        let somethingChosen = applyFrequency || applyCustomTrigger || applySSCategory || applyRemoveScope || applyScopeToAll
         let ssValid = !applySSCategory || selectedSSCategory != nil
         return somethingChosen && ssValid
     }
@@ -60,6 +61,7 @@ struct BulkSettingsSheet: View {
                     frequencySection
                     triggerSection
                     selfServiceSection
+                    scopeToAllSection
                     removeScopeSection
                 }
                 .padding()
@@ -67,13 +69,20 @@ struct BulkSettingsSheet: View {
             Divider()
             footer
         }
-        .frame(width: 580, height: 660)
+        .frame(width: 580, height: 720)
         .appBackground()
         .onAppear(perform: seedRows)
         .onChange(of: triggerTemplate) { _, newTemplate in
             for index in rows.indices where !rows[index].isOverridden {
                 rows[index].customTrigger = CloneTemplate.applyTriggerTemplate(newTemplate, policyName: rows[index].originalName)
             }
+        }
+        // The two scope actions contradict each other — only one can be on at a time.
+        .onChange(of: applyScopeToAll) { _, isOn in
+            if isOn { applyRemoveScope = false }
+        }
+        .onChange(of: applyRemoveScope) { _, isOn in
+            if isOn { applyScopeToAll = false }
         }
     }
 
@@ -201,6 +210,17 @@ struct BulkSettingsSheet: View {
         }
     }
 
+    private var scopeToAllSection: some View {
+        card {
+            sectionToggle("Scope to all computers", systemImage: "globe", isOn: $applyScopeToAll)
+            if applyScopeToAll {
+                Text("Scopes every selected policy to all computers (any existing targeted computers and computer groups are cleared). They will deploy across the fleet.")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+            }
+        }
+    }
+
     private var removeScopeSection: some View {
         card {
             sectionToggle("Remove scope", systemImage: "scope", isOn: $applyRemoveScope)
@@ -275,7 +295,8 @@ struct BulkSettingsSheet: View {
             applyCustomTrigger: applyCustomTrigger,
             selfServiceCategoryID: applySSCategory ? selectedSSCategory?.id : nil,
             selfServiceCategoryName: applySSCategory ? selectedSSCategory?.name : nil,
-            removeScope: applyRemoveScope
+            removeScope: applyRemoveScope,
+            scopeToAllComputers: applyScopeToAll
         )
         onConfirm(items, config)
         dismiss()

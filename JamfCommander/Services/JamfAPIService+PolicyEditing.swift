@@ -124,6 +124,22 @@ extension JamfAPIService {
         try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
     }
 
+    /// Scopes a policy to all computers in place. Writes only the `<scope>` section, setting
+    /// `all_computers` true and clearing any targeted computers/computer groups (mirrors the
+    /// proven `setProfileScopeToAllComputers` shape). Existing exclusions are left untouched.
+    func setPolicyScopeToAllComputers(id: Int) async throws {
+        let xml = """
+        <policy>
+            <scope>
+                <all_computers>true</all_computers>
+                <computers/>
+                <computer_groups/>
+            </scope>
+        </policy>
+        """
+        try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
+    }
+
     /// Removes a policy's scope in place (unscopes it — it will no longer deploy). Writes
     /// only the `<scope>` section, using the same empty-scope shape proven in `clonePolicy`.
     func removePolicyScope(id: Int) async throws {
@@ -173,8 +189,11 @@ extension JamfAPIService {
                             if let categoryID = config.selfServiceCategoryID, let categoryName = config.selfServiceCategoryName {
                                 try await self.setPolicySelfServiceCategory(id: item.policyId, toCategoryID: categoryID, categoryName: categoryName)
                             }
-                            // Remove scope (unscope in place).
-                            if config.removeScope {
+                            // Scope action (mutually exclusive in the editor): scope to all
+                            // computers, or remove scope entirely.
+                            if config.scopeToAllComputers {
+                                try await self.setPolicyScopeToAllComputers(id: item.policyId)
+                            } else if config.removeScope {
                                 try await self.removePolicyScope(id: item.policyId)
                             }
                             return OperationResult(itemName: item.policyName, success: true, error: nil)

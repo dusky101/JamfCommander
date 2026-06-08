@@ -357,3 +357,11 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   subsets, derives `editable` from that same detail (no second full fetch), degrades to whatever
   loaded, and shows a clear HTTP-500 explanation. The earlier decode hardening stays as defence in
   depth. macOS build passes; needs live verification against the affected policies.
+- 2026-06-08 — Verified + Bulk Edit "Scope to all computers" — Live test confirmed the subset fix:
+  policies 44 and 114 now open in the inspector. Added a **Scope to all computers** switch to the bulk
+  in-place settings editor (`BulkSettingsSheet`), mutually exclusive with the existing **Remove scope**
+  (turning one on turns the other off). `BulkSettingsConfig` gained `scopeToAllComputers`; the runner
+  (`bulkUpdatePolicySettings`) applies it via a new `setPolicyScopeToAllComputers(id:)` (Classic PUT
+  `<scope><all_computers>true</all_computers><computers/><computer_groups/></scope>`, mirroring the
+  proven profile method; exclusions left intact). The confirmation summary lists the change. Still gated
+  by `CommanderConfirmation` + reported via `OperationResultView`. macOS build passes.
