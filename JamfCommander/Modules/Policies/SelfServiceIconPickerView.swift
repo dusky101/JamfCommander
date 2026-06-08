@@ -36,6 +36,14 @@ struct SelfServiceIconPickerView: View {
     @State private var discovered: [DiscoveredIcon] = []
     @State private var truncatedNote: String?
 
+    // "Show all" scan + paginated browser
+    @State private var isScanningAll = false
+    @State private var scannedCount = 0
+    @State private var totalToScan = 0
+    @State private var allIcons: [DiscoveredIcon] = []
+    @State private var showBrowser = false
+    @State private var scanTask: Task<Void, Never>?
+
     /// Cap how many matching policies we hydrate, to respect rate limits.
     private let matchCap = 50
 
@@ -52,6 +60,17 @@ struct SelfServiceIconPickerView: View {
         .frame(width: 660, height: 580)
         .appBackground()
         .task { await loadPolicyList() }
+        .sheet(isPresented: $showBrowser) {
+            IconBrowserView(
+                api: api,
+                icons: allIcons,
+                onPick: { icon in
+                    showBrowser = false
+                    onPick(icon)
+                },
+                onCancel: { showBrowser = false }
+            )
+        }
     }
 
     // MARK: - Header
@@ -94,6 +113,10 @@ struct SelfServiceIconPickerView: View {
             Button("Search") { runSearch() }
                 .buttonStyle(.borderedProminent)
                 .disabled(isLoadingList || isSearching || searchText.trimmingCharacters(in: .whitespaces).isEmpty)
+
+            Button("Show All") { scanAllIcons() }
+                .disabled(isLoadingList || isScanningAll || isSearching || policyList.isEmpty)
+                .help("Scan all your policies and browse every Self Service icon in use")
         }
         .padding(.horizontal)
         .padding(.vertical, 10)
@@ -107,10 +130,12 @@ struct SelfServiceIconPickerView: View {
             stateView(icon: "hourglass", title: "Loading policies…", showsProgress: true)
         } else if listError {
             stateView(icon: "exclamationmark.triangle", title: "Couldn't load the policy list.", subtitle: "Check your connection and try again.")
+        } else if isScanningAll {
+            scanningView
         } else if isSearching {
             stateView(icon: "hourglass", title: "Searching for icons…", showsProgress: true)
         } else if searchedTerm.isEmpty {
-            stateView(icon: "magnifyingglass", title: "Search to find icons", subtitle: "Type a policy name or id (for example “Adobe”) and press Search.")
+            stateView(icon: "magnifyingglass", title: "Search to find icons", subtitle: "Type a policy name or id (for example “Adobe”) and press Search — or tap Show All to browse every icon in use.")
         } else if discovered.isEmpty {
             stateView(icon: "photo.on.rectangle.angled", title: "No icons found", subtitle: "No policies matching “\(searchedTerm)” have a Self Service icon.")
         } else {
@@ -149,6 +174,23 @@ struct SelfServiceIconPickerView: View {
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var scanningView: some View {
+        VStack(spacing: 16) {
+            ProgressView(value: Double(scannedCount), total: Double(max(totalToScan, 1)))
+                .frame(maxWidth: 320)
+            Text("Scanning your policies for icons…")
+                .font(.headline)
+            Text("\(scannedCount) of \(totalToScan) policies")
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .monospacedDigit()
+            Button("Cancel Scan") { scanTask?.cancel() }
+                .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
@@ -205,6 +247,54 @@ struct SelfServiceIconPickerView: View {
                     truncatedNote = "Searched the first \(matchCap) of \(matches.count) matching policies. Refine your search to cover the rest."
                 }
                 isSearching = false
+            }
+        }
+    }
+
+    /// Scans every policy for its Self Service icon, de-duplicates by icon id, and opens the
+    /// paginated browser. Chunked so progress can be reported and the scan cancelled; each chunk
+    /// is itself rate-limited inside `fetchSelfServiceIcons` (batches + delays + bounded retry).
+    private func scanAllIcons() {
+        guard !isLoadingList, !policyList.isEmpty, !isScanningAll else { return }
+
+        isScanningAll = true
+        allIcons = []
+        scannedCount = 0
+        let ids = policyList.map(\.id)
+        totalToScan = ids.count
+
+        scanTask = Task {
+            var byIcon: [Int: DiscoveredIcon] = [:]
+            let chunkSize = 30
+            let chunks = stride(from: 0, to: ids.count, by: chunkSize).map {
+                Array(ids[$0..<min($0 + chunkSize, ids.count)])
+            }
+
+            for chunk in chunks {
+                if Task.isCancelled { break }
+                let hits = await api.fetchSelfServiceIcons(forPolicyIDs: chunk)
+                for hit in hits {
+                    guard let iconId = hit.icon.id else { continue }
+                    if var existing = byIcon[iconId] {
+                        existing.policyNames.append(hit.policyName)
+                        byIcon[iconId] = existing
+                    } else {
+                        byIcon[iconId] = DiscoveredIcon(iconId: iconId, icon: hit.icon, policyNames: [hit.policyName])
+                    }
+                }
+                await MainActor.run { scannedCount = min(scannedCount + chunk.count, totalToScan) }
+            }
+
+            let result = byIcon.values.sorted {
+                ($0.policyNames.first ?? "").localizedCaseInsensitiveCompare($1.policyNames.first ?? "") == .orderedAscending
+            }
+
+            await MainActor.run {
+                isScanningAll = false
+                if !Task.isCancelled {
+                    allIcons = result
+                    showBrowser = true
+                }
             }
         }
     }

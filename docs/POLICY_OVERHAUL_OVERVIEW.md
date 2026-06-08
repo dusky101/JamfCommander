@@ -323,3 +323,14 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   Replaced it with a shared `ScopeActionButton` (plain button + compact popover offering "Scope to All
   Computers" / "Remove Scope"), so it renders the same green capsule as the other action buttons. Used
   in both `SingleProfileActionBar` and the bulk `ActionPanelView` (profiles mode). macOS build passes.
+- 2026-06-08 — Phase 6 (Self Service icon browser) — Added a "Show all" path to the icon reuse picker.
+  New `Modules/Policies/IconBrowserView.swift`: a paginated, **icons-only** browser (8×5 per page)
+  modelled on the Jamf Pro "Choose Image" picker — ‹ / › page arrows with a horizontal slide (next
+  enters from the right, back from the left), a page indicator, Cancel, and two-step selection (tap to
+  highlight → "Make Selection"; double-click confirms). `SelfServiceIconPickerView` gained a **Show All**
+  button that scans every policy for its Self Service icon (chunked, with a determinate progress bar and
+  a cancellable scan — reusing the rate-limited `fetchSelfServiceIcons`), de-duplicates by icon id, and
+  opens the browser. Note: there is no Jamf API to list the full icon/clip-art library without guessing
+  an endpoint (invariant #2), so "all" means **all icons currently in use across policies** — which, for
+  a real estate, mirrors the Jamf picker. macOS build passes. The existing search-and-pick flow is
+  unchanged.
