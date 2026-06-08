@@ -32,8 +32,11 @@ Status legend: `- [ ]` not started · `- [~]` in progress · `- [x]` done.
 gradient) now sits behind every sheet and the detail pane (no flat black), and the editor's centred
 toggles are fixed (left-aligned, full-width rows). Remaining Phase 6 polish (typography hierarchy,
 inspector header/tab/save-bar refinement, richer Liquid Glass cards, loading/empty-state polish, a
-Dynamic Type/contrast pass) is still open. macOS build passes; live verification awaiting manual test.
-**Last updated:** 2026-06-07.
+Dynamic Type/contrast pass) is still open. The action bars (single + bulk, policies + profiles) now
+share one look via `SharedUI/ActionBarComponents.swift` — soft tinted icon buttons under centred
+headers, a searchable blue-chip move-to-category popover, and the frosted `.appBarBackground()`.
+macOS build passes; live verification awaiting manual test.
+**Last updated:** 2026-06-08.
 
 ### Phase 1 — Models + read/write API (little/no UI)
 - [x] `PolicyFrequency` enum (Jamf values + British labels, `Sendable`)
@@ -304,3 +307,14 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   black band behind the bars in both dashboards. macOS build passes. **Still to do:** restyle the bulk
   `ActionPanelView` buttons to the single-bar icon+header tile look (it currently has the new background
   but the original button layout).
+- 2026-06-08 — Phase 6 (shared action-bar components + soft colours) — Extracted the action-bar look
+  into `SharedUI/ActionBarComponents.swift`: `ActionBarColumn` (centred 2-line header + control),
+  `SoftIconLabel`/`SoftIconButton` (light tinted fill + coloured glyph + outline capsule — softer than
+  the previous solid `.borderedProminent`), and `CategoryMovePicker` (600pt searchable card of blue
+  category chips, auto-sizing to its content). Restyled `SingleActionBar` and `SingleProfileActionBar`
+  to these, sizing the profiles **Set Scope** menu identically to the other buttons via a `SoftIconLabel`
+  menu (`.menuStyle(.borderlessButton)` + `.menuIndicator(.hidden)`). Restyled the bulk `ActionPanelView`
+  (both `.policies` and `.profiles` modes) to match: Move-to-Category opens the blue-chip popover, and
+  Match Self Service / Edit Policies / Set Scope / Clone / Delete are now soft tinted icon buttons under
+  centred headers. macOS build passes. **Phase 6 remaining:** typography hierarchy, inspector
+  header/tab/save-bar refinement, richer cards, loading/empty-state polish, Dynamic Type/contrast pass.

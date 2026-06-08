@@ -59,6 +59,9 @@ struct ActionPanelView: View {
     @State private var bulkSettingsPlan: [BulkSettingsPlanItem] = []
     @State private var bulkSettingsConfig: BulkSettingsConfig?
 
+    // Move-to-category popover
+    @State private var showMovePopover = false
+
     private var selectedPolicies: [Policy] {
         policies.filter { selectedIDs.contains($0.id) }
     }
@@ -88,21 +91,20 @@ struct ActionPanelView: View {
     }
     
     var body: some View {
-        HStack(spacing: 20) {
-            
+        HStack(spacing: 16) {
             // MARK: - Left: Selection Info
             VStack(alignment: .leading, spacing: 6) {
                 Label("Bulk Actions", systemImage: "checklist")
                     .font(.headline)
                     .foregroundColor(.primary)
-                
+
                 Text("\(selectedIDs.count) items selected")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .fontDesign(.monospaced)
-                
+
                 Spacer()
-                
+
                 Button(action: { withAnimation { selectedIDs.removeAll() } }) {
                     Label("Cancel Selection", systemImage: "xmark.circle")
                         .font(.caption)
@@ -110,207 +112,56 @@ struct ActionPanelView: View {
                 .buttonStyle(.plain)
                 .foregroundColor(.secondary)
             }
-            .frame(width: 140, alignment: .leading)
+            .frame(width: 150, alignment: .leading)
             
             Divider()
             
-            // MARK: - Center: Categorization
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Categorisation")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-                
-                HStack {
-                    Menu {
-                        ForEach(categories) { category in
-                            Button(category.name) { selectedTargetCategory = category }
-                        }
-                    } label: {
-                        HStack {
-                            Text(selectedTargetCategory?.name ?? "Select Category...")
-                                .foregroundColor(selectedTargetCategory == nil ? .secondary : .primary)
-                            Spacer()
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(8)
-                        .background(Color.black.opacity(0.1))
-                        .cornerRadius(6)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .frame(maxWidth: 200)
-                    
-                    Button(action: requestMove) {
-                        Text("Move")
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.blue)
-                    .disabled(selectedTargetCategory == nil || isBusy)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // MARK: - Move to Category
+            ActionBarColumn(title: "Move to Category") { moveButton }
             
             Divider()
 
             // MARK: - Center-Right: Self Service Sync (Policies Only)
             if mode == .policies {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Self Service")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-
-                    Button(action: requestSelfServiceSync) {
-                        HStack {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                            Text("Match Self Service Category")
-                        }
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity)
+                ActionBarColumn(title: "Match Self Service Category") {
+                    SoftIconButton(systemImage: "arrow.triangle.2.circlepath", tint: .teal, isDisabled: isBusy, help: "Set each selected policy's Self Service category to match its current main category. Policies without a category are skipped.") {
+                        requestSelfServiceSync()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.teal)
-                    .disabled(isBusy)
-                    .help("Set each selected policy's Self Service category to match its current main category. Policies without a category are skipped.")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Divider()
 
-                // MARK: - Bulk Settings (Policies Only)
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Settings")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-
-                    Button(action: { showBulkSettingsSheet = true }) {
-                        HStack {
-                            Image(systemName: "slider.horizontal.3")
-                            Text("Edit Policies (\(selectedIDs.count))")
-                        }
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity)
+                ActionBarColumn(title: "Edit Policies (\(selectedIDs.count))") {
+                    SoftIconButton(systemImage: "slider.horizontal.3", tint: .indigo, isDisabled: isBusy, help: "Bulk-set frequency, a templated custom trigger, and/or a Self Service category across the selected policies.") {
+                        showBulkSettingsSheet = true
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.indigo)
-                    .disabled(isBusy)
-                    .help("Bulk-set frequency, a templated custom trigger, and/or a Self Service category across the selected policies.")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Divider()
             }
 
             // MARK: - Center-Right: Scope Management (Profiles Only)
             if mode == .profiles {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Scope Management")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.secondary)
-                    
-                    HStack {
-                        Menu {
-                            ForEach(ScopeAction.allCases) { action in
-                                Button {
-                                    selectedScopeAction = action
-                                } label: {
-                                    Label(action.rawValue, systemImage: action.icon)
-                                }
-                            }
-                        } label: {
-                            HStack {
-                                if let action = selectedScopeAction {
-                                    Image(systemName: action.icon)
-                                        .foregroundColor(action.color)
-                                    Text(action.rawValue)
-                                        .foregroundColor(.primary)
-                                } else {
-                                    Text("Select Scope Action...")
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(8)
-                            .background(Color.black.opacity(0.1))
-                            .cornerRadius(6)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .frame(maxWidth: 200)
-                        
-                        Button(action: requestScopeChange) {
-                            Text("Apply Scope")
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                        .disabled(selectedScopeAction == nil || isBusy)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                
+                ActionBarColumn(title: "Set Scope") { scopeMenu }
+
                 Divider()
             }
             
             // MARK: - Clone Section
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Cloning")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.secondary)
-                
-                Button(action: { if mode == .policies { showBulkCloneSheet = true } else { showCloneSheet = true } }) {
-                    HStack {
-                        Image(systemName: "doc.on.doc")
-                        Text(mode == .policies ? "Clone Selected (\(selectedIDs.count))" : "Clone Selection")
-                    }
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
+            ActionBarColumn(title: mode == .policies ? "Clone Selected (\(selectedIDs.count))" : "Clone Selection") {
+                SoftIconButton(systemImage: "doc.on.doc", tint: .purple, isDisabled: isBusy, help: "Clone the selected items") {
+                    if mode == .policies { showBulkCloneSheet = true } else { showCloneSheet = true }
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.purple)
-                .disabled(isBusy)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             
             Divider()
             
-            // MARK: - Right: Danger Zone
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Danger Zone")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.red.opacity(0.8))
-                
-                Button(action: requestDelete) {
-                    Label("Delete Selection", systemImage: "trash.fill")
-                        .fontWeight(.medium)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity)
+            // MARK: - Danger Zone
+            ActionBarColumn(title: "Delete Selection") {
+                SoftIconButton(systemImage: "trash.fill", tint: .red, role: .destructive, isDisabled: isBusy, help: "Delete the selected items") {
+                    requestDelete()
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .disabled(isBusy)
             }
-            .frame(width: 160)
         }
         .padding(20)
         .appBarBackground(cornerRadius: 16)
@@ -386,9 +237,46 @@ struct ActionPanelView: View {
             mutableCategories = categories
         }
     }
-    
+
+    // MARK: - Pieces
+
+    /// Soft indigo "folder" button that opens the searchable blue-chip category picker.
+    private var moveButton: some View {
+        Button { showMovePopover = true } label: {
+            SoftIconLabel(systemImage: "folder", tint: .indigo)
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy || categories.isEmpty)
+        .help("Move the selected items to a category")
+        .popover(isPresented: $showMovePopover, arrowEdge: .top) {
+            CategoryMovePicker(categories: categories) { category in
+                showMovePopover = false
+                selectedTargetCategory = category
+                requestMove()
+            }
+        }
+    }
+
+    /// Soft green "scope" menu (profiles only) sized identically to the other action buttons.
+    private var scopeMenu: some View {
+        Menu {
+            Button { selectedScopeAction = .allComputers; requestScopeChange() } label: {
+                Label(ScopeAction.allComputers.rawValue, systemImage: ScopeAction.allComputers.icon)
+            }
+            Button(role: .destructive) { selectedScopeAction = .removeScope; requestScopeChange() } label: {
+                Label(ScopeAction.removeScope.rawValue, systemImage: ScopeAction.removeScope.icon)
+            }
+        } label: {
+            SoftIconLabel(systemImage: "scope", tint: .green)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .disabled(isBusy)
+        .help("Set the scope for the selected profiles")
+    }
+
     // MARK: - Logic
-    
+
     func requestScopeChange() {
         guard let scopeAction = selectedScopeAction else { return }
         let count = selectedIDs.count

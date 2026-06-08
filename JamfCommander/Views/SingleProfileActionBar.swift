@@ -3,7 +3,7 @@
 //  JamfCommander
 //
 //  Single-item action bar for Configuration Profiles — the profile counterpart to
-//  SingleActionBar (policies). Same look (centred action-name headers + compact icon-only
+//  SingleActionBar (policies). Same look (centred action-name headers + soft tinted icon
 //  buttons + the blue category popover), with the profile action set: Move to Category,
 //  Set Scope, Edit Profile (opens the inspector), Clone Profile, Delete Profile. Every
 //  write is confirmed and reports a real result.
@@ -30,8 +30,6 @@ struct SingleProfileActionBar: View {
     @State private var showResultsSheet = false
 
     @State private var showMovePopover = false
-    @State private var categorySearch = ""
-    @State private var chipsContentHeight: CGFloat = 120
 
     @State private var showCloneSheet = false
     @State private var cloneConfig: CloneConfiguration?
@@ -45,32 +43,32 @@ struct SingleProfileActionBar: View {
 
             Divider()
 
-            actionColumn("Move to Category") { moveButton }
+            ActionBarColumn(title: "Move to Category") { moveButton }
 
             Divider()
 
-            actionColumn("Set Scope") { scopeButton }
+            ActionBarColumn(title: "Set Scope") { scopeButton }
 
             Divider()
 
-            actionColumn("Edit Profile") {
-                iconButton("slider.horizontal.3", tint: .blue, help: "Edit this profile") {
+            ActionBarColumn(title: "Edit Profile") {
+                SoftIconButton(systemImage: "slider.horizontal.3", tint: .blue, isDisabled: isBusy, help: "Edit this profile") {
                     onEdit(profile.id)
                 }
             }
 
             Divider()
 
-            actionColumn("Clone Profile") {
-                iconButton("doc.on.doc", tint: .purple, help: "Clone this profile") {
+            ActionBarColumn(title: "Clone Profile") {
+                SoftIconButton(systemImage: "doc.on.doc", tint: .purple, isDisabled: isBusy, help: "Clone this profile") {
                     showCloneSheet = true
                 }
             }
 
             Divider()
 
-            actionColumn("Delete Profile") {
-                iconButton("trash.fill", tint: .red, role: .destructive, help: "Delete this profile") {
+            ActionBarColumn(title: "Delete Profile") {
+                SoftIconButton(systemImage: "trash.fill", tint: .red, role: .destructive, isDisabled: isBusy, help: "Delete this profile") {
                     requestDelete()
                 }
             }
@@ -138,47 +136,18 @@ struct SingleProfileActionBar: View {
         .frame(width: 150, alignment: .leading)
     }
 
-    private func actionColumn<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 8) {
-            Text(title)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity)
-            content()
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func iconButton(_ systemImage: String, tint: Color, role: ButtonRole? = nil, help: String, action: @escaping () -> Void) -> some View {
-        Button(role: role, action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: 60, height: 38)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(tint)
-        .controlSize(.large)
-        .disabled(isBusy)
-        .help(help)
-    }
-
     private var moveButton: some View {
         Button { showMovePopover = true } label: {
-            Image(systemName: "folder")
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: 60, height: 38)
+            SoftIconLabel(systemImage: "folder", tint: .indigo)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.indigo)
-        .controlSize(.large)
+        .buttonStyle(.plain)
         .disabled(isBusy || categories.isEmpty)
         .help("Move this profile to a category")
         .popover(isPresented: $showMovePopover, arrowEdge: .top) {
-            moveCategoryPopover
+            CategoryMovePicker(categories: categories) { category in
+                showMovePopover = false
+                requestMove(to: category)
+            }
         }
     }
 
@@ -187,83 +156,12 @@ struct SingleProfileActionBar: View {
             Button { requestScopeAllComputers() } label: { Label("Scope to All Computers", systemImage: "globe") }
             Button(role: .destructive) { requestRemoveScope() } label: { Label("Remove Scope", systemImage: "xmark.circle") }
         } label: {
-            Image(systemName: "scope")
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: 60, height: 38)
+            SoftIconLabel(systemImage: "scope", tint: .green)
         }
-        .menuStyle(.button)
-        .buttonStyle(.borderedProminent)
-        .tint(.green)
-        .controlSize(.large)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .disabled(isBusy)
         .help("Set this profile's scope")
-    }
-
-    private var filteredCategories: [Category] {
-        let query = categorySearch.trimmingCharacters(in: .whitespaces)
-        let base = query.isEmpty ? categories : categories.filter { $0.name.localizedCaseInsensitiveContains(query) }
-        return base.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
-    private var moveCategoryPopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Move to Category")
-                .font(.headline)
-
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                TextField("Search categories", text: $categorySearch)
-                    .textFieldStyle(.plain)
-            }
-            .padding(8)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-            .cornerRadius(8)
-
-            if filteredCategories.isEmpty {
-                Text("No categories match “\(categorySearch)”.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 12)
-            } else {
-                ScrollView {
-                    FlowLayout(spacing: 8, alignment: .leading) {
-                        ForEach(filteredCategories) { category in
-                            categoryChip(category)
-                        }
-                    }
-                    .padding(2)
-                    .onGeometryChange(for: CGFloat.self) { proxy in
-                        proxy.size.height
-                    } action: { newHeight in
-                        chipsContentHeight = newHeight
-                    }
-                }
-                .frame(height: min(chipsContentHeight + 4, 480))
-            }
-        }
-        .padding(16)
-        .frame(width: 600)
-    }
-
-    private func categoryChip(_ category: Category) -> some View {
-        Button {
-            showMovePopover = false
-            requestMove(to: category)
-        } label: {
-            Text(category.name)
-                .font(.callout)
-                .fontWeight(.medium)
-                .lineLimit(1)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color.blue.opacity(0.15))
-                .foregroundStyle(Color.blue)
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(Color.blue.opacity(0.5), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .help("Move to “\(category.name)”")
     }
 
     // MARK: - Actions
