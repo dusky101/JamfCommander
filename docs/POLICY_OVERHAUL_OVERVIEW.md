@@ -318,3 +318,8 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   Match Self Service / Edit Policies / Set Scope / Clone / Delete are now soft tinted icon buttons under
   centred headers. macOS build passes. **Phase 6 remaining:** typography hierarchy, inspector
   header/tab/save-bar refinement, richer cards, loading/empty-state polish, Dynamic Type/contrast pass.
+- 2026-06-08 — Phase 6 (Set Scope capsule fix) — The "Set Scope" control had lost its tinted capsule:
+  a `Menu` label with `.menuStyle(.borderlessButton)` strips the `SoftIconLabel` background/foreground.
+  Replaced it with a shared `ScopeActionButton` (plain button + compact popover offering "Scope to All
+  Computers" / "Remove Scope"), so it renders the same green capsule as the other action buttons. Used
+  in both `SingleProfileActionBar` and the bulk `ActionPanelView` (profiles mode). macOS build passes.

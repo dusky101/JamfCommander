@@ -152,16 +152,11 @@ struct SingleProfileActionBar: View {
     }
 
     private var scopeButton: some View {
-        Menu {
-            Button { requestScopeAllComputers() } label: { Label("Scope to All Computers", systemImage: "globe") }
-            Button(role: .destructive) { requestRemoveScope() } label: { Label("Remove Scope", systemImage: "xmark.circle") }
-        } label: {
-            SoftIconLabel(systemImage: "scope", tint: .green)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .disabled(isBusy)
-        .help("Set this profile's scope")
+        ScopeActionButton(
+            isDisabled: isBusy,
+            onAllComputers: { requestScopeAllComputers() },
+            onRemoveScope: { requestRemoveScope() }
+        )
     }
 
     // MARK: - Actions

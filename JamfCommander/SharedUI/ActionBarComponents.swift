@@ -143,3 +143,63 @@ struct CategoryMovePicker: View {
         .help("Move to “\(category.name)”")
     }
 }
+
+/// Soft green "scope" button (sized identically to the other action buttons via `SoftIconLabel`)
+/// that opens a compact popover offering "Scope to All Computers" and "Remove Scope". Uses a plain
+/// button + popover rather than a `Menu`, because a `Menu` label with `.borderlessButton` drops the
+/// tinted-capsule styling — this keeps the same capsule look as the other buttons.
+struct ScopeActionButton: View {
+    var isDisabled: Bool = false
+    var onAllComputers: () -> Void
+    var onRemoveScope: () -> Void
+
+    @State private var show = false
+
+    var body: some View {
+        Button { show = true } label: {
+            SoftIconLabel(systemImage: "scope", tint: .green)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .help("Set the scope")
+        .popover(isPresented: $show, arrowEdge: .top) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Set Scope")
+                    .font(.headline)
+
+                scopeRow(title: "Scope to All Computers", systemImage: "globe", tint: .green) {
+                    show = false
+                    onAllComputers()
+                }
+                scopeRow(title: "Remove Scope", systemImage: "xmark.circle", tint: .orange) {
+                    show = false
+                    onRemoveScope()
+                }
+            }
+            .padding(16)
+            .frame(width: 300)
+        }
+    }
+
+    private func scopeRow(title: String, systemImage: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(tint)
+                    .frame(width: 20)
+                Text(title)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(tint.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(tint.opacity(0.4), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+}

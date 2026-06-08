@@ -257,22 +257,13 @@ struct ActionPanelView: View {
         }
     }
 
-    /// Soft green "scope" menu (profiles only) sized identically to the other action buttons.
+    /// Soft green "scope" button (profiles only) sized identically to the other action buttons.
     private var scopeMenu: some View {
-        Menu {
-            Button { selectedScopeAction = .allComputers; requestScopeChange() } label: {
-                Label(ScopeAction.allComputers.rawValue, systemImage: ScopeAction.allComputers.icon)
-            }
-            Button(role: .destructive) { selectedScopeAction = .removeScope; requestScopeChange() } label: {
-                Label(ScopeAction.removeScope.rawValue, systemImage: ScopeAction.removeScope.icon)
-            }
-        } label: {
-            SoftIconLabel(systemImage: "scope", tint: .green)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .disabled(isBusy)
-        .help("Set the scope for the selected profiles")
+        ScopeActionButton(
+            isDisabled: isBusy,
+            onAllComputers: { selectedScopeAction = .allComputers; requestScopeChange() },
+            onRemoveScope: { selectedScopeAction = .removeScope; requestScopeChange() }
+        )
     }
 
     // MARK: - Logic
