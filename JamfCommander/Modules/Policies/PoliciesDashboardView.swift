@@ -124,6 +124,10 @@ struct PoliciesDashboardView: View {
                 }
             }
         }
+        // Pin to the top. Without this, content taller than the pane is centred, so the overflow is
+        // split above and below and the filter bar disappears under the title bar instead of simply
+        // running off the bottom.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.2), value: selectedPolicyIDs.isEmpty)
         .task { await loadData() }

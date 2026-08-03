@@ -184,12 +184,20 @@ struct FlowLayout: Layout {
     var alignment: HorizontalAlignment = .center
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = flow(in: proposal.replacingUnspecifiedDimensions().width, subviews: subviews, spacing: spacing)
-        return result.size
+        // An unspecified width must NOT go through `replacingUnspecifiedDimensions()`: its default
+        // replacement is 10 × 10, so every chip would be wider than the line and wrap onto a row of
+        // its own. With ~30 categories that reports a height of several hundred points, the filter
+        // bar claims more room than the window has, and the whole pane is pushed up under the
+        // title bar. Measure on a single line instead, which is what "ideal size" should mean here.
+        let maxWidth = proposal.width ?? .infinity
+        let result = flow(in: maxWidth, subviews: subviews, spacing: spacing)
+        return CGSize(width: proposal.width ?? result.contentWidth, height: result.size.height)
     }
-    
+
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = flow(in: proposal.replacingUnspecifiedDimensions().width, subviews: subviews, spacing: spacing)
+        // Lay out against the width we were actually given. Re-flowing against the *proposal* let
+        // placement disagree with the measured size, so rows could be positioned outside the bounds.
+        let result = flow(in: bounds.width, subviews: subviews, spacing: spacing)
         for (index, row) in result.rows.enumerated() {
             let rowWidth = row.map { $0.size.width }.reduce(0, +) + CGFloat(row.count - 1) * spacing
             let xOffset = alignment == .leading ? 0 : (bounds.width - rowWidth) / 2
@@ -206,19 +214,32 @@ struct FlowLayout: Layout {
         var rows: [[(index: Int, size: CGSize)]] = []
         var rowYs: [CGFloat] = []
         var size: CGSize = .zero
+        /// The width actually used by the widest row — needed when the proposal is unspecified,
+        /// where reporting the (infinite) proposed width would be meaningless.
+        var contentWidth: CGFloat = 0
     }
-    
+
     private func flow(in maxWidth: CGFloat, subviews: Subviews, spacing: CGFloat) -> LayoutResult {
         var result = LayoutResult()
         var currentRow: [(index: Int, size: CGSize)] = []
         var currentX: CGFloat = 0
         var currentY: CGFloat = 0
         var currentRowHeight: CGFloat = 0
+        var widestRow: CGFloat = 0
+
+        func closeRow() {
+            guard !currentRow.isEmpty else { return }
+            let rowWidth = currentRow.map(\.size.width).reduce(0, +)
+                + CGFloat(currentRow.count - 1) * spacing
+            widestRow = max(widestRow, rowWidth)
+            result.rows.append(currentRow)
+            result.rowYs.append(currentY)
+        }
+
         for (index, subview) in subviews.enumerated() {
             let size = subview.sizeThatFits(.unspecified)
             if currentX + size.width > maxWidth && !currentRow.isEmpty {
-                result.rows.append(currentRow)
-                result.rowYs.append(currentY)
+                closeRow()
                 currentY += currentRowHeight + spacing
                 currentRow = []
                 currentX = 0
@@ -229,11 +250,12 @@ struct FlowLayout: Layout {
             currentRowHeight = max(currentRowHeight, size.height)
         }
         if !currentRow.isEmpty {
-            result.rows.append(currentRow)
-            result.rowYs.append(currentY)
+            closeRow()
             currentY += currentRowHeight
         }
-        result.size = CGSize(width: maxWidth, height: currentY)
+
+        result.contentWidth = widestRow
+        result.size = CGSize(width: maxWidth.isFinite ? maxWidth : widestRow, height: currentY)
         return result
     }
 }

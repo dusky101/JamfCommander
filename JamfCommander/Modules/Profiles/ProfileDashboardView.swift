@@ -140,6 +140,9 @@ struct ProfileDashboardView: View {
                 .padding(.bottom, 50)
             }
         }
+        // Pin to the top, as in Policies — content taller than the pane must run off the bottom,
+        // never be centred so that the filter bar vanishes under the title bar.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.2), value: selectedProfileIDs.isEmpty)
         .onChange(of: refreshCoordinator.token) { Task { await refreshAction() } }

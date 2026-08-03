@@ -88,11 +88,13 @@ struct ContentView: View {
             
         } detail: {
             // MARK: - MAIN CONTENT
-            ZStack {
-                // Main Background — the app's signature gradient (shared with all sheets).
-                AppBackground()
-                    .ignoresSafeArea()
-                
+            //
+            // The gradient is a `.background`, not a `ZStack` sibling. As a sibling it took part in
+            // sizing the pane, and — because a ZStack centres its children — any module whose content
+            // measured taller than the pane had its overflow split evenly top and bottom, so the top
+            // of it disappeared under the title bar. As a background it is pure decoration: it can
+            // ignore the safe area freely without influencing where the module is placed.
+            Group {
                 if !isLoggedIn {
                     LoginView(
                         api: api,
@@ -103,37 +105,16 @@ struct ContentView: View {
                         onLoginSuccess: refreshAllData
                     )
                     .frame(maxWidth: 400)
+                    // The login form stays centred; only the modules pin to the top.
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    // Module Switcher
-                    switch currentModule {
-                    case .dashboard:
-                        DashboardView(api: api, currentModule: $currentModule)
-                        
-                    
-                    case .policies:
-                        PoliciesDashboardView(api: api)
-                    
-                    case .profiles:
-                        ProfileDashboardView(
-                            profiles: profiles,
-                            categories: categories,
-                            api: api,
-                            selectedProfileIDs: $selectedProfileIDs,
-                            refreshAction: refreshAllData
-                        )
-                        
-                    case .computers:
-                        ComputersDashboardView(api: api)
-                        
-                    
-                        
-                    case .scripts:
-                        ScriptsDashboardView(api: api)
-                        
-                    case .packages:
-                        PackagesDashboardView(api: api) // <--- FIXED: Passed 'api' explicitly
-                    }
+                    moduleContent
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
+            }
+            .background {
+                AppBackground()
+                    .ignoresSafeArea()
             }
         }
         .sheet(isPresented: $showConfigSheet) {
@@ -147,8 +128,38 @@ struct ContentView: View {
         }
     }
     
+    /// The module for the current sidebar selection.
+    @ViewBuilder
+    private var moduleContent: some View {
+        switch currentModule {
+        case .dashboard:
+            DashboardView(api: api, currentModule: $currentModule)
+
+        case .policies:
+            PoliciesDashboardView(api: api)
+
+        case .profiles:
+            ProfileDashboardView(
+                profiles: profiles,
+                categories: categories,
+                api: api,
+                selectedProfileIDs: $selectedProfileIDs,
+                refreshAction: refreshAllData
+            )
+
+        case .computers:
+            ComputersDashboardView(api: api)
+
+        case .scripts:
+            ScriptsDashboardView(api: api)
+
+        case .packages:
+            PackagesDashboardView(api: api)
+        }
+    }
+
     // MARK: - Functions
-    
+
     func performAutoLogin() async {
         isBusy = true
         statusMessage = "Auto-connecting..."
