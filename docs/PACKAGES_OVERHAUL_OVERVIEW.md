@@ -32,6 +32,8 @@ Established during the pre-work review; the brief explains each in full. Do not 
 | F8 | Per-label source is readable at `fragments/labels/<label>.sh` (verified HTTP 200, 705 bytes for `mysqlworkbenchce`). | Cheap enough to fetch on demand to *explain* variance (arch-aware / always-latest / type / team ID). |
 | F9 | Ruled out by measurement: display-name collisions (**0** across 1,224 labels) and reserved entries (`version`, `longversion`, `valuesfromarguments`, `broken*` — none present). | Don't chase these. |
 | F10 | Already built by the policy overhaul and to be reused: `JamfAPIService+Icons.swift`, `SelfServiceIcon`, `IconImageCache`, `SelfServiceIconPickerView`, `IconBrowserView`, and the `NSOpenPanel` upload flow in `PolicySelfServiceEditorView`. `fetchComputers()` already requests `USER_AND_LOCATION`. | Phases 2 and 3 are wiring, not new infrastructure. |
+| F11 | Computer display logic is duplicated. The realname → username fallback is written **three different ways inside `ComputersDashboardView` alone** (`:34` search predicate, `:272` `userDisplayName`, `:333` `sortRealName`), and again in `ComputerExportService` and `JamfAPIService+Dashboard`. Four of the five files consuming `ComputerInventoryRecord` derive display values independently. | Phase 3 consolidates onto the model + a shared row view, rather than adding a fourth copy in the scope picker. |
+| F12 | **Reusing `ComputersDashboardView.computerTable` in the scope picker was considered and rejected.** Its column minimums total ~910 pt vs ~510 pt available (750 pt sheet − 220 pt category pane); the scope list is 150 pt tall so a `Table` header + rows leaves ~4 visible rows; and `Table(selection:)` uses standard list selection (a plain click *replaces* the selection) whereas the picker tap-toggles with a checkbox, which is correct for multi-machine scoping. | Share the derivation and the row content, not the `Table`. `SelfServiceIconPickerView` is reusable as-is only because it is already a self-contained picker. |
 
 ## Decisions locked in
 
@@ -46,6 +48,11 @@ Established during the pre-work review; the brief explains each in full. Do not 
   Per-label icon override is a nice-to-have only after the batch case is solid.
 - **Safe defaults everywhere:** no pin, no arch override, no icon ⇒ identical behaviour to today.
 - **Label-source inspection is informational only** and must degrade quietly if GitHub is unreachable.
+- **Computer display is shared via the model + a `SharedUI` row view, not by extracting the Table**
+  (F11, F12). Derivation goes on `ComputerInventoryRecord`; presentation goes in
+  `SharedUI/ComputerIdentityRow.swift`; the scope picker keeps its tap-to-toggle checkbox list. The
+  Computers-module refactor must be behaviour-preserving, and if it starts growing, the username display
+  ships standalone instead — that is the deliverable, the refactor is only the means.
 
 ## Progress
 
@@ -54,7 +61,9 @@ Established during the pre-work review; the brief explains each in full. Do not 
 a sweep found no other raw interpolation into Classic XML. macOS build green; live re-test with a `&` in a
 category name still outstanding. The rest of Phase 1 (label de-duplication, legible failure messages,
 dropping the raw-error-body `print()`, pre-flight duplicate check, wider deployed-policy detection) and
-Phases 2–5 are not started.
+Phases 2–5 are not started. Phase 3 has been re-scoped into a shared-component refactor (3.1 model
+derivation → 3.2 `SharedUI/ComputerIdentityRow` → 3.3 scope picker) after measuring that the Computers
+table itself is not reusable there — see F11/F12.
 **Last updated:** 2026-08-03.
 
 ### Phase 1 — Fix and harden policy creation (the actual bug)
@@ -86,12 +95,24 @@ Phases 2–5 are not started.
 - [ ] Verified: "no icon" run is byte-for-byte the behaviour of today
 - [ ] *(Optional)* per-label icon override
 
-### Phase 3 — Show the username in the computer scope picker
-- [ ] Row shows assigned user: `userAndLocation.realname` / `username`, fallback `general.lastLoggedInUsernameBinary`, clear "No assigned user" state
-- [ ] Serial still visible; row legible at the current 150 pt list height
-- [ ] `filteredComputers` search matches username, real name and serial (not just computer name)
-- [ ] Accessibility label reads computer name + user; not colour-dependent
-- [ ] Verified: searching a username selects the right Mac
+### Phase 3 — Shared computer display + username in the scope picker
+**3.1 — Model-level derivation (behaviour-preserving):**
+- [ ] `ComputerInventoryRecord`: `displayName`, `assignedUserDisplayName` (realname → username → `lastLoggedInUsernameBinary` → nil), `assignedUserEmail`, `isManaged`, `matches(_ searchText:)` — F11
+- [ ] `sort*` extension moved from `ComputersDashboardView.swift` to `Models/ComputerModels.swift`; `sortRealName` expressed via `assignedUserDisplayName` so there is one fallback rule
+- [ ] `ComputersDashboardView` refactored to use them; local `userDisplayName` and inline predicate deleted
+- [ ] Verified no behaviour change: every column still sorts, both filter-chip counts unchanged, search still matches name/serial/user/email, CSV export byte-identical
+
+**3.2 — Shared row content:**
+- [ ] `SharedUI/ComputerIdentityRow.swift` — device icon (tinted by managed state) + name + assigned user, optional serial/email, **compact** variant for the 150 pt list
+- [ ] Accessibility label reads computer name + assigned user; not colour-dependent
+- [ ] Used by the dashboard's Device and User cells **and** the scope picker row
+- [ ] `statusBadge` left alone (Managed/Unmanaged ≠ `JamfItemStatus`); generalising it is optional and out of scope
+
+**3.3 — Scope picker:**
+- [ ] Tap-to-toggle checkbox list and "N selected / Clear" retained — F12
+- [ ] Row body swapped for `ComputerIdentityRow` (compact), with a clear "No assigned user" state
+- [ ] `DeploymentConfigSheet.filteredComputers` uses `matches(_:)`; placeholder copy updated
+- [ ] Verified: searching a username finds the right Mac, and each row shows who the machine belongs to
 
 ### Phase 4 — Label variant & version pinning
 **4.1 — Detect and explain variance (do this regardless):**
@@ -161,3 +182,10 @@ _(Record genuinely new scope discovered while implementing, with a one-line reas
   `xcodebuild -scheme JamfCommander -destination "platform=macOS" build` ⇒ **BUILD SUCCEEDED**.
   Deliberately left for the rest of Phase 1: the raw-error-body `print()` at `+Packages.swift:~229`
   (invariant 4) and the failure-message mapping — not touched here to keep the diff to the escaping fix.
+- **2026-08-03** — Phase 3 redesigned after reviewing `ComputersDashboardView`. The user proposed
+  extracting `computerTable` into a shared component for the scope picker; measured and **rejected** —
+  ~910 pt of column minimums vs ~510 pt available, 150 pt list height, and `Table` selection semantics
+  are wrong for multi-machine scoping (F12). Found the stronger case instead: the realname → username
+  fallback exists in three different forms in that one file plus two services (F11). Phase 3 is now
+  3.1 model-level derivation → 3.2 `SharedUI/ComputerIdentityRow` → 3.3 scope picker, with an explicit
+  bail-out if the Computers-module refactor grows. Brief and this overview updated; no code changed.

@@ -127,6 +127,21 @@ Per-label source **is** cheaply readable for *informational* purposes — verifi
 - **Username data:** `fetchComputers()` already requests `section=USER_AND_LOCATION`, and
   `ComputerInventoryRecord.userAndLocation` carries `username`, `realname`, `email`. No API change is
   needed for phase 3 — it is a display + search change only.
+- **Computer display logic already exists in `ComputersDashboardView`** — and is duplicated. The
+  realname → username fallback is written **three different ways in that one file** (`:34` in the search
+  predicate, `:272` in `userDisplayName`, `:333` in `sortRealName`), and again in
+  `Services/Exports/ComputerExportService.swift` and `JamfAPIService+Dashboard.swift`. Four of the five
+  files that consume `ComputerInventoryRecord` derive display values independently. Phase 3 consolidates
+  this — see the design decision recorded there.
+
+  **Do not extract `ComputersDashboardView.computerTable` for reuse in the scope picker.** It was
+  considered and rejected: (a) its column minimums total ~910 pt but the scope picker has ~510 pt of
+  width (750 pt sheet − 220 pt category pane); (b) the scope list is 150 pt tall, so a `Table` header
+  plus rows leaves ~4 visible rows; (c) `Table(selection:)` uses standard list selection — a plain click
+  *replaces* the selection — whereas the scope picker deliberately tap-toggles with a checkbox, which is
+  correct for building a multi-machine scope and is what `scopeConfig.selectedComputerIDs` expects.
+  `SelfServiceIconPickerView` is reusable as-is because it is already a self-contained *picker*;
+  `computerTable` is a dashboard surface with sorting, context menus and double-click-to-inspect.
 - **XML safety:** `JamfAPIService.xmlEscape(_:)` (`JamfAPIService.swift:332`).
 
 ## Guardrails (already documented — do not restate, just follow)
@@ -202,18 +217,46 @@ Jamf error visible, so the later phases are built on evidence rather than a gues
 - **Done when:** a batch of two labels is created with a chosen icon and the icon is visible on both
   policies in the Jamf console and in Self Service; and a run with "no icon" is unchanged from today.
 
-### Phase 3 — Show the username in the computer scope picker
+### Phase 3 — Shared computer display + username in the scope picker
 
-Small and self-contained; no API change needed.
+No API change needed. Rather than duplicating the dashboard's display logic in the scope picker, pull the
+**derivation onto the model** and the **row content into `SharedUI/`**, then have both surfaces use them.
+Read the "do not extract `computerTable`" note in the Findings section before starting.
 
-- In `DeploymentConfigSheet.scopeComputerPicker`, show the assigned user alongside the computer name —
-  `userAndLocation?.realname` / `username`, falling back to `general?.lastLoggedInUsernameBinary`, with a
-  clear "No assigned user" state. Keep the serial visible.
-- Extend `filteredComputers` so the search matches **username, real name and serial**, not just the
-  computer name.
-- Keep rows legible at the current 150 pt list height (two-line row or name + muted secondary line);
-  don't rely on colour alone, and give the row an accessibility label that reads name + user.
+**3.1 — Model-level derivation (behaviour-preserving refactor)**
+- Add computed properties to `ComputerInventoryRecord` in `Models/ComputerModels.swift`:
+  `displayName`, `assignedUserDisplayName` (realname → username → `general.lastLoggedInUsernameBinary` →
+  nil), `assignedUserEmail`, `isManaged`, and `matches(_ searchText: String) -> Bool` (name, serial,
+  user, email).
+- Move the `sort*` extension out of `ComputersDashboardView.swift` into `Models/ComputerModels.swift`,
+  and express `sortRealName` in terms of `assignedUserDisplayName` so there is **one** fallback rule.
+- Refactor `ComputersDashboardView` to use them — delete its local `userDisplayName` and inline
+  predicate. This must change **no behaviour**.
+- **Done when:** the Computers table still sorts on every column, both filter chips still show the same
+  counts, search still matches name/serial/user/email, and CSV export is byte-identical to before.
+
+**3.2 — Shared row content**
+- Add `SharedUI/ComputerIdentityRow.swift`: device icon (`DeviceSymbols.iconName(for:)`, tinted by
+  managed state) + computer name + assigned user, with optional serial/email and a **compact** variant
+  for the 150 pt scope list. Accessibility label reads computer name + assigned user.
+- Use it for the dashboard's Device and User cells **and** the scope picker row.
+- Leave `ComputersDashboardView.statusBadge` alone — it reads Managed/Unmanaged, whereas
+  `SharedUI/StatusBadge` is bound to `JamfItemStatus` (Scoped/Unscoped/…). Generalising that is
+  optional and out of scope unless it falls out naturally.
+- **Done when:** the dashboard rows look unchanged and the same component renders in the scope picker.
+
+**3.3 — Scope picker**
+- Keep the existing tap-to-toggle checkbox list and the "N selected / Clear" affordance; swap the row
+  body for `ComputerIdentityRow` (compact) so the assigned user shows, with a clear "No assigned user"
+  state.
+- Replace `DeploymentConfigSheet.filteredComputers`' name-only predicate with `matches(_:)` so searching
+  a username or serial works, and update the field's placeholder copy accordingly.
 - **Done when:** searching a username finds the right Mac, and each row shows who the machine belongs to.
+
+**Caveat:** 3.1 and 3.2 modify the **Computers** module, which is otherwise out of scope for this
+overhaul. Keep the diff strictly mechanical, verify the dashboard by hand before moving on, and if the
+refactor starts growing, stop and do 3.3 standalone instead — the username display is the deliverable,
+the refactor is the means.
 
 ### Phase 4 — Label variant & version pinning (the `mysqlworkbenchce` / `python` ask)
 
