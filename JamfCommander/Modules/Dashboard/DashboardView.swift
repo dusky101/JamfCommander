@@ -29,6 +29,7 @@ struct DashboardView: View {
     @State private var showCategorySheet = false
     @State private var categoryToEdit: Category?
     @State private var categoryNameInput = ""
+    @State private var categorySaveError: String?
     @State private var isSaving = false
     @State private var categoryToDelete: Category?
     @State private var showDeleteConfirmation = false
@@ -284,6 +285,15 @@ struct DashboardView: View {
                 TextField("Category Name", text: $categoryNameInput)
                     .textFieldStyle(.roundedBorder).frame(width: 300)
                     .onSubmit { Task { await saveCategory() } }
+
+                if let categorySaveError {
+                    Label(categorySaveError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .frame(width: 300)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 HStack {
                     Button("Cancel") { showCategorySheet = false }
                         .keyboardShortcut(.escape, modifiers: [])
@@ -339,11 +349,13 @@ struct DashboardView: View {
     func openCategorySheet(for category: Category?) {
         categoryToEdit = category
         categoryNameInput = category?.name ?? ""
+        categorySaveError = nil
         showCategorySheet = true
     }
     
     func saveCategory() async {
         isSaving = true
+        categorySaveError = nil
         do {
             if let existing = categoryToEdit {
                 try await api.updateCategory(id: existing.id, newName: categoryNameInput)
@@ -353,7 +365,13 @@ struct DashboardView: View {
             showCategorySheet = false
             await refreshDashboard()
         } catch {
-            print("Failed to save category: \(error)")
+            // A failed write used to leave this sheet open with nothing said, which reads as
+            // "it won't let me save". Say what happened instead — no response body in the log
+            // (root CLAUDE.md, invariant 4).
+            print("[Dashboard] Category save rejected by Jamf")
+            categorySaveError = categoryToEdit == nil
+                ? "Jamf rejected this new category. Check the name and that your API client may create categories, then try again."
+                : "Jamf rejected the rename. Check the name and that your API client may update categories, then try again."
         }
         isSaving = false
     }

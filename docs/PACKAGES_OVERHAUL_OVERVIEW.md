@@ -283,6 +283,15 @@ not five across five — which is why the refactor stayed genuinely mechanical.
 
 ## Added during the overhaul
 
+- [x] **The Dashboard's category editor no longer fails silently** (raised by the user 2026-08-04, after
+      trying to rename a category back to one containing `&` and finding it "wouldn't let me save").
+      `DashboardView.saveCategory()` caught the error, `print`ed it and left the sheet open with nothing
+      said — the same silent-failure defect fixed in the deployment sheet's New Category field during
+      Phase 1, in the one other place that writes a category. It now shows the reason. **This was not a
+      regression from the overhaul** — `DashboardView.swift` was untouched by every phase; the underlying
+      write bug was the unescaped `&` that Phase 1 (`ab47453`) fixed, and the missing error state is why
+      it looked like the app was refusing to save.
+
 - [x] **Explicit confirmation before creating policies** (Phase 1). The sheet's "Deploy Policies" button
       fired straight at the tenant with no confirmation, which `.claude/rules/swiftui-views.md` requires
       for production writes. Now routes through `CommanderConfirmation`, stating the count, category and
