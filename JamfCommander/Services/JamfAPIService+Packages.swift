@@ -250,11 +250,13 @@ extension JamfAPIService {
         featureOnMainPage: Bool,
         displayInSelfServiceCategory: Bool,
         scopeConfig: DeploymentScopeConfig? = nil,
-        policyNameTemplate: String = "Install {appName}"
+        policyNameTemplate: String = "Install {appName}",
+        version: String? = nil,
+        overrides: [String] = []
     ) async throws -> Int? {
 
         let endpoint = "\(baseURL)/JSSResource/policies/id/0"
-        let policyName = policyNameTemplate.replacingOccurrences(of: "{appName}", with: appName)
+        let policyName = Self.resolvePolicyName(template: policyNameTemplate, appName: appName, version: version)
         let scope = scopeConfig ?? DeploymentScopeConfig()
         
         // Convert bools to explicit strings for XML safety
@@ -271,7 +273,18 @@ extension JamfAPIService {
         
         // Generate scope XML from the configuration
         let scopeXML = scope.toScopeXML()
-        
+
+        // Installomator re-reads its `key=value` arguments after the label runs, so these override
+        // whatever the label computed. parameter4-6 are taken (label, DEBUG, NOTIFY), leaving 7-11.
+        // Escaped like every other dynamic value — a pinned URL can legitimately contain `&`.
+        let overrideParameters = overrides
+            .prefix(InstallomatorOverrides.maximumOverrides)
+            .enumerated()
+            .map { index, value in
+                "<parameter\(index + 7)>\(Self.xmlEscape(value))</parameter\(index + 7)>"
+            }
+            .joined(separator: "\n                    ")
+
         let xmlBody = """
         <policy>
             <general>
@@ -306,6 +319,7 @@ extension JamfAPIService {
                     <parameter4>\(safeLabel)</parameter4>
                     <parameter5>DEBUG=0</parameter5>
                     <parameter6>NOTIFY=silent</parameter6>
+                    \(overrideParameters)
                 </script>
             </scripts>
         </policy>
@@ -351,6 +365,12 @@ extension JamfAPIService {
         // The policy now exists in Jamf. Read its id back so the caller can attach an icon — using
         // `try?` because failing to parse the id must never be reported as a failed creation.
         return try? parseIDFromXMLResponse(data: data, elementName: "id")
+    }
+
+    /// Resolves a policy name from the template. Lives on `InstallomatorOverrides` so the rule is
+    /// pure value logic that can be exercised on its own; this is the call site's shorthand.
+    static func resolvePolicyName(template: String, appName: String, version: String?) -> String {
+        InstallomatorOverrides.policyName(template: template, appName: appName, version: version)
     }
 
     // MARK: - Failure Classification

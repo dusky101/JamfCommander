@@ -56,8 +56,8 @@ Established during the pre-work review; the brief explains each in full. Do not 
 
 ## Progress
 
-**Current status:** **Phases 1–3 complete, plus label-name segmentation and Phase 4.1** (Phase 1 = `2bebedb`, Phase 2 = `0447469`, Phase 3 = `796f651`;
-the naming fix and Phase 4.1 are uncommitted). Phase 3 pulled the computer display derivation onto `ComputerInventoryRecord`, moved the
+**Current status:** **Phases 1–4 complete, plus label-name segmentation** (Phase 1 = `2bebedb`, Phase 2 = `0447469`, Phase 3 = `796f651`;
+label naming + Phase 4.1 = `66e3862`; Phase 4.2 uncommitted). Phase 3 pulled the computer display derivation onto `ComputerInventoryRecord`, moved the
 sort keys there with it, added `SharedUI/ComputerIdentityRow.swift`, and rebuilt the deployment scope
 picker row on it — so each Mac in the picker now shows who it belongs to and can be found by username,
 serial or email. F11 turned out to overcount the duplication (see the Phase 3 note), so the Computers-module
@@ -83,7 +83,7 @@ below). **Live verification against a tenant is the only thing outstanding for P
 has been exercised against Jamf yet, including the `&`-in-a-category-name case. Phases 2–5 not started.
 Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation → 3.2
 `SharedUI/ComputerIdentityRow` → 3.3 scope picker) — see F11/F12.
-**Last updated:** 2026-08-03 (label naming + Phase 4.1).
+**Last updated:** 2026-08-03 (Phase 4 complete).
 
 ### Phase 1 — Fix and harden policy creation (the actual bug)
 - [x] De-duplicate labels in `fetchInstallomatorLabelsFromGitHub()` (stable order, case-insensitive; log the drop) — F2
@@ -202,14 +202,44 @@ not five across five — which is why the refactor stayed genuinely mechanical.
       question in the brief, answered**
 
 **4.2 — Advanced overrides (opt-in, per label):**
-- [ ] Up to five `key=value` overrides written to `parameter7`–`parameter11` — F6
-- [ ] Strict validation: `key=value` shape, key allow-list, no whitespace/newlines, `downloadURL` must be `https://`
-- [ ] XML-escaped before interpolation
-- [ ] Live preview of the exact parameter strings to be written
-- [ ] Default "Let Installomator decide (recommended)" — no overrides
-- [ ] Prominent warnings: pinned `downloadURL` goes stale; a pinned architecture installs the wrong binary on the other architecture
-- [ ] No "Silicon / Intel" toggle offered as a normal option; no vendor-page scraping in the app — F1, F7
-- [ ] Arch-split recipe (two policies + arch smart groups) documented in the overview and README
+- [x] Up to five `key=value` overrides written to `parameter7`–`parameter11` — F6
+- [x] Strict validation: key allow-list, no whitespace in values, `downloadURL` must be `https://`, no
+      duplicate keys, at most five, version strings restricted to characters safe in both a policy name
+      and a single shell argument
+- [x] XML-escaped before interpolation — a pinned URL can legitimately contain `&`
+- [x] Live preview of the exact parameter strings to be written, per version
+- [x] Default "Let Installomator decide (recommended)" — no overrides. Verified that this produces one
+      unpinned variant with no extra parameters, i.e. byte-identical XML to before pinning existed
+- [x] Prominent warnings: pinned `downloadURL` goes stale; a pinned architecture installs the wrong binary
+      on the other architecture
+- [x] No "Silicon / Intel" toggle offered as a normal option; no vendor-page scraping in the app — F1, F7
+- [x] Arch-split recipe (two policies + arch smart groups) — stated in the pinning section's warning; the
+      README wording is Phase 5's job
+
+**4.2 — added at the user's request (2026-08-03): one label, many versions, one pass**
+- [x] The sheet expands a single label into **one policy per version**, all sharing the category, script,
+      icon and scope from the same window — the user's actual ask. `{version}` in the name template and in
+      any override value is substituted per version, so the URL pattern is typed once
+- [x] **Restricted to single-label runs, deliberately:** a pinned Python URL is meaningless for Firefox.
+      With more than one label selected the section explains why it is unavailable rather than hiding
+- [x] Everything downstream reads one expanded list (`plannedPolicies`), so the duplicate-name pre-flight,
+      the review list, the footer count and the confirmation can never disagree about how many policies
+      a run creates
+- [x] Guard found while verifying: pinning several versions with no `{version}` in the name template would
+      create identical names and Jamf would reject all but the first. That is now a blocking validation
+      message rather than a batch of 409s
+- [x] The fan-out reuses the same per-policy 0.5 s pacing, so a four-version run is throttled exactly like
+      a four-label one
+- [ ] ~~Offer a list of *available* versions to choose from (e.g. "latest 3.12")~~ **Not possible, and not
+      attempted.** The only source of which versions exist and where they live is the vendor's site, which
+      the label scrapes on the Mac at install time (F7). Replicating that would mean per-vendor scraping
+      logic for 1,224 labels that silently rots, and Python publishes no stable per-series URL. The
+      administrator supplies the versions; the app validates, expands and previews.
+- [x] **Verified with the shipping validation/expansion code** (`swiftc` against
+      `Models/InstallomatorOverrides.swift`): the python case expands `3.11.9, 3.12.7, 3.13.1` — including
+      de-duplicating a repeat — into three correctly-named policies with the right `parameter7`–`parameter9`
+      strings; all nine validation rules fire on cue; a missing `{version}` leaves no trailing space in the
+      name; and repeated faults are reported once
 - [ ] Verified: `python` deploys pinned to a chosen version and installs exactly that version on a test Mac
 
 ### Phase 5 — Polish, docs and consistency pass
@@ -278,6 +308,27 @@ not five across five — which is why the refactor stayed genuinely mechanical.
       Affects categorisation only, and is overwritten by the next correct deploy. Revisit if it bites.
 
 ## Progress log
+
+- **2026-08-03** — **Phase 4.2 complete, extended at the user's request.** They asked whether the sheet
+  could offer a *choice* of versions for a label like `python` — latest of the 3.12 series, or individual
+  releases — picking several and having one window create a policy per version. The first half is not
+  possible and was not faked: only the vendor's site knows which versions exist and where they live, the
+  label scrapes it on the Mac at install time (F7), and Python publishes no stable per-series URL. The
+  second half is now built. A single-label run can list versions, give one override pattern containing
+  `{version}`, and get one policy per version — named by version, all sharing the category, script, icon
+  and scope. `parameter7`–`parameter11` carry the resolved overrides, XML-escaped.
+  Restricted to single-label runs on purpose: a pinned Python URL is meaningless for Firefox, and the
+  section says so rather than hiding. Everything downstream reads one expanded `plannedPolicies` list, so
+  the duplicate-name pre-flight, the review list, the footer count and the confirmation cannot disagree.
+  Verification found a real trap: pinning several versions without `{version}` in the name template would
+  have created identical names and collected 409s — now a blocking message. Verified by running the
+  shipping `InstallomatorOverrides` code: the python case expands three versions (de-duplicating a repeat)
+  into correctly-named policies with the right parameter strings, all nine validation rules fire, an unused
+  `{version}` leaves no trailing space, and repeated faults are reported once. The default path produces one
+  unpinned variant with no extra parameters — byte-identical to before pinning existed.
+  `xcodebuild -scheme JamfCommander -destination "platform=macOS" build` ⇒ **BUILD SUCCEEDED**.
+  **Still open:** the brief's own acceptance test — deploying pinned `python` and confirming that exact
+  version installs on a test Mac — needs a tenant and a Mac.
 
 - **2026-08-03** — **Label naming fixed, and Phase 4.1 complete.** The user deployed
   `mysqlworkbenchce` successfully and reported the resulting policy was called "Install

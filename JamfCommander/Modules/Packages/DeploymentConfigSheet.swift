@@ -99,6 +99,10 @@ struct InstallomatorDeploymentPlan {
     /// An icon already in Jamf's icon library, attached to each policy after it is created.
     /// `nil` — the default — leaves the policies without a Self Service icon, exactly as before.
     var iconID: Int?
+
+    /// The policies to create **per selected label**. The default single unpinned variant reproduces
+    /// today's behaviour exactly; several variants means one policy per pinned version.
+    var variants: [InstallomatorPolicyVariant] = [.unpinned]
 }
 
 struct DeploymentConfigSheet: View {
@@ -133,6 +137,11 @@ struct DeploymentConfigSheet: View {
     // Policy Naming
     @State private var policyNameTemplate = "Install {appName}"
     @State private var showNameReview = false
+
+    // Version pinning (single-label runs only)
+    @State private var isPinningVersions = false
+    @State private var versionsText = ""
+    @State private var overrides: [InstallomatorOverride] = [InstallomatorOverride()]
     
     // Self Service Options
     @State private var featureOnMainPage = false
@@ -162,14 +171,64 @@ struct DeploymentConfigSheet: View {
 
     // MARK: - Pre-flight Duplicate Check
 
-    /// The policy name this run would create for one label.
-    private func resolvedName(for item: InstallomatorItem) -> String {
-        policyNameTemplate.replacingOccurrences(of: "{appName}", with: item.displayName)
+    /// Whether version pinning is on offer. Overrides describe one app's downloads, so they only
+    /// make sense for a run containing a single label — a pinned Python URL is meaningless for Firefox.
+    private var supportsVersionPinning: Bool { pendingItems.count == 1 }
+
+    /// The versions typed by the administrator, in the order given.
+    private var pinnedVersions: [String] {
+        guard supportsVersionPinning, isPinningVersions else { return [] }
+        return InstallomatorOverrides.parseVersions(versionsText)
+    }
+
+    /// Anything that must be fixed before deploying.
+    private var pinningIssues: [InstallomatorOverrides.Issue] {
+        guard supportsVersionPinning, isPinningVersions else { return [] }
+        return InstallomatorOverrides.issues(
+            overrides: overrides,
+            versions: pinnedVersions,
+            nameTemplate: policyNameTemplate
+        )
+    }
+
+    /// The policies this run will create for each label.
+    private var plannedVariants: [InstallomatorPolicyVariant] {
+        guard supportsVersionPinning, isPinningVersions else { return [.unpinned] }
+        return InstallomatorOverrides.variants(overrides: overrides, versions: pinnedVersions)
+    }
+
+    /// The policy name for one label and one variant.
+    private func resolvedName(for item: InstallomatorItem, variant: InstallomatorPolicyVariant) -> String {
+        JamfAPIService.resolvePolicyName(
+            template: policyNameTemplate,
+            appName: item.displayName,
+            version: variant.version
+        )
+    }
+
+    /// One policy this run will create. Identified by position rather than by name, because two
+    /// variants can briefly resolve to the same name while the template is being edited.
+    private struct PlannedPolicy: Identifiable {
+        let id: Int
+        let item: InstallomatorItem
+        let name: String
+    }
+
+    /// Every policy this run would create — one row per label per variant. Everything downstream
+    /// (the duplicate check, the review list, the confirmation count) reads this, so pinning can
+    /// never make those three disagree.
+    private var plannedPolicies: [PlannedPolicy] {
+        pendingItems
+            .flatMap { item in plannedVariants.map { (item, $0) } }
+            .enumerated()
+            .map { index, unit in
+                PlannedPolicy(id: index, item: unit.0, name: resolvedName(for: unit.0, variant: unit.1))
+            }
     }
 
     /// The policy names this run would create, resolved from the current template.
     private var resolvedPolicyNames: [String] {
-        pendingItems.map(resolvedName(for:))
+        plannedPolicies.map(\.name)
     }
 
     /// Labels whose app name is still one unbroken word, so the resulting policy name reads like the
@@ -335,16 +394,16 @@ struct DeploymentConfigSheet: View {
                                 TextField("e.g. Install {appName}", text: $policyNameTemplate)
                                     .textFieldStyle(.roundedBorder)
                                 
-                                Text("Use **{appName}** as a placeholder for the application name.")
+                                Text("Use **{appName}** for the application name, and **{version}** when pinning versions below.")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                                 
-                                if !policyNameTemplate.isEmpty, let first = pendingItems.first {
+                                if !policyNameTemplate.isEmpty, let first = plannedPolicies.first {
                                     HStack(spacing: 4) {
                                         Text("Preview:")
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
-                                        Text(resolvedName(for: first))
+                                        Text(first.name)
                                             .font(.caption2)
                                             .foregroundColor(.blue)
                                             .italic()
@@ -416,7 +475,11 @@ struct DeploymentConfigSheet: View {
                             }
                             
                             Divider()
-                            
+
+                            versionPinningSection
+
+                            Divider()
+
                             // Summary Box
                             if let scriptID = selectedScriptID,
                                let script = scripts.first(where: { $0.id == scriptID }) {
@@ -475,16 +538,24 @@ struct DeploymentConfigSheet: View {
 
             // Footer
             HStack {
-                Text("\(pendingItems.count) \(pendingItems.count == 1 ? "label" : "labels") selected")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(pendingItems.count) \(pendingItems.count == 1 ? "label" : "labels") selected")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if plannedPolicies.count != pendingItems.count {
+                        Text("\(plannedPolicies.count) policies will be created")
+                            .font(.caption2)
+                            .foregroundColor(.blue)
+                    }
+                }
 
                 Spacer()
 
                 Button("Deploy Policies", action: requestDeployment)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled(selectedCategory == nil || selectedScriptID == nil || !isScopeValid || policyNameTemplate.isEmpty)
+                    .disabled(selectedCategory == nil || selectedScriptID == nil || !isScopeValid
+                              || policyNameTemplate.isEmpty || !pinningIssues.isEmpty)
             }
             .padding()
             .background(Color(nsColor: .windowBackgroundColor))
@@ -510,6 +581,162 @@ struct DeploymentConfigSheet: View {
         .onAppear(perform: loadData)
     }
 
+    // MARK: - Version Pinning
+
+    /// Optional per-label version pinning: one policy per version, each carrying its own
+    /// Installomator argument overrides in parameter7–parameter11.
+    ///
+    /// The app cannot offer a list of *available* versions — labels discover those by scraping the
+    /// vendor's site on the Mac at install time, and replicating that here would mean per-vendor
+    /// scraping logic that silently goes stale. So the administrator supplies the versions and the
+    /// URL pattern once, and the app expands, validates and previews.
+    @ViewBuilder
+    private var versionPinningSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("6. Version Pinning (Advanced)")
+                .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
+
+            if !supportsVersionPinning {
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(.secondary)
+                    Text("Available when a single label is selected — a pinned download URL describes one application, so it can't apply to a mixed batch.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                .cornerRadius(6)
+            } else {
+                Picker("", selection: $isPinningVersions) {
+                    Text("Let Installomator decide (recommended)").tag(false)
+                    Text("Pin specific versions").tag(true)
+                }
+                .pickerStyle(.radioGroup)
+                .labelsHidden()
+
+                if isPinningVersions {
+                    pinningEditor
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var pinningEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Versions — one policy is created for each")
+                    .font(.caption)
+                TextField("e.g. 3.11.9, 3.12.7, 3.13.1", text: $versionsText, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...3)
+                    .accessibilityLabel("Versions to pin")
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Installomator overrides — use {version} where the version appears")
+                    .font(.caption)
+
+                ForEach($overrides) { $override in
+                    HStack(spacing: 6) {
+                        Picker("", selection: $override.key) {
+                            Text("Choose…").tag("")
+                            ForEach(InstallomatorOverrides.allowedKeys, id: \.self) { key in
+                                Text(key).tag(key)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 145)
+                        .accessibilityLabel("Override variable")
+
+                        TextField("value", text: $override.value)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .accessibilityLabel("Override value")
+
+                        Button {
+                            overrides.removeAll { $0.id == override.id }
+                            if overrides.isEmpty { overrides = [InstallomatorOverride()] }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove this override")
+                    }
+                }
+
+                Button {
+                    overrides.append(InstallomatorOverride())
+                } label: {
+                    Label("Add Override", systemImage: "plus")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .disabled(overrides.count >= InstallomatorOverrides.maximumOverrides)
+                .help("A policy has room for five overrides (parameter7 to parameter11).")
+            }
+
+            pinningPreview
+
+            if !pinningIssues.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(pinningIssues, id: \.self) { issue in
+                        Label(issue.message, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            Label("A pinned download URL stops working the moment the vendor moves or removes the file, and the policy will then fail on every Mac. Pinning an architecture-specific URL installs the wrong binary on the other architecture — for a genuine split, create one policy per architecture and scope each to an architecture-based smart group.", systemImage: "exclamationmark.shield")
+                .font(.caption)
+                .foregroundColor(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.06))
+        .cornerRadius(8)
+    }
+
+    /// Exactly what will be written, per policy — no surprises at deploy time.
+    @ViewBuilder
+    private var pinningPreview: some View {
+        if let item = pendingItems.first, !plannedVariants.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Will create \(plannedVariants.count) \(plannedVariants.count == 1 ? "policy" : "policies"):")
+                    .font(.caption)
+                    .fontWeight(.medium)
+
+                ForEach(plannedVariants, id: \.self) { variant in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(resolvedName(for: item, variant: variant))
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                        ForEach(Array(variant.overrides.enumerated()), id: \.offset) { index, parameter in
+                            Text("parameter\(index + 7)  \(parameter)")
+                                .font(.caption2)
+                                .fontDesign(.monospaced)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .cornerRadius(6)
+        }
+    }
+
     // MARK: - Policy Name Review
 
     /// Every policy name this run would create, so an awkward one is caught here rather than after
@@ -520,18 +747,18 @@ struct DeploymentConfigSheet: View {
         if !pendingItems.isEmpty {
             DisclosureGroup(isExpanded: $showNameReview) {
                 VStack(alignment: .leading, spacing: 3) {
-                    ForEach(pendingItems) { item in
-                        let needsChecking = InstallomatorLabelFormatter.looksUnsegmented(item.displayName)
+                    ForEach(plannedPolicies) { planned in
+                        let needsChecking = InstallomatorLabelFormatter.looksUnsegmented(planned.item.displayName)
                         HStack(spacing: 6) {
                             Image(systemName: needsChecking ? "exclamationmark.triangle.fill" : "checkmark.circle")
                                 .font(.caption2)
                                 .foregroundColor(needsChecking ? .orange : .green.opacity(0.7))
-                            Text(resolvedName(for: item))
+                            Text(planned.name)
                                 .font(.caption)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Spacer(minLength: 6)
-                            Text(item.label)
+                            Text(planned.item.label)
                                 .font(.caption2)
                                 .fontDesign(.monospaced)
                                 .foregroundColor(.secondary)
@@ -539,8 +766,8 @@ struct DeploymentConfigSheet: View {
                         }
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel(needsChecking
-                            ? "\(resolvedName(for: item)) — check this name"
-                            : resolvedName(for: item))
+                            ? "\(planned.name) — check this name"
+                            : planned.name)
                     }
                 }
                 .padding(.top, 4)
@@ -548,7 +775,7 @@ struct DeploymentConfigSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             } label: {
                 HStack(spacing: 6) {
-                    Text("Review policy names (\(pendingItems.count))")
+                    Text("Review policy names (\(plannedPolicies.count))")
                         .font(.caption)
                     if !itemsWithAwkwardNames.isEmpty {
                         Text("\(itemsWithAwkwardNames.count) to check")
@@ -762,12 +989,15 @@ struct DeploymentConfigSheet: View {
     private func requestDeployment() {
         guard let category = selectedCategory, let scriptID = selectedScriptID else { return }
 
-        let count = pendingItems.count
+        let count = plannedPolicies.count
         let noun = count == 1 ? "policy" : "policies"
 
         var message = "\(count) Self Service \(noun) will be created in Jamf under '\(category.name)', scoped to \(scopeConfig.summaryText.lowercased())."
         if let iconID = selectedIcon?.id {
             message += " Icon \(iconID) will be attached to each one."
+        }
+        if !pinnedVersions.isEmpty {
+            message += " Versions pinned: \(pinnedVersions.joined(separator: ", "))."
         }
         if !collidingPolicyNames.isEmpty {
             message += "\n\n\(collidingPolicyNames.count) of these names already exist and will be rejected: \(summarise(collidingPolicyNames))."
@@ -780,7 +1010,8 @@ struct DeploymentConfigSheet: View {
             displayInSelfServiceCategory: displayInSelfServiceCategory,
             scope: scopeConfig,
             policyNameTemplate: policyNameTemplate,
-            iconID: selectedIcon?.id
+            iconID: selectedIcon?.id,
+            variants: plannedVariants
         )
 
         confirmation = ConfirmationData(

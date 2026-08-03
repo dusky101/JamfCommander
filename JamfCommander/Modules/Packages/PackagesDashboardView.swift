@@ -464,31 +464,46 @@ struct PackagesDashboardView: View {
         Task {
             var results: [OperationResult] = []
 
-            for (index, item) in itemsToDeploy.enumerated() {
+            // One policy per selected label per variant. With the default single unpinned variant
+            // this is exactly the old loop; pinning several versions fans out within it, keeping the
+            // same inter-item pacing so a four-version run is throttled like a four-label one.
+            let work = itemsToDeploy.flatMap { item in
+                plan.variants.map { (item: item, variant: $0) }
+            }
+
+            for (index, unit) in work.enumerated() {
+                let policyName = JamfAPIService.resolvePolicyName(
+                    template: plan.policyNameTemplate,
+                    appName: unit.item.displayName,
+                    version: unit.variant.version
+                )
+
                 await MainActor.run {
-                    creationStatus = "Deploying \(index + 1) of \(itemsToDeploy.count)..."
+                    creationStatus = "Deploying \(index + 1) of \(work.count)..."
                 }
 
                 do {
                     let newPolicyID = try await api.createInstallomatorPolicyAsync(
-                        appName: item.displayName,
-                        label: item.label,
+                        appName: unit.item.displayName,
+                        label: unit.item.label,
                         categoryName: plan.categoryName,
                         scriptID: plan.scriptID,
                         featureOnMainPage: plan.featureOnMainPage,
                         displayInSelfServiceCategory: plan.displayInSelfServiceCategory,
                         scopeConfig: plan.scope,
-                        policyNameTemplate: plan.policyNameTemplate
+                        policyNameTemplate: plan.policyNameTemplate,
+                        version: unit.variant.version,
+                        overrides: unit.variant.overrides
                     )
 
                     results.append(await attachIconIfRequested(
                         iconID: plan.iconID,
                         toPolicyID: newPolicyID,
-                        itemName: item.displayName
+                        itemName: policyName
                     ))
                 } catch {
                     results.append(OperationResult(
-                        itemName: item.displayName,
+                        itemName: policyName,
                         success: false,
                         error: failureReason(for: error)
                     ))
