@@ -26,24 +26,11 @@ struct ComputersDashboardView: View {
 
     // MARK: - Filtering & Sorting
 
-    /// Apply text search and the managed-only filter chip.
+    /// Apply text search and the managed-only filter chip. Both predicates live on the model, so
+    /// the scope picker and this table search on identical rules.
     var filteredComputers: [ComputerInventoryRecord] {
         computers.filter { computer in
-            let name = computer.general?.name ?? ""
-            let serial = computer.hardware?.serialNumber ?? ""
-            let user = computer.userAndLocation?.realname ?? computer.userAndLocation?.username ?? ""
-            let email = computer.userAndLocation?.email ?? ""
-
-            let matchesText = searchText.isEmpty ||
-                name.localizedCaseInsensitiveContains(searchText) ||
-                serial.localizedCaseInsensitiveContains(searchText) ||
-                user.localizedCaseInsensitiveContains(searchText) ||
-                email.localizedCaseInsensitiveContains(searchText)
-
-            let isManaged = computer.general?.remoteManagement?.managed ?? false
-            let matchesStatus = !showManagedOnly || isManaged
-
-            return matchesText && matchesStatus
+            computer.matches(searchText) && (!showManagedOnly || computer.isManaged)
         }
     }
 
@@ -92,7 +79,7 @@ struct ComputersDashboardView: View {
                         selectedIcon: "checkmark.seal.fill",
                         color: .green,
                         isSelected: showManagedOnly,
-                        count: computers.filter { $0.general?.remoteManagement?.managed ?? false }.count
+                        count: computers.filter(\.isManaged).count
                     ) { showManagedOnly = true }
 
                     Spacer()
@@ -168,7 +155,7 @@ struct ComputersDashboardView: View {
             .width(min: 130, ideal: 160)
 
             TableColumn("Status", value: \ComputerInventoryRecord.sortManagedRank) { computer in
-                statusBadge(isManaged: computer.general?.remoteManagement?.managed ?? false)
+                statusBadge(isManaged: computer.isManaged)
             }
             .width(min: 90, ideal: 100, max: 120)
         }
@@ -186,13 +173,7 @@ struct ComputersDashboardView: View {
 
     @ViewBuilder
     private func deviceCell(_ computer: ComputerInventoryRecord) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: DeviceSymbols.iconName(for: computer.hardware?.model ?? "Mac"))
-                .foregroundColor((computer.general?.remoteManagement?.managed ?? false) ? .blue : .orange)
-            Text(computer.general?.name ?? "Unknown Device")
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
+        ComputerDeviceLabel(computer: computer)
     }
 
     @ViewBuilder
@@ -228,18 +209,7 @@ struct ComputersDashboardView: View {
 
     @ViewBuilder
     private func userCell(_ computer: ComputerInventoryRecord) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(userDisplayName(computer))
-                .lineLimit(1)
-                .truncationMode(.tail)
-            if let email = computer.userAndLocation?.email, !email.isEmpty {
-                Text(email)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-        }
+        ComputerUserLabel(computer: computer)
     }
 
     @ViewBuilder
@@ -266,12 +236,6 @@ struct ComputersDashboardView: View {
                 }
             }
         }
-    }
-
-    private func userDisplayName(_ computer: ComputerInventoryRecord) -> String {
-        if let realname = computer.userAndLocation?.realname, !realname.isEmpty { return realname }
-        if let username = computer.userAndLocation?.username, !username.isEmpty { return username }
-        return "—"
     }
 
     // MARK: - Helpers
@@ -319,24 +283,4 @@ struct ComputersDashboardView: View {
             }
         }
     }
-}
-
-// MARK: - Sort helpers
-// Non-optional projections used as KeyPathComparator key paths. SwiftUI's
-// `KeyPathComparator` needs a non-optional `Comparable` value path, so we
-// surface stable empty-string / zero / false fallbacks here.
-extension ComputerInventoryRecord {
-    var sortName: String { general?.name ?? "" }
-    var sortModel: String { hardware?.model ?? "" }
-    var sortSerial: String { hardware?.serialNumber ?? "" }
-    var sortRealName: String {
-        userAndLocation?.realname?.isEmpty == false ? (userAndLocation?.realname ?? "") :
-        (userAndLocation?.username ?? "")
-    }
-    var sortEmail: String { userAndLocation?.email ?? "" }
-    var sortLastContact: String { general?.lastContactTime ?? "" }
-    /// 1 = managed, 0 = unmanaged. Int-typed so it shares a `V` type with `sortIntId`,
-    /// which helps SwiftUI's @TableColumnBuilder unify column types.
-    var sortManagedRank: Int { (general?.remoteManagement?.managed ?? false) ? 1 : 0 }
-    var sortIntId: Int { intId }
 }

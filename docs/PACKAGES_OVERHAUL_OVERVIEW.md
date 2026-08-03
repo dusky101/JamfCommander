@@ -56,7 +56,15 @@ Established during the pre-work review; the brief explains each in full. Do not 
 
 ## Progress
 
-**Current status:** **Phases 1 and 2 code complete** (Phase 1 committed as `2bebedb`; Phase 2 uncommitted).
+**Current status:** **Phases 1–3 code complete** (Phase 1 = `2bebedb`, Phase 2 = `0447469`, Phase 3
+uncommitted). Phase 3 pulled the computer display derivation onto `ComputerInventoryRecord`, moved the
+sort keys there with it, added `SharedUI/ComputerIdentityRow.swift`, and rebuilt the deployment scope
+picker row on it — so each Mac in the picker now shows who it belongs to and can be found by username,
+serial or email. F11 turned out to overcount the duplication (see the Phase 3 note), so the Computers-module
+refactor stayed small and never hit the brief's bail-out condition. Three intended behaviour changes are
+recorded under 3.1 rather than being presented as a pure no-op.
+
+Earlier phases — Phase 1 = `2bebedb`, Phase 2 = `0447469`.
 Phase 2 adds a Self Service icon step to the deployment sheet — none (default), upload a local image, or
 reuse an existing Jamf icon via the unchanged `SelfServiceIconPickerView` — uploaded once per run, with
 only the icon id reaching the batch, and attached to each new policy by a narrow
@@ -75,7 +83,7 @@ below). **Live verification against a tenant is the only thing outstanding for P
 has been exercised against Jamf yet, including the `&`-in-a-category-name case. Phases 2–5 not started.
 Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation → 3.2
 `SharedUI/ComputerIdentityRow` → 3.3 scope picker) — see F11/F12.
-**Last updated:** 2026-08-03 (Phase 2).
+**Last updated:** 2026-08-03 (Phase 3).
 
 ### Phase 1 — Fix and harden policy creation (the actual bug)
 - [x] De-duplicate labels in `fetchInstallomatorLabelsFromGitHub()` (stable order, case-insensitive; log the drop) — F2
@@ -145,23 +153,34 @@ Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation �
       case being solid first, and the batch case cannot be called solid until it has run against a tenant.
 
 ### Phase 3 — Shared computer display + username in the scope picker
+
+**F11 was an overcount — correcting it here.** Only `ComputersDashboardView` actually duplicated the
+realname → username fallback (three times, as recorded). `ComputerExportService` and
+`BasicComputerRecord` emit `username` and `realname` as **separate raw fields** and derive no fallback at
+all, and `ComputerInspectorView` shows them as two separate rows. So there were three copies in one file,
+not five across five — which is why the refactor stayed genuinely mechanical.
+
 **3.1 — Model-level derivation (behaviour-preserving):**
-- [ ] `ComputerInventoryRecord`: `displayName`, `assignedUserDisplayName` (realname → username → `lastLoggedInUsernameBinary` → nil), `assignedUserEmail`, `isManaged`, `matches(_ searchText:)` — F11
-- [ ] `sort*` extension moved from `ComputersDashboardView.swift` to `Models/ComputerModels.swift`; `sortRealName` expressed via `assignedUserDisplayName` so there is one fallback rule
-- [ ] `ComputersDashboardView` refactored to use them; local `userDisplayName` and inline predicate deleted
-- [ ] Verified no behaviour change: every column still sorts, both filter-chip counts unchanged, search still matches name/serial/user/email, CSV export byte-identical
+- [x] `ComputerInventoryRecord`: `displayName`, `assignedUserDisplayName` (realname → username → `lastLoggedInUsernameBinary` → nil), `assignedUserEmail`, `isManaged`, `matches(_ searchText:)` — F11. A file-private `presentValue` helper treats Jamf's `""` and a missing field as the same thing, which the three old variants disagreed on
+- [x] `sort*` extension moved from `ComputersDashboardView.swift` to `Models/ComputerModels.swift`; `sortRealName` expressed via `assignedUserDisplayName` so there is one fallback rule. `sortName` deliberately keeps its `?? ""` fallback (an unnamed record should sort first, not under "U") — that is a sort key, not a display value
+- [x] `ComputersDashboardView` refactored to use them; local `userDisplayName` and inline predicate deleted (342 → 286 lines)
+- [x] **CSV export byte-identical — guaranteed by construction, not by inspection alone:** `ComputerExportService` was not touched, and it never derived a display name, so no column can have changed
+- [ ] Verified by hand: every column still sorts, both filter-chip counts unchanged, search still matches name/serial/user/email — **not run** (needs a tenant)
+- [x] **Three intended behaviour changes, recorded rather than glossed over:** (a) the display and sort now fall back to `lastLoggedInUsernameBinary`, as the brief specifies, so a Mac with no assigned user shows its last logged-in user instead of "—"; (b) a blank-string `realname` no longer masks a real `username` in search (the old predicate used `??`, which only falls back on nil); (c) a whitespace-only query now matches everything instead of matching every name containing a space
 
 **3.2 — Shared row content:**
-- [ ] `SharedUI/ComputerIdentityRow.swift` — device icon (tinted by managed state) + name + assigned user, optional serial/email, **compact** variant for the 150 pt list
-- [ ] Accessibility label reads computer name + assigned user; not colour-dependent
-- [ ] Used by the dashboard's Device and User cells **and** the scope picker row
-- [ ] `statusBadge` left alone (Managed/Unmanaged ≠ `JamfItemStatus`); generalising it is optional and out of scope
+- [x] `SharedUI/ComputerIdentityRow.swift` — device icon (tinted by managed state) + name + assigned user, optional serial, sized for the 150 pt list
+- [x] ~~a **compact** variant~~ **Only the dense form was built.** A second, roomier layout would have had no caller, and shipping an unused variant is dead code. The file's three views are `ComputerDeviceLabel` (icon + name), `ComputerUserLabel` (user + email) and `ComputerIdentityRow`, which composes the first with the assigned user — so each piece exists exactly once
+- [x] Accessibility label reads computer name + assigned user; not colour-dependent (the icon tint is always paired with the badge in the table and with text in the picker)
+- [x] Used by the dashboard's Device and User cells **and** the scope picker row
+- [x] `statusBadge` left alone (Managed/Unmanaged ≠ `JamfItemStatus`); generalising it stayed out of scope
 
 **3.3 — Scope picker:**
-- [ ] Tap-to-toggle checkbox list and "N selected / Clear" retained — F12
-- [ ] Row body swapped for `ComputerIdentityRow` (compact), with a clear "No assigned user" state
-- [ ] `DeploymentConfigSheet.filteredComputers` uses `matches(_:)`; placeholder copy updated
-- [ ] Verified: searching a username finds the right Mac, and each row shows who the machine belongs to
+- [x] Tap-to-toggle checkbox list and "N selected / Clear" retained — F12
+- [x] Row body swapped for `ComputerIdentityRow`, with a clear "No assigned user" state
+- [x] `DeploymentConfigSheet.filteredComputers` uses `matches(_:)`; placeholder now "Search by name, serial, user or email…"
+- [x] Added while in there: an **empty state** for the computer list (it previously showed a blank box when a search matched nothing, unlike the group picker beside it, which already had one), and the row exposed to VoiceOver as one selectable element with an `.isSelected` trait instead of an unlabelled tick image beside some text
+- [ ] Verified by hand: searching a username finds the right Mac, and each row shows who the machine belongs to — **not run** (needs a tenant)
 
 ### Phase 4 — Label variant & version pinning
 **4.1 — Detect and explain variance (do this regardless):**
@@ -231,6 +250,25 @@ Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation �
 
 ## Progress log
 
+- **2026-08-03** — **Phase 3 code complete (3.1 → 3.2 → 3.3 in one pass; the build was green at each
+  sub-phase boundary).** First finding: **F11 overcounted.** Reading the consumers showed
+  `ComputerExportService`, `BasicComputerRecord` and `ComputerInspectorView` all emit `username` and
+  `realname` as separate raw fields and derive no fallback — the duplication was three variants inside
+  `ComputersDashboardView` alone. That made the refactor genuinely mechanical and meant the CSV-export
+  check was satisfied by *not touching* the exporter rather than by re-verifying it: no column it writes
+  can have changed. 3.1 put `displayName`, `assignedUserDisplayName`, `assignedUserEmail`, `isManaged`
+  and `matches(_:)` on `ComputerInventoryRecord` behind a `presentValue` helper that finally treats
+  Jamf's `""` and a missing field alike, and moved the `sort*` extension across with `sortRealName`
+  expressed via `assignedUserDisplayName`. 3.2 added `SharedUI/ComputerIdentityRow.swift` as three views —
+  `ComputerDeviceLabel`, `ComputerUserLabel` and the composed `ComputerIdentityRow` — so each piece exists
+  once; the brief's "compact variant" became the *only* variant, because a roomier one would have had no
+  caller. 3.3 swapped the picker row onto it, moved the search to `matches(_:)`, and added the empty state
+  the computer list was missing plus a proper VoiceOver element for the row toggle.
+  `ComputersDashboardView` went 342 → 286 lines.
+  `xcodebuild -scheme JamfCommander -destination "platform=macOS" build` ⇒ **BUILD SUCCEEDED**, no warnings.
+  **Not run against a tenant:** both hand-verification lines are open. Three deliberate behaviour changes
+  are listed under 3.1 — the `lastLoggedInUsernameBinary` fallback the brief asked for, a blank `realname`
+  no longer masking a username in search, and whitespace-only queries now matching everything.
 - **2026-08-03** — **Phase 2 code complete.** The deployment sheet gained a Self Service icon step inside
   step 4: preview + "Upload Image…" / "Reuse Existing…" / "Remove", with `SelfServiceIconPickerView`
   presented unchanged and the `NSOpenPanel` upload mirroring `PolicySelfServiceEditorView` (including its

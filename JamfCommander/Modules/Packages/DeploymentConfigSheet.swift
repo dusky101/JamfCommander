@@ -186,11 +186,10 @@ struct DeploymentConfigSheet: View {
         return "\(shown) and \(names.count - limit) more"
     }
 
+    /// Searches on the same rule as the Computers dashboard — name, serial, assigned user or email —
+    /// so an administrator can find a Mac by whoever it belongs to.
     var filteredComputers: [ComputerInventoryRecord] {
-        if scopeSearchText.isEmpty { return computers }
-        return computers.filter {
-            ($0.general?.name ?? "").localizedCaseInsensitiveContains(scopeSearchText)
-        }
+        computers.filter { $0.matches(scopeSearchText) }
     }
     
     var filteredGroups: [ComputerGroup] {
@@ -733,8 +732,9 @@ struct DeploymentConfigSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                TextField("Search computers...", text: $scopeSearchText)
+                TextField("Search by name, serial, user or email...", text: $scopeSearchText)
                     .textFieldStyle(.plain)
+                    .accessibilityLabel("Search computers")
             }
             .padding(6)
             .background(Color(nsColor: .controlBackgroundColor))
@@ -759,19 +759,20 @@ struct DeploymentConfigSheet: View {
             
             ScrollView {
                 LazyVStack(spacing: 2) {
+                    if filteredComputers.isEmpty {
+                        Text(scopeSearchText.isEmpty ? "No computers found." : "No computers match “\(scopeSearchText)”.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(8)
+                    }
+
                     ForEach(filteredComputers) { computer in
                         let isSelected = scopeConfig.selectedComputerIDs.contains(computer.id)
                         HStack(spacing: 8) {
                             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                                 .foregroundColor(isSelected ? .blue : .gray.opacity(0.4))
-                            Text(computer.general?.name ?? "Unknown")
-                                .font(.caption)
-                            Spacer()
-                            if let serial = computer.hardware?.serialNumber {
-                                Text(serial)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
+                            ComputerIdentityRow(computer: computer)
                         }
                         .padding(.vertical, 4)
                         .padding(.horizontal, 6)
@@ -785,6 +786,11 @@ struct DeploymentConfigSheet: View {
                                 scopeConfig.selectedComputerIDs.insert(computer.id)
                             }
                         }
+                        // The whole row is the toggle, so expose it as one selectable element
+                        // rather than an unlabelled tick image beside some text.
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                        .accessibilityHint("Adds or removes this computer from the deployment scope")
                     }
                 }
             }
