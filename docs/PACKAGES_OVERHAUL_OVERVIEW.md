@@ -56,13 +56,17 @@ Established during the pre-work review; the brief explains each in full. Do not 
 
 ## Progress
 
-**Current status:** **Phases 1–4 complete, plus label-name segmentation** (Phase 1 = `2bebedb`, Phase 2 = `0447469`, Phase 3 = `796f651`;
-label naming + Phase 4.1 = `66e3862`; Phase 4.2 uncommitted). Phase 3 pulled the computer display derivation onto `ComputerInventoryRecord`, moved the
-sort keys there with it, added `SharedUI/ComputerIdentityRow.swift`, and rebuilt the deployment scope
-picker row on it — so each Mac in the picker now shows who it belongs to and can be found by username,
-serial or email. F11 turned out to overcount the duplication (see the Phase 3 note), so the Computers-module
-refactor stayed small and never hit the brief's bail-out condition. Three intended behaviour changes are
-recorded under 3.1 rather than being presented as a pure no-op.
+**Current status:** **All five phases are code complete.** Phase 5 finished the design pass (the new sheet
+blocks now use the same `liquidGlassRect` treatment as `InfoSection` on the policy screens), made the
+sheet resizable because six steps no longer fit 750 × 620, gave the sheet's own load failure a real
+error state, and brought the docs in line with the code — including correcting a stale warning in three
+places that still claimed the XML-escaping bug was unfixed. Commits: Phase 1 `2bebedb`, Phase 2
+`0447469`, Phase 3 `796f651`, label naming + Phase 4.1 `66e3862`, Phase 4.2 `ab663fa`; Phase 5 is
+uncommitted.
+
+**What remains is verification, not code.** Nothing in this overhaul has been exercised against a Jamf
+tenant — every "Verified:" line that needs one is still open, most importantly the `&`-category re-test,
+an icon-enabled batch, and installing a pinned Python version on a test Mac.
 
 Earlier phases — Phase 1 = `2bebedb`, Phase 2 = `0447469`.
 Phase 2 adds a Self Service icon step to the deployment sheet — none (default), upload a local image, or
@@ -83,7 +87,7 @@ below). **Live verification against a tenant is the only thing outstanding for P
 has been exercised against Jamf yet, including the `&`-in-a-category-name case. Phases 2–5 not started.
 Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation → 3.2
 `SharedUI/ComputerIdentityRow` → 3.3 scope picker) — see F11/F12.
-**Last updated:** 2026-08-03 (Phase 4 complete).
+**Last updated:** 2026-08-04 (Phase 5 — all phases complete).
 
 ### Phase 1 — Fix and harden policy creation (the actual bug)
 - [x] De-duplicate labels in `fetchInstallomatorLabelsFromGitHub()` (stable order, case-insensitive; log the drop) — F2
@@ -243,12 +247,29 @@ not five across five — which is why the refactor stayed genuinely mechanical.
 - [ ] Verified: `python` deploys pinned to a chosen version and installs exactly that version on a test Mac
 
 ### Phase 5 — Polish, docs and consistency pass
-- [ ] Liquid Glass design pass over the new `DeploymentConfigSheet` steps (icon, scope rows, variant panel)
-- [ ] Sheet sizing re-checked (currently fixed 750 × 620) or made to scroll properly with the added steps
-- [ ] Loading / empty / error states for the label-source fetch
-- [ ] `JamfCommander/README.md` — Packages / Installomator Manager section updated
-- [ ] `docs/JAMF_API_REFERENCE.md` — icon endpoint at create time, `parameter7`–`parameter11` overrides
-- [ ] Verified: no functional regressions, macOS build green
+- [x] Liquid Glass design pass over the new `DeploymentConfigSheet` steps — the summary box, pinning
+      editor, pinning preview, single-label note and both scope lists now use `.liquidGlassRect(...)`,
+      matching `InfoSection` (radius 12) on the policy-overhaul screens instead of ad-hoc
+      `controlBackgroundColor` fills. The pinning block keeps a thin amber edge to mark it as the
+      advanced path, rather than tinting the whole panel
+- [x] Sheet sizing re-checked — six steps no longer fit a fixed 750 × 620. Now opens at 880 × 760 and is
+      **resizable** (min 780 × 620), with the right column still scrolling
+- [x] Loading / empty / error states for the label-source fetch — `LabelVariantPanel` has all three plus
+      a retry, and states outright that a failure leaves deployment unaffected (done in 4.1)
+- [x] **The deployment sheet's own load failure now has an error state** — previously it printed and left
+      an empty sheet with a permanently disabled Deploy button and no explanation. This was logged during
+      Phase 1 and deferred here; it is fixed, with Try Again / Cancel and no error body in the log
+- [x] `JamfCommander/README.md` — Packages / Installomator Manager section rewritten: icons, version
+      pinning with a worked Python example, name review, Explain This Label, Possibly Deployed, the
+      pre-flight duplicate check, and the three limitations that are by design
+- [x] `docs/JAMF_API_REFERENCE.md` — `parameter7`–`parameter11` overrides, the icon endpoints and the
+      narrow `assignPolicyIcon` PUT, created-id read-back, the 400/409 body-classification rule, label
+      de-duplication, the `fragments/labels/` fetch, and the Create/Update Policies privilege split
+- [x] **Stale guidance corrected in three places** — root `CLAUDE.md`, `.claude/rules/services-and-networking.md`
+      and `docs/JAMF_API_REFERENCE.md` all still warned that `createCategory` and
+      `createInstallomatorPolicyAsync` interpolate raw XML. Phase 1 fixed both; a stale "don't trust this
+      code" note is worse than none
+- [x] Verified: macOS build green, no warnings
 
 ## Cross-cutting acceptance criteria
 - [ ] No label fails with an opaque error; every failure names an actionable cause
@@ -308,6 +329,25 @@ not five across five — which is why the refactor stayed genuinely mechanical.
       Affects categorisation only, and is overwritten by the next correct deploy. Revisit if it bites.
 
 ## Progress log
+
+- **2026-08-04** — **Phase 5 complete; the overhaul is code complete.** Design pass: the summary box,
+  pinning editor, pinning preview, single-label note and both scope lists moved off ad-hoc
+  `controlBackgroundColor` fills onto `.liquidGlassRect(...)`, matching the radius-12 treatment
+  `InfoSection` gives the policy-overhaul screens; the pinning block keeps a thin amber edge so the
+  advanced path still reads as such without tinting the whole panel. Sizing: six steps do not fit a fixed
+  750 × 620, so the sheet now opens at 880 × 760 and is resizable down to 780 × 620. Fixed the deferred
+  gap from Phase 1 — a total load failure in the deployment sheet left an empty pane with a permanently
+  disabled Deploy button; it now shows a real error with Try Again / Cancel, and logs no error body.
+  Docs: the README's Packages section was rewritten around what the module actually does now (icons,
+  version pinning with a worked Python example, name review, Explain This Label, Possibly Deployed, the
+  pre-flight duplicate check) plus the three limitations that are by design; `JAMF_API_REFERENCE.md`
+  gained `parameter7`–`parameter11`, the icon endpoints and narrow `assignPolicyIcon` PUT, created-id
+  read-back, the 400/409 body-classification rule, label de-duplication, the `fragments/labels/` fetch,
+  and the Create/Update Policies privilege split. Also corrected stale guidance in **three** places —
+  root `CLAUDE.md`, `.claude/rules/services-and-networking.md` and the API reference all still warned
+  that `createCategory` and `createInstallomatorPolicyAsync` interpolate raw XML, which Phase 1 fixed.
+  `xcodebuild -scheme JamfCommander -destination "platform=macOS" build` ⇒ **BUILD SUCCEEDED**, no warnings.
+  **The overhaul now stands or falls on tenant verification, which has never been run.**
 
 - **2026-08-03** — **Phase 4.2 complete, extended at the user's request.** They asked whether the sheet
   could offer a *choice* of versions for a label like `python` — latest of the 3.12 series, or individual

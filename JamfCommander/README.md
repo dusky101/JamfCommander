@@ -183,16 +183,73 @@ You can:
 - Group by alphabet or Jamf category.
 - Inspect deployed Installomator policies.
 - Select available labels and create Jamf policies for them.
+- Read what a label will actually do, via **Explain This Label** on any card's context menu.
+
+A label is shown as **Deployed** when a policy runs an Installomator script with that label in
+parameter 4. The script is matched by name or by ID, so a script that has been renamed is still
+recognised once you have deployed with it at least once. A label whose app already appears to be
+installed by some other policy is shown as **Possibly Deployed**, naming the policy it matched — it
+stays selectable, because the match is a hint rather than a certainty.
 
 When adding selected labels to Jamf, the deployment sheet lets you choose:
 
-- Target category.
+- Target category, including creating a new one.
 - Installomator script.
-- Policy name template, such as `Install {appName}`.
-- Self Service options.
-- Scope: all computers, specific computers, or computer groups.
+- Policy name template, such as `Install {appName}`, with `{version}` available when pinning versions.
+- Self Service options, including a **Self Service icon** — none, an uploaded image, or an existing
+  Jamf icon reused by ID. The image is uploaded to Jamf's icon library once per run and the same icon
+  is attached to every policy the run creates.
+- Scope: all computers, specific computers, or computer groups. The computer list shows each Mac's
+  assigned user and can be searched by name, serial, user or email.
+- Version pinning (advanced, single-label runs only) — see below.
 
-Created policies use the selected Installomator script and pass the label in script parameter 4.
+Before anything is written, the sheet:
+
+- Checks the resolved policy names against the names already in Jamf and warns about any that would be
+  rejected as duplicates, so you can change the template rather than collect failures.
+- Lists every policy name the run will create under **Review policy names**, marking names the app
+  could not tidy from the raw label.
+- Asks you to confirm, stating how many policies will be created, in which category, and at what scope.
+
+Created policies use the selected Installomator script and pass the label in script parameter 4, with
+`DEBUG=0` in parameter 5 and `NOTIFY=silent` in parameter 6.
+
+#### Version pinning
+
+Installomator re-reads its `key=value` arguments after a label has run, so a value passed as a script
+parameter overrides whatever the label worked out. Parameters 7 to 11 are free, giving five overrides
+per policy.
+
+For a run containing a single label you can list several versions and give one override pattern
+containing `{version}`. The sheet creates **one policy per version**, all sharing the category, script,
+icon and scope. For example, three versions of Python with:
+
+```
+appNewVersion  {version}
+downloadURL    https://www.python.org/ftp/python/{version}/python-{version}-macos11.pkg
+archiveName    python-{version}-macos11.pkg
+```
+
+produces `Install Python 3.11.9`, `Install Python 3.12.7` and `Install Python 3.13.1`, each carrying its
+own resolved parameters. The exact strings are previewed before you deploy.
+
+Important limits, by design:
+
+- **The app cannot list the versions that are available.** Labels discover those by reading the vendor's
+  own site on the Mac at install time, so the versions and the URL pattern are yours to supply. The app
+  validates, expands and previews what you give it; it never invents a download URL.
+- Overrides are offered only for a single-label run, because a pinned download URL describes one
+  application.
+- A pinned download URL **stops working when the vendor moves or removes the file**, and the policy will
+  then fail on every Mac. Pinning an architecture-specific URL installs the wrong binary on the other
+  architecture — for a genuine architecture split, create one policy per architecture and scope each to
+  an architecture-based smart group.
+- Values are validated before deploying: the variable must be one the app supports, a `downloadURL`
+  must be `https://`, values may not contain spaces, and a run pinning more than one version must have
+  `{version}` in the name template.
+
+Version pinning is entirely optional. Leaving it on "Let Installomator decide" produces exactly the
+policies the app has always created.
 
 ## Exporting Data
 
@@ -313,17 +370,26 @@ The UI is built with SwiftUI and uses async/await for network operations.
 4. Select available labels.
 5. Choose **Add to Jamf**.
 6. Select the target category and Installomator script.
-7. Choose Self Service and scope options.
-8. Confirm deployment.
+7. Choose Self Service options, including an optional Self Service icon.
+8. Choose the scope.
+9. Optionally pin versions (single-label runs only) and check the previewed parameters.
+10. Review the policy names, resolve any duplicate-name warnings, and confirm deployment.
 
-The app creates Jamf policies that call the selected script and use the selected Installomator label as parameter 4.
+The app creates Jamf policies that call the selected script and use the selected Installomator label as parameter 4. Results are reported per policy, including a policy that was created but whose icon could not be attached.
 
 ## Known Limitations
 
 - `.jamfconfig` exports are obfuscated, not encrypted.
 - The app assumes the Jamf API client has the required privileges for the selected action.
 - Some inspectors expose raw source views, but not every visible editor control currently writes changes back to Jamf.
-- Installomator label discovery depends on GitHub availability.
+- Installomator label discovery depends on GitHub availability. **Explain This Label** also reads from
+  GitHub; if it is unreachable the panel says so and deployment is unaffected.
+- The app cannot list which versions of an application are available — that information only exists on
+  the vendor's site, which the label reads on the Mac at install time. Pinned versions and download
+  URLs are supplied by you, and a pinned URL will stop working if the vendor moves the file.
+- Policy names are derived from the Installomator label. Well-known labels are recognised and split into
+  proper names, but a label the app cannot split is flagged in the deployment sheet rather than
+  corrected, and individual names cannot yet be edited — only the name template.
 - Large Jamf tenants may take time to hydrate policy and profile details because detailed exports and dashboards fetch additional data in batches.
 
 ## Contributing

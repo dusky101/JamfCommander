@@ -121,6 +121,7 @@ struct DeploymentConfigSheet: View {
     @State private var computers: [ComputerInventoryRecord] = []
     @State private var computerGroups: [ComputerGroup] = []
     @State private var isLoading = true
+    @State private var loadFailed = false
 
     // Pre-flight duplicate-name check
     @State private var existingPolicyNameKeys: Set<String> = []
@@ -297,6 +298,8 @@ struct DeploymentConfigSheet: View {
             if isLoading {
                 ProgressView("Loading Jamf Data...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if loadFailed {
+                loadErrorView
             } else {
                 HStack(spacing: 0) {
                     // Left: Category Picker
@@ -522,8 +525,7 @@ struct DeploymentConfigSheet: View {
                                     }
                                     .font(.caption)
                                     .padding()
-                                    .background(Color(nsColor: .controlBackgroundColor))
-                                    .cornerRadius(8)
+                                    .liquidGlassRect(cornerRadius: 12)
                                 }
                             }
                         }
@@ -560,7 +562,10 @@ struct DeploymentConfigSheet: View {
             .padding()
             .background(Color(nsColor: .windowBackgroundColor))
         }
-        .frame(width: 750, height: 620)
+        // Six steps no longer fit a fixed 620 pt, so the sheet opens roomier and can be resized —
+        // the right-hand column scrolls either way, but pinning previews deserve the space.
+        .frame(minWidth: 780, idealWidth: 880, maxWidth: .infinity,
+               minHeight: 620, idealHeight: 760, maxHeight: .infinity)
         .appBackground()
         .commanderConfirmation(data: $confirmation)
         .sheet(isPresented: $showIconPicker) {
@@ -579,6 +584,33 @@ struct DeploymentConfigSheet: View {
             )
         }
         .onAppear(perform: loadData)
+    }
+
+    // MARK: - Load Failure
+
+    /// The categories, scripts, computers and groups are all needed to configure a deployment, so a
+    /// failed load has to say so — it previously left an empty sheet with a permanently disabled
+    /// Deploy button and no explanation.
+    private var loadErrorView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundColor(.orange)
+            Text("Couldn't load the Jamf data for this sheet")
+                .font(.headline)
+            Text("Categories, scripts, computers and groups could not be fetched. Check your connection to Jamf and try again — nothing has been created.")
+                .font(.callout)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button("Try Again") { loadData() }
+                    .buttonStyle(.borderedProminent)
+                Button("Cancel", action: onCancel)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(40)
     }
 
     // MARK: - Version Pinning
@@ -607,8 +639,7 @@ struct DeploymentConfigSheet: View {
                 }
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-                .cornerRadius(6)
+                .liquidGlassRect(cornerRadius: 10)
             } else {
                 Picker("", selection: $isPinningVersions) {
                     Text("Let Installomator decide (recommended)").tag(false)
@@ -699,8 +730,12 @@ struct DeploymentConfigSheet: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.06))
-        .cornerRadius(8)
+        .liquidGlassRect(cornerRadius: 10)
+        // A thin amber edge marks this as the advanced, opt-in path without tinting the whole block.
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+        )
     }
 
     /// Exactly what will be written, per policy — no surprises at deploy time.
@@ -732,8 +767,7 @@ struct DeploymentConfigSheet: View {
             }
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(6)
+            .liquidGlassRect(cornerRadius: 8)
         }
     }
 
@@ -1093,8 +1127,7 @@ struct DeploymentConfigSheet: View {
                 }
             }
             .frame(maxHeight: 150)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-            .cornerRadius(6)
+            .liquidGlassRect(cornerRadius: 6)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.15), lineWidth: 1))
         }
     }
@@ -1177,8 +1210,7 @@ struct DeploymentConfigSheet: View {
                 }
             }
             .frame(maxHeight: 150)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-            .cornerRadius(6)
+            .liquidGlassRect(cornerRadius: 6)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.15), lineWidth: 1))
         }
     }
@@ -1199,6 +1231,8 @@ struct DeploymentConfigSheet: View {
     // MARK: - Logic
     
     func loadData() {
+        isLoading = true
+        loadFailed = false
         Task {
             // Tiny delay to allow sheet animation to finish before heavy lifting
             try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
@@ -1242,8 +1276,13 @@ struct DeploymentConfigSheet: View {
                     self.isLoading = false
                 }
             } catch {
-                print("Error loading config data: \(error)")
-                await MainActor.run { self.isLoading = false }
+                // Deliberately no error body in the log — see root CLAUDE.md, invariant 4. The sheet
+                // shows the administrator an actionable message instead.
+                print("[Installomator] Deployment sheet data load failed")
+                await MainActor.run {
+                    self.isLoading = false
+                    self.loadFailed = true
+                }
             }
         }
     }

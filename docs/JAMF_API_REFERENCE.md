@@ -53,7 +53,26 @@ Write bodies are `Content-Type: application/xml`.
   (`setPolicySelfServiceCategory`) — realigns a drifted Self Service category without moving the policy.
 - Create (Installomator install policy): `POST JSSResource/policies/id/0` with a `<policy>` body
   (general + scope + `<self_service>` + `<scripts><script>` with `parameter4=label`,
-  `parameter5=DEBUG=0`, `parameter6=NOTIFY=silent`). HTTP **409** ⇒ duplicate name (`PolicyCreationError.conflict`).
+  `parameter5=DEBUG=0`, `parameter6=NOTIFY=silent`, plus optional overrides in
+  `parameter7`–`parameter11`). The response carries the new policy's id — read it back with
+  `parseIDFromXMLResponse(data:elementName:)`, the same helper `clonePolicy` uses.
+  Failures are classified by `PolicyCreationError`: the status code is authoritative except for
+  **400/409**, where Jamf reuses one code for different problems and the body is inspected in memory
+  for a marker (duplicate / category / parse) and then **discarded** — never logged (invariant 4).
+- **Installomator argument overrides (`parameter7`–`parameter11`).** `Installomator.sh` re-evaluates its
+  `key=value` arguments *after* the label's `case` block, so a `key=value` passed as a script parameter
+  overrides what the label computed. Parameters 4–6 are taken, leaving five. Used for version pinning:
+  e.g. `appNewVersion=3.11.9`, `downloadURL=https://…`, `archiveName=…`, `packageID=…`.
+  Values are validated (allow-listed variable, `https://` for `downloadURL`, no whitespace) and
+  XML-escaped before interpolation — a pinned URL can legitimately contain `&`.
+  See `Models/InstallomatorOverrides.swift`; the app never resolves a download URL itself.
+- Attach a Self Service icon: `PUT JSSResource/policies/id/{id}` with **only**
+  `<policy><self_service><self_service_icon><id>…</id></self_service_icon></self_service></policy>`
+  (`assignPolicyIcon`). Classic merges the sections supplied, so the policy's other Self Service
+  settings are untouched — deliberately narrower than `updatePolicySelfService`, which re-states the
+  whole section and would clear `self_service_categories`. Needs **Update Policies**.
+  Whether `POST …/id/0` honours `<self_service_icon>` at create time has **not** been tested; until it
+  is, creation and icon assignment stay two requests.
 
 ### Categories (Classic)
 - List: `GET JSSResource/categories` → `categories[]`.
@@ -84,7 +103,23 @@ Write bodies are `Content-Type: application/xml`.
 
 ### Installomator labels (external, GitHub — read-only)
 - `GET https://raw.githubusercontent.com/Installomator/Installomator/main/Labels.txt`
-  — parse non-empty, non-`#`, single-token lines as labels.
+  — parse non-empty, non-`#`, single-token lines as labels. **De-duplicate case-insensitively**: the
+  file is not guaranteed unique (`omnissahorizonclient` currently appears twice), and a repeat would
+  be offered twice and 409 on the second POST.
+- `GET …/Installomator/main/fragments/labels/{label}.sh` — one label's own source, fetched on demand to
+  *explain* it (arch-aware, version resolved at run time, `type`, `expectedTeamID`,
+  `blockingProcesses`). Cached per label for the session. Informational only: it must never block a
+  deployment, and it is **unauthenticated** — the Jamf bearer token is never sent to GitHub.
+
+### Self Service icons (Pro)
+- Upload: `POST api/v1/icon`, `multipart/form-data`, part name `file` → `{ id, url }`. Adds the image
+  to the icon library only; attaching it to a policy is the separate Classic PUT above. Requires only a
+  valid token.
+- Resolve URL: `GET api/v1/icon/{id}` → `{ id, url }`. Download for preview:
+  `GET api/v1/icon/download/{id}`, or the returned URL — the bearer token is attached **only** when the
+  host matches the configured Jamf instance, never to a CDN.
+- In the Installomator create flow the image is uploaded **once per run** and the resulting id is reused
+  for every policy in the batch.
 
 ## Throttling strategy (preserve this)
 
@@ -103,8 +138,9 @@ Canonical implementations: `fetchPolicies`, `fetchProfiles` (`fetchProfiles` use
 
 - **Escape dynamic values** for `& < > " '` before interpolating into XML. Use the static
   `JamfAPIService.xmlEscape(_:)` (there is also a private copy in `JamfAPIService+Cloning.swift`).
-  Cloning, `movePolicy`, and `setPolicySelfServiceCategory` escape correctly; `createCategory` /
-  `createInstallomatorPolicyAsync` still don't — fix when touched, don't copy.
+  **Every Classic write now escapes**, including `createCategory`, `updateCategory` and
+  `createInstallomatorPolicyAsync` — a category named "Utilities & Tools" produced malformed XML and
+  failed every label in a run until this was fixed. Keep it that way for any new write.
 - **Cloning** (`+Cloning`) fetches the full resource XML (`Accept: application/xml`) and rewrites it with
   `NSRegularExpression` (`.dotMatchesLineSeparators`):
   - Replace the **category ID first**, then the **name** (first `<general>…<name>…</name>` match).
@@ -118,3 +154,8 @@ Canonical implementations: `fetchPolicies`, `fetchProfiles` (`fetchProfiles` use
 The API role/client used must have read **and** the relevant write/delete privileges for the objects
 above (profiles, policies, categories, scripts, computer inventory, computer groups). Missing privileges
 surface as `requestFailed` (non-2xx) — handle as a clear error, never as silent success.
+
+Worth calling out for the Installomator flow: creating a policy needs **Create Policies**, and attaching
+its Self Service icon afterwards needs **Update Policies**. A client with the first but not the second
+creates the policy and then fails the icon — reported per item as "created, but the icon could not be
+attached", never as a clean success. The icon endpoints themselves need only a valid token.
