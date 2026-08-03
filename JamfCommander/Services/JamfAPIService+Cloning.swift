@@ -417,7 +417,9 @@ extension JamfAPIService {
     }
     
     /// Parses ID from XML response
-    private func parseIDFromXMLResponse(data: Data, elementName: String) throws -> Int {
+    /// Reads an id back out of a Classic-API create response (`<id>123</id>`). Shared with the
+    /// Installomator creation path, which needs the new policy id to attach a Self Service icon.
+    func parseIDFromXMLResponse(data: Data, elementName: String) throws -> Int {
         guard let xmlString = String(data: data, encoding: .utf8) else {
             throw APIError.decodingFailed
         }

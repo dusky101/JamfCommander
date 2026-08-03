@@ -56,7 +56,16 @@ Established during the pre-work review; the brief explains each in full. Do not 
 
 ## Progress
 
-**Current status:** **Phase 1 code complete** — every code deliverable is implemented and the macOS build
+**Current status:** **Phases 1 and 2 code complete** (Phase 1 committed as `2bebedb`; Phase 2 uncommitted).
+Phase 2 adds a Self Service icon step to the deployment sheet — none (default), upload a local image, or
+reuse an existing Jamf icon via the unchanged `SelfServiceIconPickerView` — uploaded once per run, with
+only the icon id reaching the batch, and attached to each new policy by a narrow
+`assignPolicyIcon(policyID:iconID:)` PUT inside the existing throttled loop. The create-time spike could
+not be run (no tenant access), so the proven create-then-attach route was taken; see the Phase 2 checklist
+for the reasoning and the one deviation from the brief. The per-label icon override was deliberately not
+built. **Nothing in either phase has been exercised against a Jamf tenant.** Phases 3–5 not started.
+
+Phase 1 detail — every code deliverable is implemented and the macOS build
 is green. Labels are de-duplicated; the raw-error-body `print()` is gone; `PolicyCreationError` now maps
 Jamf responses to actionable British-English messages shown per row in `OperationResultView`; a pre-flight
 duplicate-name check warns in the sheet **and** in a new confirmation dialog before anything is written;
@@ -66,7 +75,7 @@ below). **Live verification against a tenant is the only thing outstanding for P
 has been exercised against Jamf yet, including the `&`-in-a-category-name case. Phases 2–5 not started.
 Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation → 3.2
 `SharedUI/ComputerIdentityRow` → 3.3 scope picker) — see F11/F12.
-**Last updated:** 2026-08-03.
+**Last updated:** 2026-08-03 (Phase 2).
 
 ### Phase 1 — Fix and harden policy creation (the actual bug)
 - [x] De-duplicate labels in `fetchInstallomatorLabelsFromGitHub()` (stable order, case-insensitive; log the drop) — F2
@@ -98,17 +107,42 @@ Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation �
 - [ ] **Real Jamf message recorded in the progress log** for anything still failing (drives Phase 4)
 
 ### Phase 2 — Self Service icon in the create flow
-- [ ] Spike: does `POST /JSSResource/policies/id/0` accept `<self_service_icon><id>` at create time?
-- [ ] Route chosen and documented (create-with-icon, or create-then-assign via `updatePolicySelfService`)
-- [ ] Icon step in `DeploymentConfigSheet`: none (default) / upload local image / reuse existing Jamf icon
-- [ ] Reuse `SelfServiceIconPickerView` + `IconBrowserView` as-is — F10
-- [ ] Local upload via `NSOpenPanel` (`.png`/`.gif`/`.jpeg`), mirroring `PolicySelfServiceEditorView`
-- [ ] Uploaded **once per run**, icon id reused for every policy in the batch
-- [ ] Fallback path (if create-then-assign) stays inside the throttled loop with its own per-item result
-- [ ] Chosen icon previewed in the sheet summary box
-- [ ] Verified: a two-label batch shows the icon on both policies in Jamf **and** in Self Service
-- [ ] Verified: "no icon" run is byte-for-byte the behaviour of today
-- [ ] *(Optional)* per-label icon override
+- [ ] ~~Spike: does `POST /JSSResource/policies/id/0` accept `<self_service_icon><id>` at create time?~~
+      **Not performed — no tenant access from the implementation session, and the configured instance is
+      production.** Rather than guess an unproven create-time payload (invariant 2) or risk Jamf silently
+      ignoring it and showing iconless policies as a clean success, the create-then-attach route was taken.
+      Left open: if you ever spike it and Jamf does accept the element at create time, the attach PUT can be
+      folded into the POST and halve the write volume.
+- [x] Route chosen and documented — **create, then attach**, but via a new narrow
+      `assignPolicyIcon(policyID:iconID:)` rather than `updatePolicySelfService(id:settings:)`.
+      **Deviation from the brief, deliberately:** `updatePolicySelfService` re-states the *whole*
+      `self_service` section, so calling it after creation would need every field reproduced exactly —
+      including a category **id** the create flow only carries by name — and would write
+      `<self_service_categories/>`, clearing the Self Service category, if that were got wrong. The new
+      method writes only `<self_service><self_service_icon><id>…`, relying on the same Classic
+      partial-section merge that `applyClonedGeneral` and `movePolicy` already prove. The icon id is an
+      `Int`, so no dynamic string is interpolated.
+- [x] Icon step in `DeploymentConfigSheet`: none (default) / upload local image / reuse existing Jamf icon —
+      placed inside step 4 "Self Service Options", where it belongs, so the existing step numbering is
+      untouched
+- [x] Reuse `SelfServiceIconPickerView` + `IconBrowserView` as-is — F10. Presented unchanged; it is already
+      a self-contained picker with its own search, "Show All" scan and paginated browser
+- [x] Local upload via `NSOpenPanel` (`.png`/`.gif`/`.jpeg`), mirroring `PolicySelfServiceEditorView` —
+      including its precedent that the library upload is inert (no policy, no device) and so isn't itself
+      gated by a confirmation; attaching is what sits behind the confirmation
+- [x] Uploaded **once per run**, icon id reused for every policy in the batch — guaranteed structurally:
+      the upload happens in the sheet before the batch starts, and only `InstallomatorDeploymentPlan.iconID`
+      reaches the loop
+- [x] Attach stays inside the throttled loop with its own per-item result — one extra PUT per policy, then
+      the existing 0.5 s gap. A failed attach reports "Policy created (ID n), but the Self Service icon
+      could not be attached" rather than a clean success, following the convention `clonePolicy` uses
+- [x] Chosen icon previewed in the sheet — 48 pt preview beside the buttons and an 18 pt thumbnail in the
+      summary box's new "Icon:" row
+- [ ] Verified: a two-label batch shows the icon on both policies in Jamf **and** in Self Service — **not run**
+- [ ] Verified: "no icon" run is byte-for-byte the behaviour of today — **not run.** By construction it is:
+      the create XML is untouched and a `nil` icon id short-circuits before any second request
+- [x] ~~*(Optional)* per-label icon override~~ **Not built, deliberately.** The brief gates it on the batch
+      case being solid first, and the batch case cannot be called solid until it has run against a tenant.
 
 ### Phase 3 — Shared computer display + username in the scope picker
 **3.1 — Model-level derivation (behaviour-preserving):**
@@ -180,12 +214,42 @@ Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation �
       module's results sheet; deliberate, since they all pass sentences.
 - [ ] **`DeploymentConfigSheet.loadData()` still swallows a total load failure** — it prints and leaves an
       empty sheet with no error state. Out of scope for Phase 1; folded into the Phase 5 states pass.
+- [x] **`InstallomatorDeploymentPlan` replaces the 6-argument `onConfirm` callback** (Phase 2). The icon id
+      would otherwise have been a 7th positional argument, and Phase 4's overrides more again. One call site,
+      mechanical change; Phase 4 now just adds a field.
+- [x] **`parseIDFromXMLResponse` made non-private in `+Cloning.swift`** (Phase 2) so the Installomator create
+      path can read the new policy id back instead of duplicating the regex.
+- [x] **Dashboard refresh observer no longer reloads mid-batch** (Phase 2) — the icon attach PUTs bump the
+      refresh token, so an icon-enabled batch would otherwise trigger a full policy re-scan while still
+      running. Guarded on `isCreatingPolicies`/`isLoading`.
+- [ ] **Fold the icon into the create POST if a spike allows it** — would halve the write volume for
+      icon-enabled batches. Needs `POST /JSSResource/policies/id/0` confirmed to honour
+      `<self_service_icon><id>`; until then the two-request route stands.
 - [ ] **Caveat on `@AppStorage("installomatorScriptID")`** — if an administrator once deploys with the
       wrong script, that id sticks and its other policies may be read as Installomator deployments.
       Affects categorisation only, and is overwritten by the next correct deploy. Revisit if it bites.
 
 ## Progress log
 
+- **2026-08-03** — **Phase 2 code complete.** The deployment sheet gained a Self Service icon step inside
+  step 4: preview + "Upload Image…" / "Reuse Existing…" / "Remove", with `SelfServiceIconPickerView`
+  presented unchanged and the `NSOpenPanel` upload mirroring `PolicySelfServiceEditorView` (including its
+  precedent that an icon-library upload is inert and so needs no confirmation of its own). The 6-argument
+  `onConfirm` callback was replaced by a single `InstallomatorDeploymentPlan` value — the icon id would have
+  been a 7th positional `Bool`/`Int?` otherwise, and Phase 4's overrides would add more still.
+  **Route decision:** the create-time spike could not be run (no tenant access, and the configured instance
+  is production), so rather than guess an unproven payload the icon is attached after creation. Built on
+  three existing proofs rather than anything new: `parseIDFromXMLResponse` (un-privated, already used by
+  `clonePolicy` to read a created id back), the partial-section Classic PUT that `applyClonedGeneral` and
+  `movePolicy` rely on, and the `<self_service_icon><id>` shape `updatePolicySelfService` already writes.
+  `createInstallomatorPolicyAsync` now returns `Int?` — the new policy id, or `nil` if unreadable, which is
+  reported as "created but the icon could not be attached" and never as a failed creation.
+  Also guarded the dashboard's `refreshCoordinator` observer against reloading mid-batch: the attach PUTs
+  now bump the refresh token, and a duplicate full policy scan would compete with the batch for Jamf's
+  rate limit — which is the very thing the coordinator's debounce exists to avoid.
+  `xcodebuild -scheme JamfCommander -destination "platform=macOS" build` ⇒ **BUILD SUCCEEDED**, no warnings.
+  **Not run against a tenant:** both Phase 2 "Verified:" lines are open, and the create-time spike remains
+  the one cheap follow-up that could halve the write volume.
 - **2026-08-03** — Pre-work review of the Packages module. Diagnosed the reported "Add to Jamf" failures:
   the architecture branch in `mysqlworkbenchce` is resolved on-device at install time and is **not** the
   cause (F1). Verified against the live upstream repo: duplicate `omnissahorizonclient` label line (F2),

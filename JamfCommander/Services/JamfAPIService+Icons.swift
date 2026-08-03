@@ -80,6 +80,27 @@ extension JamfAPIService {
         return data
     }
 
+    /// Attaches an icon that is already in Jamf's icon library to a policy.
+    ///
+    /// Writes **only** `<self_service><self_service_icon><id>…` — Classic merges the sections you
+    /// supply, the same partial-update pattern `applyClonedGeneral` and `movePolicy` rely on — so the
+    /// policy's other Self Service settings are left untouched. Deliberately narrower than
+    /// `updatePolicySelfService(id:settings:)`, which re-states the whole section and would clear
+    /// `self_service_categories` unless the caller reproduced it exactly. The icon id is an `Int`, so
+    /// there is no dynamic string to escape.
+    ///
+    /// Needs the Update Policies privilege.
+    func assignPolicyIcon(policyID: Int, iconID: Int) async throws {
+        let xml = """
+        <policy>
+            <self_service>
+                <self_service_icon><id>\(iconID)</id></self_service_icon>
+            </self_service>
+        </policy>
+        """
+        try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(policyID)", body: xml)
+    }
+
     /// Resolves an icon's CDN URL via `GET /api/v1/icon/{id}` (used for previews/caching).
     func fetchIconURL(id: Int) async throws -> String {
         let response = try await genericFetch(endpoint: "api/v1/icon/\(id)", responseType: JamfIconResponse.self)

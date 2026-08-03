@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Scope Configuration Model
 
@@ -83,6 +84,23 @@ struct DeploymentScopeConfig {
     }
 }
 
+// MARK: - Deployment Plan
+
+/// Everything the sheet collects for one "Add to Jamf" run. Passed as a single value so the
+/// callback doesn't grow another positional argument each time the flow gains an option.
+struct InstallomatorDeploymentPlan {
+    var categoryName: String
+    var scriptID: String
+    var featureOnMainPage: Bool
+    var displayInSelfServiceCategory: Bool
+    var scope: DeploymentScopeConfig
+    var policyNameTemplate: String
+
+    /// An icon already in Jamf's icon library, attached to each policy after it is created.
+    /// `nil` — the default — leaves the policies without a Self Service icon, exactly as before.
+    var iconID: Int?
+}
+
 struct DeploymentConfigSheet: View {
     @ObservedObject var api: JamfAPIService
 
@@ -90,8 +108,7 @@ struct DeploymentConfigSheet: View {
     /// against Jamf before anything is written.
     let pendingItems: [InstallomatorItem]
 
-    // Callbacks: (CategoryName, ScriptID, FeatureOnMain, DisplayInCategory, ScopeConfig, NameTemplate)
-    var onConfirm: (String, String, Bool, Bool, DeploymentScopeConfig, String) -> Void
+    var onConfirm: (InstallomatorDeploymentPlan) -> Void
     var onCancel: () -> Void
 
     // Data State
@@ -119,6 +136,13 @@ struct DeploymentConfigSheet: View {
     // Self Service Options
     @State private var featureOnMainPage = false
     @State private var displayInSelfServiceCategory = true
+
+    // Self Service Icon — uploaded (or picked) once per run; only the id reaches the batch
+    @State private var selectedIcon: SelfServiceIcon?
+    @State private var iconImage: NSImage?
+    @State private var isUploadingIcon = false
+    @State private var iconError: String?
+    @State private var showIconPicker = false
     
     // Scope State
     @State private var scopeConfig = DeploymentScopeConfig()
@@ -332,8 +356,10 @@ struct DeploymentConfigSheet: View {
                                 Toggle("Display in '\(selectedCategory?.name ?? "Selected Category")'", isOn: $displayInSelfServiceCategory)
                                     .toggleStyle(.switch)
                                     .disabled(selectedCategory == nil)
+
+                                iconChooser
                             }
-                            
+
                             Divider()
                             
                             // Scope Section
@@ -402,6 +428,20 @@ struct DeploymentConfigSheet: View {
                                             Text(featureOnMainPage ? "Featured" : "Standard")
                                         }
                                         GridRow {
+                                            Text("Icon:").foregroundColor(.secondary)
+                                            HStack(spacing: 6) {
+                                                if let iconImage {
+                                                    Image(nsImage: iconImage)
+                                                        .resizable()
+                                                        .interpolation(.high)
+                                                        .aspectRatio(contentMode: .fit)
+                                                        .frame(width: 18, height: 18)
+                                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                                }
+                                                Text(iconSummaryText).bold()
+                                            }
+                                        }
+                                        GridRow {
                                             Text("Scope:").foregroundColor(.secondary)
                                             Text(scopeConfig.summaryText).bold()
                                         }
@@ -441,7 +481,175 @@ struct DeploymentConfigSheet: View {
         .frame(width: 750, height: 620)
         .appBackground()
         .commanderConfirmation(data: $confirmation)
+        .sheet(isPresented: $showIconPicker) {
+            SelfServiceIconPickerView(
+                api: api,
+                onPick: { icon in
+                    showIconPicker = false
+                    selectedIcon = icon
+                    iconError = nil
+                    iconImage = nil
+                    if let iconID = icon.id {
+                        loadIconPreview(id: iconID)
+                    }
+                },
+                onCancel: { showIconPicker = false }
+            )
+        }
         .onAppear(perform: loadData)
+    }
+
+    // MARK: - Self Service Icon
+
+    /// One icon for the whole run: no icon (the default), a local image uploaded to Jamf's icon
+    /// library, or an existing Jamf icon reused by id. Whichever route is taken, the upload or
+    /// lookup happens **once here** and only the resulting id is handed to the batch.
+    private var iconChooser: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                iconPreview
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(selectedIcon?.id == nil ? "No icon" : (selectedIcon?.filename ?? "Existing Jamf icon"))
+                        .font(.callout)
+                        .fontWeight(.medium)
+                    if let iconID = selectedIcon?.id {
+                        Text("Icon ID \(iconID) — applied to every policy in this run")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Policies will be created without a Self Service icon.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                if isUploadingIcon {
+                    ProgressView().controlSize(.small)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button { pickAndUploadIcon() } label: {
+                    Label("Upload Image…", systemImage: "square.and.arrow.up")
+                }
+                .disabled(isUploadingIcon)
+
+                Button { showIconPicker = true } label: {
+                    Label("Reuse Existing…", systemImage: "photo.on.rectangle")
+                }
+                .disabled(isUploadingIcon)
+
+                if selectedIcon != nil {
+                    Button {
+                        selectedIcon = nil
+                        iconImage = nil
+                        iconError = nil
+                    } label: {
+                        Label("Remove", systemImage: "xmark.circle")
+                    }
+                    .disabled(isUploadingIcon)
+                }
+
+                Spacer()
+            }
+
+            if let iconError {
+                Label(iconError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// One line describing the chosen icon, for the summary box.
+    private var iconSummaryText: String {
+        guard let iconID = selectedIcon?.id else { return "None" }
+        if let filename = selectedIcon?.filename, !filename.isEmpty { return filename }
+        return "Icon ID \(iconID)"
+    }
+
+    @ViewBuilder
+    private var iconPreview: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .frame(width: 48, height: 48)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.opacity(0.2), lineWidth: 1))
+            if let iconImage {
+                Image(nsImage: iconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 40, height: 40)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Image(systemName: "photo")
+                    .foregroundColor(.secondary)
+            }
+        }
+        .accessibilityLabel(iconImage == nil ? "No Self Service icon chosen" : "Chosen Self Service icon")
+    }
+
+    /// Uploading only adds the image to Jamf's icon library — it changes no policy and reaches no
+    /// device, so (as in `PolicySelfServiceEditorView`) it isn't itself gated by a confirmation.
+    /// Attaching it to real policies happens later, behind the deployment confirmation.
+    private func pickAndUploadIcon() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .gif, .jpeg]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.message = "Choose a Self Service icon (PNG or GIF recommended, ≈512×512)."
+        panel.prompt = "Upload"
+
+        guard panel.runModal() == .OK, let fileURL = panel.url else { return }
+
+        isUploadingIcon = true
+        iconError = nil
+        let filename = fileURL.lastPathComponent
+        let mime = mimeType(forPathExtension: fileURL.pathExtension)
+
+        Task {
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let icon = try await api.uploadIcon(imageData: data, filename: filename, mimeType: mime)
+                await MainActor.run {
+                    isUploadingIcon = false
+                    if let iconID = icon.id {
+                        // Cache the bytes we just uploaded so the preview is instant.
+                        IconImageCache.shared.store(id: iconID, data: data)
+                    }
+                    selectedIcon = icon
+                    iconImage = NSImage(data: data)
+                }
+            } catch {
+                await MainActor.run {
+                    isUploadingIcon = false
+                    iconError = "Couldn't upload the icon. Check the image format (PNG, GIF or JPEG) and your Jamf permissions, then try again."
+                }
+            }
+        }
+    }
+
+    private func mimeType(forPathExtension ext: String) -> String {
+        switch ext.lowercased() {
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "jpg", "jpeg": return "image/jpeg"
+        default: return "application/octet-stream"
+        }
+    }
+
+    /// Loads the preview for an icon reused from Jamf (the upload path already has the bytes).
+    private func loadIconPreview(id: Int) {
+        Task {
+            let image = await IconImageCache.shared.loadImage(id: id, using: api)
+            await MainActor.run { iconImage = image }
+        }
     }
 
     // MARK: - Pre-flight Banner
@@ -492,25 +700,29 @@ struct DeploymentConfigSheet: View {
         let noun = count == 1 ? "policy" : "policies"
 
         var message = "\(count) Self Service \(noun) will be created in Jamf under '\(category.name)', scoped to \(scopeConfig.summaryText.lowercased())."
+        if let iconID = selectedIcon?.id {
+            message += " Icon \(iconID) will be attached to each one."
+        }
         if !collidingPolicyNames.isEmpty {
             message += "\n\n\(collidingPolicyNames.count) of these names already exist and will be rejected: \(summarise(collidingPolicyNames))."
         }
+
+        let plan = InstallomatorDeploymentPlan(
+            categoryName: category.name,
+            scriptID: scriptID,
+            featureOnMainPage: featureOnMainPage,
+            displayInSelfServiceCategory: displayInSelfServiceCategory,
+            scope: scopeConfig,
+            policyNameTemplate: policyNameTemplate,
+            iconID: selectedIcon?.id
+        )
 
         confirmation = ConfirmationData(
             title: "Create \(count) \(noun)?",
             message: message,
             actionTitle: "Create \(noun.capitalized)",
             role: nil,
-            action: {
-                onConfirm(
-                    category.name,
-                    scriptID,
-                    featureOnMainPage,
-                    displayInSelfServiceCategory,
-                    scopeConfig,
-                    policyNameTemplate
-                )
-            }
+            action: { onConfirm(plan) }
         )
     }
 

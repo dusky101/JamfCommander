@@ -235,7 +235,13 @@ extension JamfAPIService {
     
     // MARK: - Policy Creation
     
-    /// Creates a Policy to install software via Installomator (Async Version)
+    /// Creates a Policy to install software via Installomator (Async Version).
+    ///
+    /// - Returns: The new policy's id, read back from Jamf's create response, or `nil` if the
+    ///   response carried no readable id. The policy exists either way, so a caller that wanted to
+    ///   follow up (e.g. attaching a Self Service icon) must treat `nil` as "created but not
+    ///   finished", never as a creation failure.
+    @discardableResult
     func createInstallomatorPolicyAsync(
         appName: String,
         label: String,
@@ -245,8 +251,8 @@ extension JamfAPIService {
         displayInSelfServiceCategory: Bool,
         scopeConfig: DeploymentScopeConfig? = nil,
         policyNameTemplate: String = "Install {appName}"
-    ) async throws {
-        
+    ) async throws -> Int? {
+
         let endpoint = "\(baseURL)/JSSResource/policies/id/0"
         let policyName = policyNameTemplate.replacingOccurrences(of: "{appName}", with: appName)
         let scope = scopeConfig ?? DeploymentScopeConfig()
@@ -341,6 +347,10 @@ extension JamfAPIService {
                 categoryName: categoryName
             )
         }
+
+        // The policy now exists in Jamf. Read its id back so the caller can attach an icon — using
+        // `try?` because failing to parse the id must never be reported as a failed creation.
+        return try? parseIDFromXMLResponse(data: data, elementName: "id")
     }
 
     // MARK: - Failure Classification

@@ -125,21 +125,20 @@ struct PackagesDashboardView: View {
         .task {
             await loadData()
         }
-        .onChange(of: refreshCoordinator.token) { Task { await loadData() } }
+        .onChange(of: refreshCoordinator.token) {
+            // Each icon attach is a Classic write, so a batch bumps the refresh token too. Skip the
+            // bump while we're mid-deployment or already reloading — `deployPolicies` reloads itself
+            // afterwards, and a duplicate full scan would compete for Jamf's rate limit.
+            guard !isCreatingPolicies, !isLoading else { return }
+            Task { await loadData() }
+        }
         .sheet(isPresented: $showConfigSheet) {
             DeploymentConfigSheet(
                 api: api,
                 pendingItems: selectedAvailableItems,
-                onConfirm: { category, scriptID, featured, displayInCat, scopeConfig, nameTemplate in
+                onConfirm: { plan in
                     showConfigSheet = false
-                    deployPolicies(
-                        category: category,
-                        scriptID: scriptID,
-                        featureOnMain: featured,
-                        displayInCat: displayInCat,
-                        scopeConfig: scopeConfig,
-                        nameTemplate: nameTemplate
-                    )
+                    deployPolicies(plan: plan)
                 },
                 onCancel: {
                     showConfigSheet = false
@@ -441,42 +440,42 @@ struct PackagesDashboardView: View {
     
     // MARK: - Deployment
     
-    func deployPolicies(category: String, scriptID: String, featureOnMain: Bool, displayInCat: Bool, scopeConfig: DeploymentScopeConfig, nameTemplate: String) {
+    func deployPolicies(plan: InstallomatorDeploymentPlan) {
         let itemsToDeploy = selectedAvailableItems
         guard !itemsToDeploy.isEmpty else { return }
 
         // Remember the script the administrator actually deploys with, so the next scan recognises
         // these policies even if the script is named something other than "Installomator".
-        lastUsedScriptID = scriptID
+        lastUsedScriptID = plan.scriptID
 
         isCreatingPolicies = true
         creationStatus = "Initialising..."
         deploymentResults = []
-        
+
         Task {
             var results: [OperationResult] = []
-            
+
             for (index, item) in itemsToDeploy.enumerated() {
                 await MainActor.run {
                     creationStatus = "Deploying \(index + 1) of \(itemsToDeploy.count)..."
                 }
-                
+
                 do {
-                    try await api.createInstallomatorPolicyAsync(
+                    let newPolicyID = try await api.createInstallomatorPolicyAsync(
                         appName: item.displayName,
                         label: item.label,
-                        categoryName: category,
-                        scriptID: scriptID,
-                        featureOnMainPage: featureOnMain,
-                        displayInSelfServiceCategory: displayInCat,
-                        scopeConfig: scopeConfig,
-                        policyNameTemplate: nameTemplate
+                        categoryName: plan.categoryName,
+                        scriptID: plan.scriptID,
+                        featureOnMainPage: plan.featureOnMainPage,
+                        displayInSelfServiceCategory: plan.displayInSelfServiceCategory,
+                        scopeConfig: plan.scope,
+                        policyNameTemplate: plan.policyNameTemplate
                     )
-                    
-                    results.append(OperationResult(
-                        itemName: item.displayName,
-                        success: true,
-                        error: nil
+
+                    results.append(await attachIconIfRequested(
+                        iconID: plan.iconID,
+                        toPolicyID: newPolicyID,
+                        itemName: item.displayName
                     ))
                 } catch {
                     results.append(OperationResult(
@@ -514,6 +513,38 @@ struct PackagesDashboardView: View {
             }
             
             await loadData()
+        }
+    }
+
+    /// Attaches the run's chosen icon to a policy that has just been created, and turns the outcome
+    /// into that item's result row.
+    ///
+    /// The icon was uploaded once, before the batch started, so this is a single extra write per
+    /// policy inside the existing throttled loop. A failure here is reported honestly and never
+    /// claimed as a clean success — the policy exists, only the icon is missing — following the
+    /// convention `clonePolicy` already uses for a failed follow-up write.
+    private func attachIconIfRequested(iconID: Int?, toPolicyID policyID: Int?, itemName: String) async -> OperationResult {
+        guard let iconID else {
+            return OperationResult(itemName: itemName, success: true, error: nil)
+        }
+
+        guard let policyID else {
+            return OperationResult(
+                itemName: itemName,
+                success: false,
+                error: "Policy created, but Jamf did not return its id, so the Self Service icon could not be attached. Set the icon on the policy in Jamf."
+            )
+        }
+
+        do {
+            try await api.assignPolicyIcon(policyID: policyID, iconID: iconID)
+            return OperationResult(itemName: itemName, success: true, error: nil)
+        } catch {
+            return OperationResult(
+                itemName: itemName,
+                success: false,
+                error: "Policy created (ID \(policyID)), but the Self Service icon could not be attached — this needs the 'Update Policies' privilege. Set the icon on the policy in Jamf."
+            )
         }
     }
 
