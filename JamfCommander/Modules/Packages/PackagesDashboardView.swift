@@ -31,6 +31,9 @@ struct PackagesDashboardView: View {
     
     // Inspector
     @State private var inspectingPolicyID: Int?
+
+    /// The label whose own source is being explained (see `LabelVariantPanel`).
+    @State private var explainingItem: InstallomatorItem?
     
     // Deployment
     @State private var isCreatingPolicies = false
@@ -109,6 +112,9 @@ struct PackagesDashboardView: View {
                                 onToggle: toggleSelection,
                                 onInspect: { policyID in
                                     inspectingPolicyID = policyID
+                                },
+                                onExplain: { item in
+                                    explainingItem = item
                                 }
                             )
                         }
@@ -162,6 +168,9 @@ struct PackagesDashboardView: View {
             if let policyID = inspectingPolicyID {
                 PoliciesInspectorView(policyId: policyID, api: api)
             }
+        }
+        .sheet(item: $explainingItem) { item in
+            LabelVariantPanel(api: api, item: item, onDismiss: { explainingItem = nil })
         }
     }
     
@@ -571,6 +580,7 @@ struct CollapsiblePackageSection: View {
     @Binding var selectedIDs: Set<String>
     var onToggle: (String) -> Void
     var onInspect: (Int) -> Void
+    var onExplain: (InstallomatorItem) -> Void
     
     @State private var isExpanded = true
     
@@ -654,6 +664,12 @@ struct CollapsiblePackageSection: View {
                                 } label: {
                                     Label("Inspect Policy", systemImage: "magnifyingglass")
                                 }
+                                Divider()
+                            }
+                            Button {
+                                onExplain(item)
+                            } label: {
+                                Label("Explain This Label…", systemImage: "questionmark.circle")
                             }
                         }
                         .overlay(

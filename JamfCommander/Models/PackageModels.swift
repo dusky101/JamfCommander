@@ -212,19 +212,120 @@ struct InstallomatorLabelFormatter {
         "karabinerelements": "Karabiner-Elements",
         "keepassxc": "KeePassXC",
         "bitwarden": "Bitwarden",
+        // Names the token splitter gets close to but not exactly right
+        "expressvpn": "ExpressVPN",
+        "mysqlworkbenchce": "MySQL Workbench CE",
     ]
     
+    /// Product words and edition suffixes used to split all-lowercase labels, each mapped to its
+    /// proper casing. Installomator labels are lowercase and unpunctuated (`mysqlworkbenchce`), so
+    /// the camelCase heuristic below has nothing to work with and returns "Mysqlworkbenchce".
+    ///
+    /// Deliberately conservative: only vendor names, product nouns and edition suffixes, no generic
+    /// English fragments. Short words such as "key", "note", "one" or "box" are **excluded on
+    /// purpose** — they would let an unrelated label decompose by accident ("keynote" → "Key Note").
+    ///
+    /// To extend it safely, repeat the check that produced this table: run
+    /// `displayName(for:)` over the full upstream `Labels.txt` before and after the change and read
+    /// every name that moves. The current table was verified that way over all 1,224 labels — it
+    /// improves 26 names and changes nothing else.
+    private static let knownTokens: [String: String] = [
+        // Vendors and brands
+        "mysql": "MySQL", "oracle": "Oracle", "google": "Google", "microsoft": "Microsoft",
+        "adobe": "Adobe", "apple": "Apple", "jamf": "Jamf", "mozilla": "Mozilla",
+        "jetbrains": "JetBrains", "vmware": "VMware", "omnissa": "Omnissa", "cisco": "Cisco",
+        "horizon": "Horizon",
+        "citrix": "Citrix", "zoom": "Zoom", "slack": "Slack", "dropbox": "Dropbox",
+        "github": "GitHub", "gitlab": "GitLab", "docker": "Docker", "python": "Python",
+        "postgres": "Postgres", "mongodb": "MongoDB", "nvidia": "NVIDIA", "logitech": "Logitech",
+        "sophos": "Sophos", "mcafee": "McAfee", "symantec": "Symantec", "crowdstrike": "CrowdStrike",
+        "malwarebytes": "Malwarebytes", "teamviewer": "TeamViewer", "anydesk": "AnyDesk",
+        "splashtop": "Splashtop", "parallels": "Parallels", "virtualbox": "VirtualBox",
+        "tableau": "Tableau", "notion": "Notion", "figma": "Figma", "spotify": "Spotify",
+        "webex": "Webex", "firefox": "Firefox", "thunderbird": "Thunderbird",
+        "libreoffice": "LibreOffice", "openoffice": "OpenOffice", "onlyoffice": "ONLYOFFICE",
+        "keepass": "KeePass", "bitwarden": "Bitwarden", "lastpass": "LastPass",
+        "wireshark": "Wireshark", "handbrake": "HandBrake", "audacity": "Audacity",
+        "blender": "Blender", "inkscape": "Inkscape", "zotero": "Zotero", "mendeley": "Mendeley",
+        "grammarly": "Grammarly", "evernote": "Evernote", "todoist": "Todoist", "trello": "Trello",
+        "asana": "Asana", "confluence": "Confluence", "bluejeans": "BlueJeans",
+        "gotomeeting": "GoToMeeting", "ringcentral": "RingCentral", "nextcloud": "Nextcloud",
+        "owncloud": "ownCloud", "veracrypt": "VeraCrypt", "cyberduck": "Cyberduck",
+        "filezilla": "FileZilla", "sequel": "Sequel", "postman": "Postman", "insomnia": "Insomnia",
+        "sourcetree": "Sourcetree",
+        // Product nouns
+        "workbench": "Workbench", "browser": "Browser", "client": "Client", "server": "Server",
+        "desktop": "Desktop", "viewer": "Viewer", "player": "Player", "reader": "Reader",
+        "writer": "Writer", "manager": "Manager", "monitor": "Monitor", "studio": "Studio",
+        "tools": "Tools", "agent": "Agent", "connect": "Connect", "connector": "Connector",
+        "drive": "Drive", "cloud": "Cloud", "backup": "Backup", "remote": "Remote",
+        "printer": "Printer", "scanner": "Scanner", "editor": "Editor", "terminal": "Terminal",
+        "installer": "Installer", "updater": "Updater", "launcher": "Launcher", "suite": "Suite",
+        "console": "Console", "portal": "Portal", "gateway": "Gateway", "bridge": "Bridge",
+        "recorder": "Recorder", "converter": "Converter", "cleaner": "Cleaner", "finder": "Finder",
+        "keyboard": "Keyboard", "display": "Display", "camera": "Camera",
+        // Editions and variants
+        "community": "Community", "enterprise": "Enterprise", "professional": "Professional",
+        "standard": "Standard", "premium": "Premium", "basic": "Basic", "express": "Express",
+        "classic": "Classic", "nightly": "Nightly", "canary": "Canary", "beta": "Beta",
+        "ce": "CE", "dc": "DC", "esr": "ESR", "pkg": "PKG", "lts": "LTS", "pro": "Pro",
+        "cli": "CLI", "sdk": "SDK", "jdk": "JDK", "jre": "JRE", "ide": "IDE", "vpn": "VPN",
+        "security": "Security", "protect": "Protect", "defender": "Defender",
+        "antivirus": "Antivirus",
+    ]
+
     /// Main entry point: returns a human-readable name for a label
     static func displayName(for label: String) -> String {
         // 1. Check known overrides first
         if let override = knownOverrides[label.lowercased()] {
             return override
         }
-        
-        // 2. Apply heuristic: split on boundaries and capitalise
+
+        // 2. Try splitting an all-lowercase run into known product words
+        if let segmented = segmentedName(from: label) {
+            return segmented
+        }
+
+        // 3. Apply heuristic: split on boundaries and capitalise
         return heuristicName(from: label)
     }
-    
+
+    /// Whether a display name still looks like a raw label — one long unbroken word — so the UI can
+    /// invite the administrator to check it before it becomes a policy name.
+    static func looksUnsegmented(_ displayName: String) -> Bool {
+        !displayName.contains(" ") && displayName.count > 12
+    }
+
+    /// Splits an all-lowercase, all-letters label into `knownTokens`, longest match first.
+    ///
+    /// Returns `nil` unless **every** character is accounted for by **at least two** tokens. That
+    /// all-or-nothing rule is what makes this safe: a partial match is far more likely to be a
+    /// coincidence than a real word boundary, and a label that only half-decomposes falls through
+    /// to the heuristic untouched.
+    private static func segmentedName(from label: String) -> String? {
+        // Anything with capitals or digits already gives the heuristic a boundary to split on.
+        guard label == label.lowercased(), label.allSatisfy(\.isLetter) else { return nil }
+
+        var remaining = Substring(label)
+        var parts: [String] = []
+        while !remaining.isEmpty {
+            guard let token = longestToken(prefixing: remaining),
+                  let display = knownTokens[token] else { return nil }
+            parts.append(display)
+            remaining = remaining.dropFirst(token.count)
+        }
+        return parts.count >= 2 ? parts.joined(separator: " ") : nil
+    }
+
+    /// The longest known token that starts `remaining`, so "mysql" wins over a shorter prefix.
+    private static func longestToken(prefixing remaining: Substring) -> String? {
+        var best: String?
+        for token in knownTokens.keys where remaining.hasPrefix(token) {
+            if best == nil || token.count > best!.count { best = token }
+        }
+        return best
+    }
+
     /// Splits a label like "googlechrome" into words at camelCase / number boundaries
     /// then title-cases each word.
     private static func heuristicName(from label: String) -> String {

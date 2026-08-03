@@ -132,6 +132,7 @@ struct DeploymentConfigSheet: View {
     
     // Policy Naming
     @State private var policyNameTemplate = "Install {appName}"
+    @State private var showNameReview = false
     
     // Self Service Options
     @State private var featureOnMainPage = false
@@ -161,11 +162,20 @@ struct DeploymentConfigSheet: View {
 
     // MARK: - Pre-flight Duplicate Check
 
+    /// The policy name this run would create for one label.
+    private func resolvedName(for item: InstallomatorItem) -> String {
+        policyNameTemplate.replacingOccurrences(of: "{appName}", with: item.displayName)
+    }
+
     /// The policy names this run would create, resolved from the current template.
     private var resolvedPolicyNames: [String] {
-        pendingItems.map {
-            policyNameTemplate.replacingOccurrences(of: "{appName}", with: $0.displayName)
-        }
+        pendingItems.map(resolvedName(for:))
+    }
+
+    /// Labels whose app name is still one unbroken word, so the resulting policy name reads like the
+    /// raw Installomator label ("Install Mysqlworkbenchce"). Worth a look before it is written.
+    private var itemsWithAwkwardNames: [InstallomatorItem] {
+        pendingItems.filter { InstallomatorLabelFormatter.looksUnsegmented($0.displayName) }
     }
 
     /// Names Jamf already holds. Creating these would be rejected with a duplicate-name conflict,
@@ -329,17 +339,19 @@ struct DeploymentConfigSheet: View {
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                                 
-                                if !policyNameTemplate.isEmpty {
+                                if !policyNameTemplate.isEmpty, let first = pendingItems.first {
                                     HStack(spacing: 4) {
                                         Text("Preview:")
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
-                                        Text(policyNameTemplate.replacingOccurrences(of: "{appName}", with: "Google Chrome"))
+                                        Text(resolvedName(for: first))
                                             .font(.caption2)
                                             .foregroundColor(.blue)
                                             .italic()
                                     }
                                 }
+
+                                nameReview
                             }
                             
                             Divider()
@@ -496,6 +508,61 @@ struct DeploymentConfigSheet: View {
             )
         }
         .onAppear(perform: loadData)
+    }
+
+    // MARK: - Policy Name Review
+
+    /// Every policy name this run would create, so an awkward one is caught here rather than after
+    /// it exists in Jamf. Installomator labels are lowercase and unpunctuated, and the app can only
+    /// tidy the ones it recognises — so the names it is least sure about are marked for a look.
+    @ViewBuilder
+    private var nameReview: some View {
+        if !pendingItems.isEmpty {
+            DisclosureGroup(isExpanded: $showNameReview) {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(pendingItems) { item in
+                        let needsChecking = InstallomatorLabelFormatter.looksUnsegmented(item.displayName)
+                        HStack(spacing: 6) {
+                            Image(systemName: needsChecking ? "exclamationmark.triangle.fill" : "checkmark.circle")
+                                .font(.caption2)
+                                .foregroundColor(needsChecking ? .orange : .green.opacity(0.7))
+                            Text(resolvedName(for: item))
+                                .font(.caption)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 6)
+                            Text(item.label)
+                                .font(.caption2)
+                                .fontDesign(.monospaced)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(needsChecking
+                            ? "\(resolvedName(for: item)) — check this name"
+                            : resolvedName(for: item))
+                    }
+                }
+                .padding(.top, 4)
+                .frame(maxHeight: 120)
+                .fixedSize(horizontal: false, vertical: true)
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Review policy names (\(pendingItems.count))")
+                        .font(.caption)
+                    if !itemsWithAwkwardNames.isEmpty {
+                        Text("\(itemsWithAwkwardNames.count) to check")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundColor(.orange)
+                            .cornerRadius(4)
+                    }
+                }
+            }
+            .help("Names come from the Installomator label. Anything marked in amber is still one unbroken word — worth reading before it becomes a policy name.")
+        }
     }
 
     // MARK: - Self Service Icon

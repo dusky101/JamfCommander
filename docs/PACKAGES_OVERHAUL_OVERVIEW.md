@@ -56,8 +56,8 @@ Established during the pre-work review; the brief explains each in full. Do not 
 
 ## Progress
 
-**Current status:** **Phases 1–3 code complete** (Phase 1 = `2bebedb`, Phase 2 = `0447469`, Phase 3
-uncommitted). Phase 3 pulled the computer display derivation onto `ComputerInventoryRecord`, moved the
+**Current status:** **Phases 1–3 complete, plus label-name segmentation and Phase 4.1** (Phase 1 = `2bebedb`, Phase 2 = `0447469`, Phase 3 = `796f651`;
+the naming fix and Phase 4.1 are uncommitted). Phase 3 pulled the computer display derivation onto `ComputerInventoryRecord`, moved the
 sort keys there with it, added `SharedUI/ComputerIdentityRow.swift`, and rebuilt the deployment scope
 picker row on it — so each Mac in the picker now shows who it belongs to and can be found by username,
 serial or email. F11 turned out to overcount the duplication (see the Phase 3 note), so the Computers-module
@@ -83,7 +83,7 @@ below). **Live verification against a tenant is the only thing outstanding for P
 has been exercised against Jamf yet, including the `&`-in-a-category-name case. Phases 2–5 not started.
 Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation → 3.2
 `SharedUI/ComputerIdentityRow` → 3.3 scope picker) — see F11/F12.
-**Last updated:** 2026-08-03 (Phase 3).
+**Last updated:** 2026-08-03 (label naming + Phase 4.1).
 
 ### Phase 1 — Fix and harden policy creation (the actual bug)
 - [x] De-duplicate labels in `fetchInstallomatorLabelsFromGitHub()` (stable order, case-insensitive; log the drop) — F2
@@ -184,9 +184,22 @@ not five across five — which is why the refactor stayed genuinely mechanical.
 
 ### Phase 4 — Label variant & version pinning
 **4.1 — Detect and explain variance (do this regardless):**
-- [ ] Fetch `fragments/labels/<label>.sh` on demand; cache per label for the session — F8
-- [ ] Informational panel: arch-aware ("picks Apple Silicon or Intel automatically on each Mac — no action needed"), always-latest, `type`, `expectedTeamID`, `blockingProcesses`
-- [ ] Degrades quietly when GitHub is unreachable; never blocks a deploy
+- [x] Fetch `fragments/labels/<label>.sh` on demand; cache per label for the session — F8. New
+      `Services/JamfAPIService+InstallomatorLabels.swift` holds the model, an `actor`-based session
+      cache and the parser. Unauthenticated GET — the Jamf token is never sent to GitHub
+- [x] Informational panel: arch-aware, always-latest, `type`, `expectedTeamID`, `blockingProcesses` —
+      `Modules/Packages/LabelVariantPanel.swift`, reached from **any** package card's context menu via
+      "Explain This Label…". Placed there rather than in the deployment sheet: it applies to deployed
+      labels too (which is where the original confusion arose), and the sheet is already dense at 750 × 620
+- [x] Degrades quietly when GitHub is unreachable; never blocks a deploy — the panel has loading,
+      loaded and failed states, says outright that deployment is unaffected, and offers a retry
+- [x] **Parser verified against real fragments using the shipping code** (not a copy): `mysqlworkbenchce`
+      → arch-aware, dmg, team `VB5E2TV963`, resolves version at run time; `python` → arch-aware,
+      blocking `IDLE, Python, Launcher`; `googlechrome` and `firefox` → correctly **not** arch-aware;
+      `suitestudio` → arch-aware with no version check. This is the evidence F1 predicted, now visible
+      in the app
+- [x] Verified: `mysqlworkbenchce` explains it handles both architectures automatically ← **the original
+      question in the brief, answered**
 
 **4.2 — Advanced overrides (opt-in, per label):**
 - [ ] Up to five `key=value` overrides written to `parameter7`–`parameter11` — F6
@@ -197,7 +210,6 @@ not five across five — which is why the refactor stayed genuinely mechanical.
 - [ ] Prominent warnings: pinned `downloadURL` goes stale; a pinned architecture installs the wrong binary on the other architecture
 - [ ] No "Silicon / Intel" toggle offered as a normal option; no vendor-page scraping in the app — F1, F7
 - [ ] Arch-split recipe (two policies + arch smart groups) documented in the overview and README
-- [ ] Verified: `mysqlworkbenchce` explains it handles both architectures automatically
 - [ ] Verified: `python` deploys pinned to a chosen version and installs exactly that version on a test Mac
 
 ### Phase 5 — Polish, docs and consistency pass
@@ -233,6 +245,23 @@ not five across five — which is why the refactor stayed genuinely mechanical.
       module's results sheet; deliberate, since they all pass sentences.
 - [ ] **`DeploymentConfigSheet.loadData()` still swallows a total load failure** — it prints and leaves an
       empty sheet with no error state. Out of scope for Phase 1; folded into the Phase 5 states pass.
+- [x] **Label display names are properly segmented** (raised by the user on 2026-08-03 after seeing a
+      created policy called "Install Mysqlworkbenchce"). `InstallomatorLabelFormatter` gained a
+      `knownTokens` table and an all-or-nothing splitter: a lowercase label is only re-spelt if it
+      decomposes **entirely** into at least two known product words, otherwise it falls through to the
+      old heuristic untouched. `mysqlworkbenchce` → "MySQL Workbench CE", `omnissahorizonclient` →
+      "Omnissa Horizon Client", `adobereaderdc` → "Adobe Reader DC".
+      **Verified by running the shipping formatter over all 1,224 upstream labels:** 27 names improve,
+      nothing else changes, and deliberately-excluded short tokens keep "keynote" from becoming
+      "Key Note". Repeat that check before extending the table — the method is recorded in the code comment.
+- [x] **"Review policy names" in the deployment sheet** (same report). A collapsed disclosure under the
+      name-template step lists every policy name the run will create, marking the ones still spelt as one
+      unbroken word (317 of 1,224 labels — the honest rate, since the app can only tidy what it
+      recognises). The template preview also now uses the first real selected app instead of a
+      hard-coded "Google Chrome".
+- [ ] **Per-label name editing** — the review list surfaces an awkward name but the admin can still only
+      change the *template*, not one app's name. The remedy today is to deselect it or rename the policy in
+      Jamf afterwards. Worth doing if the flag proves noisy in practice.
 - [x] **`InstallomatorDeploymentPlan` replaces the 6-argument `onConfirm` callback** (Phase 2). The icon id
       would otherwise have been a 7th positional argument, and Phase 4's overrides more again. One call site,
       mechanical change; Phase 4 now just adds a field.
@@ -250,6 +279,26 @@ not five across five — which is why the refactor stayed genuinely mechanical.
 
 ## Progress log
 
+- **2026-08-03** — **Label naming fixed, and Phase 4.1 complete.** The user deployed
+  `mysqlworkbenchce` successfully and reported the resulting policy was called "Install
+  Mysqlworkbenchce" — asking for a real fix if one existed, or a "check this name" flag if not. Both
+  were possible. `InstallomatorLabelFormatter` now tries an all-or-nothing token split before falling
+  back to the camelCase heuristic, giving "MySQL Workbench CE"; the rule only rewrites a label that
+  decomposes *entirely* into ≥2 known product words, which is what keeps it safe. Measured by running
+  the shipping formatter over all 1,224 upstream labels: **27 names improve and nothing else moves.**
+  Short generic tokens are excluded on purpose so "keynote" can't become "Key Note" — confirmed. The
+  sheet also gained a collapsed "Review policy names" list flagging names that are still one unbroken
+  word, plus a template preview that uses a real selected app.
+  **Phase 4.1** then landed the label-source explainer: `JamfAPIService+InstallomatorLabels.swift`
+  (model + `actor` session cache + parser, unauthenticated so no Jamf token reaches GitHub) and
+  `LabelVariantPanel.swift`, opened from any package card's context menu. Verified with the shipping
+  parser against five real fragments — `mysqlworkbenchce` and `python` report arch-aware and
+  always-latest, `googlechrome` and `firefox` correctly report **not** arch-aware, `suitestudio`
+  reports arch-aware with no version check. F1 is now something the app explains rather than something
+  a reader has to be told.
+  `xcodebuild -scheme JamfCommander -destination "platform=macOS" build` ⇒ **BUILD SUCCEEDED**.
+  **4.2 (the `parameter7`–`parameter11` overrides) not started.** Note: the existing
+  "Install Mysqlworkbenchce" policy keeps its name — the fix only affects newly created policies.
 - **2026-08-03** — **Phase 3 code complete (3.1 → 3.2 → 3.3 in one pass; the build was green at each
   sub-phase boundary).** First finding: **F11 overcounted.** Reading the consumers showed
   `ComputerExportService`, `BasicComputerRecord` and `ComputerInspectorView` all emit `username` and
