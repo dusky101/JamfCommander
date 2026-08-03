@@ -18,7 +18,10 @@ struct BulkSettingsPlanItem: Identifiable, Sendable, Hashable {
 
     var id: Int { policyId }
 
-    var trimmedCustomTrigger: String {
+    /// `nonisolated` so it can be read from the off-main `withTaskGroup` bulk runners (with
+    /// main-actor-by-default isolation enabled via Approachable Concurrency, the struct is
+    /// otherwise inferred `@MainActor`). Safe: it only trims an immutable `let` String.
+    nonisolated var trimmedCustomTrigger: String {
         customTrigger.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

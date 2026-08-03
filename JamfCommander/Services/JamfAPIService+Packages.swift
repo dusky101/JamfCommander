@@ -155,6 +155,14 @@ extension JamfAPIService {
         // Convert bools to explicit strings for XML safety
         let featMain = featureOnMainPage ? "true" : "false"
         let dispInCat = displayInSelfServiceCategory ? "true" : "false"
+
+        // Escape every dynamic value before it reaches the XML body. A category named
+        // "Utilities & Tools" is perfectly legal in Jamf but produced malformed XML here,
+        // which failed the whole deployment. `policyName` stays raw for user-facing messages
+        // (the 409 conflict) and is escaped separately for the payload.
+        let safePolicyName = Self.xmlEscape(policyName)
+        let safeCategoryName = Self.xmlEscape(categoryName)
+        let safeLabel = Self.xmlEscape(label)
         
         // Generate scope XML from the configuration
         let scopeXML = scope.toScopeXML()
@@ -162,17 +170,17 @@ extension JamfAPIService {
         let xmlBody = """
         <policy>
             <general>
-                <name>\(policyName)</name>
+                <name>\(safePolicyName)</name>
                 <enabled>true</enabled>
                 <frequency>Ongoing</frequency>
                 <category>
-                    <name>\(categoryName)</name>
+                    <name>\(safeCategoryName)</name>
                 </category>
             </general>
             \(scopeXML)
             <self_service>
                 <use_for_self_service>true</use_for_self_service>
-                <self_service_display_name>\(policyName)</self_service_display_name>
+                <self_service_display_name>\(safePolicyName)</self_service_display_name>
                 <install_button_text>Install</install_button_text>
                 <force_users_to_view_description>false</force_users_to_view_description>
                 
@@ -180,7 +188,7 @@ extension JamfAPIService {
                 
                 <self_service_categories>
                     <category>
-                        <name>\(categoryName)</name>
+                        <name>\(safeCategoryName)</name>
                         <display_in>\(dispInCat)</display_in>
                         <feature_in>\(featMain)</feature_in>
                     </category>
@@ -190,7 +198,7 @@ extension JamfAPIService {
                 <script>
                     <id>\(scriptID)</id>
                     <priority>After</priority>
-                    <parameter4>\(label)</parameter4>
+                    <parameter4>\(safeLabel)</parameter4>
                     <parameter5>DEBUG=0</parameter5>
                     <parameter6>NOTIFY=silent</parameter6>
                 </script>

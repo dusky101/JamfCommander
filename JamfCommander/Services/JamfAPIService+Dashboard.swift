@@ -59,13 +59,13 @@ extension JamfAPIService {
     // MARK: - Category Management Functions
     
     func createCategory(name: String) async throws {
-        let xml = "<category><name>\(name)</name><priority>9</priority></category>"
+        let xml = "<category><name>\(Self.xmlEscape(name))</name><priority>9</priority></category>"
         let endpoint = "JSSResource/categories/id/0" // ID 0 POST creates new
         try await genericRequest(method: "POST", endpoint: endpoint, body: xml)
     }
     
     func updateCategory(id: Int, newName: String) async throws {
-        let xml = "<category><name>\(newName)</name></category>"
+        let xml = "<category><name>\(Self.xmlEscape(newName))</name></category>"
         let endpoint = "JSSResource/categories/id/\(id)"
         try await genericRequest(method: "PUT", endpoint: endpoint, body: xml)
     }

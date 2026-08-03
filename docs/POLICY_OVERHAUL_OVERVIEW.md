@@ -365,3 +365,11 @@ _(Append-only. One line per phase/sub-phase completion: date — phase — what 
   `<scope><all_computers>true</all_computers><computers/><computer_groups/></scope>`, mirroring the
   proven profile method; exclusions left intact). The confirmation summary lists the change. Still gated
   by `CommanderConfirmation` + reported via `OperationResultView`. macOS build passes.
+- 2026-06-08 — Fix (archive concurrency warnings) — Two "error in the Swift 6 language mode" warnings
+  surfaced on archive (the project is Swift 5 but has Approachable Concurrency / main-actor-by-default
+  upcoming-feature flags on, which apply stricter isolation checks early). `BulkSettingsPlanItem` and
+  `BulkClonePlanItem` were inferred `@MainActor`, so reading `trimmedCustomTrigger` inside the off-main
+  `withTaskGroup` bulk runners (`JamfAPIService+PolicyEditing` / `+Cloning`) violated isolation. Marked
+  both computed properties `nonisolated` (safe — they only trim an immutable `let` String), per the
+  `models-and-decoding.md` "cross-actor computed properties → nonisolated" convention. Did not change the
+  build-setting flags. Clean build now passes with zero warnings.
