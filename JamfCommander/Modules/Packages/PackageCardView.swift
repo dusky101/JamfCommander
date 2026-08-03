@@ -46,6 +46,15 @@ struct PackageCardView: View {
                     .foregroundColor(item.statusColor)
                     .cornerRadius(4)
                     
+                    // Something in Jamf already looks like this app, but it isn't a recognised
+                    // Installomator policy — surface the name so the cause is obvious.
+                    if let existingPolicyName = item.existingPolicyName {
+                        Label("Matches '\(existingPolicyName)'", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .lineLimit(1)
+                    }
+
                     // Policy details (deployed items only)
                     if item.isDeployed {
                         if let policyID = item.policyID {

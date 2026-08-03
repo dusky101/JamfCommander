@@ -85,18 +85,29 @@ struct DeploymentScopeConfig {
 
 struct DeploymentConfigSheet: View {
     @ObservedObject var api: JamfAPIService
-    
+
+    /// The labels this run will create policies for, so their names can be resolved and checked
+    /// against Jamf before anything is written.
+    let pendingItems: [InstallomatorItem]
+
     // Callbacks: (CategoryName, ScriptID, FeatureOnMain, DisplayInCategory, ScopeConfig, NameTemplate)
     var onConfirm: (String, String, Bool, Bool, DeploymentScopeConfig, String) -> Void
     var onCancel: () -> Void
-    
+
     // Data State
     @State private var categories: [Category] = []
     @State private var scripts: [ScriptRecord] = []
     @State private var computers: [ComputerInventoryRecord] = []
     @State private var computerGroups: [ComputerGroup] = []
     @State private var isLoading = true
-    
+
+    // Pre-flight duplicate-name check
+    @State private var existingPolicyNameKeys: Set<String> = []
+    @State private var nameCheckFailed = false
+
+    // Confirmation before writing to the live tenant
+    @State private var confirmation: ConfirmationData?
+
     // Selection State
     @State private var selectedCategory: Category?
     @State private var selectedScriptID: String?
@@ -117,12 +128,40 @@ struct DeploymentConfigSheet: View {
     @State private var isCreatingCategory = false
     @State private var newCategoryName = ""
     @State private var isSavingCategory = false
+    @State private var categoryError: String?
     
     var filteredCategories: [Category] {
         if searchText.isEmpty { return categories }
         return categories.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
-    
+
+    // MARK: - Pre-flight Duplicate Check
+
+    /// The policy names this run would create, resolved from the current template.
+    private var resolvedPolicyNames: [String] {
+        pendingItems.map {
+            policyNameTemplate.replacingOccurrences(of: "{appName}", with: $0.displayName)
+        }
+    }
+
+    /// Names Jamf already holds. Creating these would be rejected with a duplicate-name conflict,
+    /// so they are surfaced here rather than collected as failures after the batch has run.
+    private var collidingPolicyNames: [String] {
+        guard !existingPolicyNameKeys.isEmpty else { return [] }
+        return resolvedPolicyNames.filter {
+            existingPolicyNameKeys.contains(PolicyNameMatching.exactKey($0))
+        }
+    }
+
+    /// "A, B and 3 more" — keeps a long list readable in a banner or dialog.
+    private func summarise(_ names: [String], showing limit: Int = 3) -> String {
+        guard names.count > limit else {
+            return names.formatted(.list(type: .and))
+        }
+        let shown = names.prefix(limit).formatted(.list(type: .and))
+        return "\(shown) and \(names.count - limit) more"
+    }
+
     var filteredComputers: [ComputerInventoryRecord] {
         if scopeSearchText.isEmpty { return computers }
         return computers.filter {
@@ -193,14 +232,28 @@ struct DeploymentConfigSheet: View {
                         
                         // New Category Input
                         if isCreatingCategory {
-                            HStack {
-                                TextField("Name", text: $newCategoryName)
-                                    .textFieldStyle(.roundedBorder)
-                                Button("Save") { createCategory() }
-                                    .disabled(newCategoryName.isEmpty || isSavingCategory)
-                                Button(action: { isCreatingCategory = false }) {
-                                    Image(systemName: "xmark")
-                                }.buttonStyle(.plain)
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    TextField("Name", text: $newCategoryName)
+                                        .textFieldStyle(.roundedBorder)
+                                    Button("Save") { createCategory() }
+                                        .disabled(newCategoryName.isEmpty || isSavingCategory)
+                                    Button(action: {
+                                        isCreatingCategory = false
+                                        categoryError = nil
+                                    }) {
+                                        Image(systemName: "xmark")
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Cancel new category")
+                                }
+
+                                if let categoryError {
+                                    Label(categoryError, systemImage: "exclamationmark.triangle.fill")
+                                        .font(.caption)
+                                        .foregroundColor(.orange)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
                             }
                             .padding(8)
                         } else {
@@ -366,27 +419,101 @@ struct DeploymentConfigSheet: View {
             }
             
             Divider()
-            
+
+            preflightBanner
+
             // Footer
             HStack {
+                Text("\(pendingItems.count) \(pendingItems.count == 1 ? "label" : "labels") selected")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
                 Spacer()
-                Button("Deploy Policies") {
-                    if let cat = selectedCategory, let scriptId = selectedScriptID {
-                        onConfirm(cat.name, scriptId, featureOnMainPage, displayInSelfServiceCategory, scopeConfig, policyNameTemplate)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(selectedCategory == nil || selectedScriptID == nil || !isScopeValid || policyNameTemplate.isEmpty)
+
+                Button("Deploy Policies", action: requestDeployment)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(selectedCategory == nil || selectedScriptID == nil || !isScopeValid || policyNameTemplate.isEmpty)
             }
             .padding()
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(width: 750, height: 620)
         .appBackground()
+        .commanderConfirmation(data: $confirmation)
         .onAppear(perform: loadData)
     }
-    
+
+    // MARK: - Pre-flight Banner
+
+    /// Warns about name clashes before anything is written, so the administrator can change the
+    /// template or cancel and deselect — rather than collecting rejections after the fact.
+    @ViewBuilder
+    private var preflightBanner: some View {
+        if !collidingPolicyNames.isEmpty {
+            banner(
+                icon: "exclamationmark.triangle.fill",
+                tint: .orange,
+                text: "\(collidingPolicyNames.count) of \(pendingItems.count) policy names already exist in Jamf and will be rejected: \(summarise(collidingPolicyNames)). Change the name template, or cancel and deselect them."
+            )
+        } else if nameCheckFailed {
+            banner(
+                icon: "info.circle.fill",
+                tint: .secondary,
+                text: "Could not check Jamf for existing policy names. Any name that is already taken will be reported after the deployment."
+            )
+        }
+    }
+
+    private func banner(icon: String, tint: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundColor(tint)
+            Text(text)
+                .font(.caption)
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.10))
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Confirmation
+
+    /// Policy creation writes to the live tenant and installs software on real Macs, so the
+    /// administrator confirms exactly what is about to happen first.
+    private func requestDeployment() {
+        guard let category = selectedCategory, let scriptID = selectedScriptID else { return }
+
+        let count = pendingItems.count
+        let noun = count == 1 ? "policy" : "policies"
+
+        var message = "\(count) Self Service \(noun) will be created in Jamf under '\(category.name)', scoped to \(scopeConfig.summaryText.lowercased())."
+        if !collidingPolicyNames.isEmpty {
+            message += "\n\n\(collidingPolicyNames.count) of these names already exist and will be rejected: \(summarise(collidingPolicyNames))."
+        }
+
+        confirmation = ConfirmationData(
+            title: "Create \(count) \(noun)?",
+            message: message,
+            actionTitle: "Create \(noun.capitalized)",
+            role: nil,
+            action: {
+                onConfirm(
+                    category.name,
+                    scriptID,
+                    featureOnMainPage,
+                    displayInSelfServiceCategory,
+                    scopeConfig,
+                    policyNameTemplate
+                )
+            }
+        )
+    }
+
     // MARK: - Scope Pickers
     
     private var scopeComputerPicker: some View {
@@ -565,10 +692,23 @@ struct DeploymentConfigSheet: View {
                 async let fetchedScripts = api.fetchScripts()
                 async let fetchedComputers = api.fetchComputers()
                 async let fetchedGroups = api.fetchComputerGroups()
-                
+                async let fetchedPolicyNames = api.fetchPolicyNames()
+
+                // The duplicate-name check is advisory: if it can't run, the sheet still works and
+                // says so in the banner rather than blocking the deployment.
+                let policyNames = try? await fetchedPolicyNames
+
                 let (cats, scrts, comps, grps) = try await (fetchedCats, fetchedScripts, fetchedComputers, fetchedGroups)
-                
+
                 await MainActor.run {
+                    if let policyNames {
+                        self.existingPolicyNameKeys = Set(policyNames.map(PolicyNameMatching.exactKey))
+                        self.nameCheckFailed = false
+                    } else {
+                        self.existingPolicyNameKeys = []
+                        self.nameCheckFailed = true
+                    }
+
                     self.categories = cats.sorted { $0.name < $1.name }
                     self.scripts = scrts.sorted { $0.name < $1.name }
                     self.computers = comps
@@ -593,20 +733,34 @@ struct DeploymentConfigSheet: View {
     }
     
     func createCategory() {
-        guard !newCategoryName.isEmpty else { return }
+        let name = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
         isSavingCategory = true
+        categoryError = nil
+
         Task {
-            try? await api.createCategory(name: newCategoryName)
+            do {
+                try await api.createCategory(name: name)
+            } catch {
+                // Never let a failed write look like a success: keep the field open and say so.
+                await MainActor.run {
+                    self.categoryError = "Could not create '\(name)' in Jamf. Check the name and your privileges, then try again."
+                    self.isSavingCategory = false
+                }
+                return
+            }
+
             let freshCats = try? await api.fetchCategories()
             await MainActor.run {
                 if let fresh = freshCats {
                     self.categories = fresh.sorted { $0.name < $1.name }
-                    if let new = fresh.first(where: { $0.name == newCategoryName }) {
+                    if let new = fresh.first(where: { $0.name == name }) {
                         self.selectedCategory = new
                     }
                 }
                 self.isCreatingCategory = false
                 self.newCategoryName = ""
+                self.categoryError = nil
                 self.isSavingCategory = false
             }
         }

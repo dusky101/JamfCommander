@@ -56,28 +56,43 @@ Established during the pre-work review; the brief explains each in full. Do not 
 
 ## Progress
 
-**Current status:** Planning complete. **The F3 escaping fix is done** — `createInstallomatorPolicyAsync`,
-`createCategory` and `updateCategory` now route every interpolated value through `Self.xmlEscape(_:)`, and
-a sweep found no other raw interpolation into Classic XML. macOS build green; live re-test with a `&` in a
-category name still outstanding. The rest of Phase 1 (label de-duplication, legible failure messages,
-dropping the raw-error-body `print()`, pre-flight duplicate check, wider deployed-policy detection) and
-Phases 2–5 are not started. Phase 3 has been re-scoped into a shared-component refactor (3.1 model
-derivation → 3.2 `SharedUI/ComputerIdentityRow` → 3.3 scope picker) after measuring that the Computers
-table itself is not reusable there — see F11/F12.
+**Current status:** **Phase 1 code complete** — every code deliverable is implemented and the macOS build
+is green. Labels are de-duplicated; the raw-error-body `print()` is gone; `PolicyCreationError` now maps
+Jamf responses to actionable British-English messages shown per row in `OperationResultView`; a pre-flight
+duplicate-name check warns in the sheet **and** in a new confirmation dialog before anything is written;
+deployed-policy detection now matches the Installomator script by id as well as by name and flags
+name-collision suspects as "Possibly Deployed". The dead `knownOverrides` keys were **kept** (reason
+below). **Live verification against a tenant is the only thing outstanding for Phase 1** — nothing in it
+has been exercised against Jamf yet, including the `&`-in-a-category-name case. Phases 2–5 not started.
+Phase 3 remains re-scoped as a shared-component refactor (3.1 model derivation → 3.2
+`SharedUI/ComputerIdentityRow` → 3.3 scope picker) — see F11/F12.
 **Last updated:** 2026-08-03.
 
 ### Phase 1 — Fix and harden policy creation (the actual bug)
-- [ ] De-duplicate labels in `fetchInstallomatorLabelsFromGitHub()` (stable order, case-insensitive; log the drop) — F2
+- [x] De-duplicate labels in `fetchInstallomatorLabelsFromGitHub()` (stable order, case-insensitive; log the drop) — F2
 - [x] `xmlEscape` `policyName`, `label`, `categoryName`, Self Service display name in `createInstallomatorPolicyAsync` — F3 **(confirmed root cause — done ahead of the rest of Phase 1, 2026-08-03)**
 - [x] `xmlEscape` `createCategory(name:)` and `updateCategory(id:newName:)` (`+Dashboard.swift:62`, `:68`) — the New Category field in this same sheet uses `createCategory` — F3
 - [x] Sweep for any remaining raw interpolation into Classic XML — clean; every `<name>`/`<parameter*>`/Self Service text element now interpolates an escaped variable
-- [ ] Remove the raw-error-body `print()`; no bodies logged anywhere — F5
-- [ ] Map Jamf responses to actionable British-English messages in `PolicyCreationError` (409 duplicate, invalid category, malformed XML, 403 privileges, 401 unauthorised)
-- [ ] Show the specific reason per row in `OperationResultView`
-- [ ] Pre-flight duplicate-name check surfaced in the confirmation step (rename/deselect, don't collect 409s)
-- [ ] Widen "already deployed" detection — match the Installomator script by **id** as well as name; flag resolved-name collisions — F4
-- [ ] Decide on the 10 dead `knownOverrides` keys (prune, or retain with a comment) — state which and why
-- [ ] Verified: a selection including `omnissahorizonclient`, `mysqlworkbenchce`, `python` either succeeds or reports an accurate per-item reason
+- [x] Remove the raw-error-body `print()`; no bodies logged anywhere — F5. The body is now reduced to a
+      `JamfRejectionHint` enum in memory and discarded; the only log is a status-code-only line
+- [x] Map Jamf responses to actionable British-English messages in `PolicyCreationError` (409 duplicate,
+      rejected category, malformed request, 401, 403, 404, 429, 5xx, network failure). The status code is
+      authoritative except for 400/409, where Jamf reuses one code for different problems and the body
+      hint disambiguates
+- [x] Show the specific reason per row in `OperationResultView` — creation now throws only
+      `PolicyCreationError`, and the row wraps the sentence instead of truncating a monospaced fragment
+- [x] Pre-flight duplicate-name check surfaced in the confirmation step (rename/deselect, don't collect
+      409s) — `fetchPolicyNames()` + an amber banner in the sheet + the collision count repeated in the
+      new confirmation dialog. Uses **exact** name matching so it never cries wolf
+- [x] Widen "already deployed" detection — match the Installomator script by **id** as well as name; flag
+      resolved-name collisions — F4. Ids come from `fetchInstallomatorScriptIDs()` plus the script last
+      deployed with (`@AppStorage("installomatorScriptID")`); a loose name match adds a third
+      "Possibly Deployed" state that stays selectable
+- [x] Decide on the 10 dead `knownOverrides` keys (prune, or retain with a comment) — **kept**, with a
+      comment saying why: the Deployed list formats names from each policy's own `parameter4`, so a
+      policy created against a since-retired label still needs a readable name. A miss is a free
+      dictionary lookup that falls through to the heuristic, so retaining them costs nothing
+- [ ] Verified: a selection including `omnissahorizonclient`, `mysqlworkbenchce`, `python` either succeeds or reports an accurate per-item reason — **not run** (needs a tenant)
 - [~] Verified: deploying into a category whose name contains `&` succeeds (the exact case that failed on 2026-08-03) — macOS build green; **live re-test outstanding.** The tenant's categories have since been renamed to use "and", so reproducing needs a throwaway category named e.g. "Test & Verify" on a non-production tenant
 - [~] Verified: creating a category named with `&` from the New Category field in this sheet succeeds, and renaming one from the dashboard succeeds — same outstanding live test
 - [ ] **Real Jamf message recorded in the progress log** for anything still failing (drives Phase 4)
@@ -152,7 +167,22 @@ table itself is not reusable there — see F11/F12.
 
 ## Added during the overhaul
 
-_(Record genuinely new scope discovered while implementing, with a one-line reason. Nothing yet.)_
+- [x] **Explicit confirmation before creating policies** (Phase 1). The sheet's "Deploy Policies" button
+      fired straight at the tenant with no confirmation, which `.claude/rules/swiftui-views.md` requires
+      for production writes. Now routes through `CommanderConfirmation`, stating the count, category and
+      scope — and repeating any name collisions.
+- [x] **The New Category field no longer fakes success** (Phase 1). `createCategory()` used `try?`, so a
+      rejected write closed the field and showed nothing — indistinguishable from success, which breaks
+      invariant 1. It now keeps the field open with an inline error. Directly relevant because this is the
+      second write path in the very window F3 broke.
+- [x] **`OperationResultView` error rows wrap as prose** (Phase 1) — dropped `.fontDesign(.monospaced)`
+      and added `fixedSize` so a full sentence is readable. Shared component, so this affects every
+      module's results sheet; deliberate, since they all pass sentences.
+- [ ] **`DeploymentConfigSheet.loadData()` still swallows a total load failure** — it prints and leaves an
+      empty sheet with no error state. Out of scope for Phase 1; folded into the Phase 5 states pass.
+- [ ] **Caveat on `@AppStorage("installomatorScriptID")`** — if an administrator once deploys with the
+      wrong script, that id sticks and its other policies may be read as Installomator deployments.
+      Affects categorisation only, and is overwritten by the next correct deploy. Revisit if it bites.
 
 ## Progress log
 
@@ -182,6 +212,23 @@ _(Record genuinely new scope discovered while implementing, with a one-line reas
   `xcodebuild -scheme JamfCommander -destination "platform=macOS" build` ⇒ **BUILD SUCCEEDED**.
   Deliberately left for the rest of Phase 1: the raw-error-body `print()` at `+Packages.swift:~229`
   (invariant 4) and the failure-message mapping — not touched here to keep the diff to the escaping fix.
+- **2026-08-03** — **Phase 1 code complete.** Remaining items landed in one pass:
+  `fetchInstallomatorLabelsFromGitHub()` de-duplicates case-insensitively in first-seen order and logs the
+  count dropped (F2). The raw-error-body `print()` is gone — `creationFailure(status:body:…)` reduces the
+  body to a private `JamfRejectionHint` in memory and discards it, leaving only a status-code-only
+  developer line (F5, invariant 4). `PolicyCreationError` was rewritten from two cases to ten actionable
+  ones, and `createInstallomatorPolicyAsync` now throws only that type (URLSession errors are wrapped as
+  `.networkFailure`), so the per-row reason in `OperationResultView` is always our own copy.
+  `fetchInstallomatorPolicies` became `fetchInstallomatorPolicies(knownScriptIDs:)` returning an
+  `InstallomatorScan` (deployed policies **plus** every policy name), matching the script by id or name
+  (F4); ids come from the new `fetchInstallomatorScriptIDs()` unioned with the script last deployed with.
+  A new `PolicyNameMatching` helper in `PackageModels` provides two deliberately different strengths —
+  `exactKey` for the pre-flight prediction (so it can't cry wolf) and `appKey`, which drops a leading
+  "install ", for the new "Possibly Deployed" hint. The sheet gained `pendingItems`, a `fetchPolicyNames()`
+  pre-flight, an amber collision banner, and a `CommanderConfirmation` step before any write.
+  `xcodebuild -scheme JamfCommander -destination "platform=macOS" build` ⇒ **BUILD SUCCEEDED**, no warnings.
+  **Nothing was run against a Jamf tenant** — every "Verified:" line in Phase 1 is still open, including
+  the `&`-category case and the real-Jamf-message capture that Phase 4 depends on.
 - **2026-08-03** — Phase 3 redesigned after reviewing `ComputersDashboardView`. The user proposed
   extracting `computerTable` into a shared component for the scope picker; measured and **rejected** —
   ~910 pt of column minimums vs ~510 pt available, 150 pt list height, and `Table` selection semantics

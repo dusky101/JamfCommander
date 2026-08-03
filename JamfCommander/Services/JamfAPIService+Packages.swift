@@ -10,45 +10,127 @@ import Combine
 
 extension JamfAPIService {
     
-    /// Custom error type for policy creation with better messaging
+    /// Why a policy creation attempt failed, phrased so an administrator can act on it.
+    ///
+    /// Deliberately carries **no** Jamf response body. Bodies can echo tenant data, so they are
+    /// classified in memory (see `creationFailure(status:body:policyName:categoryName:)`) and then
+    /// discarded — never logged, shown or exported (root `CLAUDE.md`, invariant 4).
     enum PolicyCreationError: LocalizedError {
-        case conflict(String)
-        case serverError(Int, String)
-        
+        /// Jamf already has a policy with this name — policy names must be unique.
+        case duplicateName(String)
+        /// Jamf refused the target category, e.g. it was renamed or deleted since the list loaded.
+        case categoryRejected(String)
+        /// Jamf could not parse the request body.
+        case malformedRequest
+        /// HTTP 401 — the session was refused.
+        case unauthorised
+        /// HTTP 403 — the API client lacks the privilege to create policies.
+        case insufficientPrivileges
+        /// HTTP 404 — the endpoint or a referenced object (such as the script) was not found.
+        case notFound
+        /// HTTP 429 — Jamf is throttling.
+        case rateLimited
+        /// HTTP 5xx — Jamf itself failed, so the outcome is genuinely unknown.
+        case serverFailure(Int)
+        /// Any other non-2xx response.
+        case unexpectedResponse(Int)
+        /// The request never reached Jamf.
+        case networkFailure(String)
+
         var errorDescription: String? {
             switch self {
-            case .conflict(let name):
-                return "A policy named '\(name)' already exists. Skipped."
-            case .serverError(let code, let detail):
-                return "Server error (\(code)): \(detail)"
+            case .duplicateName(let name):
+                return "A policy named '\(name)' already exists in Jamf. Change the policy name template, or deselect this item."
+            case .categoryRejected(let category):
+                return "Jamf rejected the category '\(category)'. It may have been renamed or deleted — reload the categories and choose again."
+            case .malformedRequest:
+                return "Jamf could not process the request for this item. Check the policy name and category for unusual characters, then try again."
+            case .unauthorised:
+                return "The Jamf session was refused (401). Reconnect to Jamf and try again."
+            case .insufficientPrivileges:
+                return "This API client is not permitted to create policies (403). It needs the 'Create Policies' privilege."
+            case .notFound:
+                return "Jamf could not find the policies endpoint or the selected script (404). Check the Installomator script still exists."
+            case .rateLimited:
+                return "Jamf is throttling requests (429). Wait a moment, then deploy the remaining items."
+            case .serverFailure(let code):
+                return "Jamf reported an internal error (HTTP \(code)). Check in Jamf whether the policy was created before retrying."
+            case .unexpectedResponse(let code):
+                return "Jamf rejected this item (HTTP \(code)). Check the policy name, category and script in Jamf."
+            case .networkFailure(let reason):
+                return "Could not reach Jamf: \(reason)"
             }
         }
     }
-    
+
+    /// What a Jamf error body indicates, extracted without retaining the body itself.
+    private enum JamfRejectionHint {
+        case duplicateName
+        case category
+        case malformedBody
+        case none
+    }
+
     // MARK: - Installomator Discovery
-    
+
     /// Represents a deployed Installomator policy discovered in Jamf
-    struct InstallomatorPolicyInfo {
+    struct InstallomatorPolicyInfo: Sendable {
         let policyID: Int
         let policyName: String
         let label: String
         let categoryName: String?
         let enabled: Bool
     }
-    
+
+    /// The outcome of one pass over the tenant's policies.
+    struct InstallomatorScan: Sendable {
+        /// Policies that run an Installomator script with a label in `parameter4`.
+        let deployed: [InstallomatorPolicyInfo]
+        /// Every policy name in the tenant. Used to spot name collisions — including with policies
+        /// that install the same app but were made by hand and so aren't recognised as Installomator.
+        let allPolicyNames: [String]
+    }
+
+    /// Names of every policy in the tenant — one list request, no per-policy hydration.
+    /// Used for the pre-flight duplicate-name check before a batch creation runs.
+    func fetchPolicyNames() async throws -> [String] {
+        let listResponse = try await genericFetch(
+            endpoint: "JSSResource/policies",
+            responseType: PolicyListResponse.self
+        )
+        return listResponse.policies.map(\.name)
+    }
+
+    /// Ids of the scripts that look like Installomator.
+    ///
+    /// Matching a policy's script by id as well as by name means a policy is still recognised when
+    /// its payload omits the script name, and lets the caller add the script the administrator
+    /// actually deploys with — which need not be called "Installomator" at all.
+    func fetchInstallomatorScriptIDs() async throws -> Set<String> {
+        let scripts = try await fetchScripts()
+        return Set(
+            scripts
+                .filter { $0.name.localizedCaseInsensitiveContains("installomator") }
+                .map(\.id)
+        )
+    }
+
     /// Fetches all policies from Jamf and filters to those using an Installomator script.
     /// Hydrates policy details in batches of 10 with retry logic, then extracts the label from parameter4.
-    func fetchInstallomatorPolicies() async throws -> [InstallomatorPolicyInfo] {
+    ///
+    /// - Parameter knownScriptIDs: Additional script ids to treat as Installomator, so a renamed
+    ///   or differently-named script is still detected (see `fetchInstallomatorScriptIDs()`).
+    func fetchInstallomatorPolicies(knownScriptIDs: Set<String> = []) async throws -> InstallomatorScan {
         print("[Installomator] Starting fetchInstallomatorPolicies...")
-        
+
         let listResponse = try await genericFetch(
             endpoint: "JSSResource/policies",
             responseType: PolicyListResponse.self
         )
         print("[Installomator] Fetched \(listResponse.policies.count) policies from Jamf")
-        
+
         var results: [InstallomatorPolicyInfo] = []
-        
+
         let batchSize = 10
         let batches = stride(from: 0, to: listResponse.policies.count, by: batchSize).map {
             Array(listResponse.policies[$0..<min($0 + batchSize, listResponse.policies.count)])
@@ -63,10 +145,14 @@ extension JamfAPIService {
                                 let detail = try await self.fetchPolicyDetail(id: item.id)
                                 
                                 guard let scripts = detail.scripts, !scripts.isEmpty else { return nil }
-                                
+
                                 for script in scripts {
-                                    if script.name.localizedCaseInsensitiveContains("installomator"),
-                                       let label = script.parameter4, !label.isEmpty {
+                                    // Match by name *or* id: the policy payload can omit the script
+                                    // name, and a tenant's Installomator script may be renamed.
+                                    let isInstallomator = script.name.localizedCaseInsensitiveContains("installomator")
+                                        || knownScriptIDs.contains(script.id)
+                                    let label = script.parameter4?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                                    if isInstallomator, !label.isEmpty {
                                         return InstallomatorPolicyInfo(
                                             policyID: detail.general.id,
                                             policyName: detail.general.name,
@@ -99,9 +185,12 @@ extension JamfAPIService {
         }
         
         print("[Installomator] Found \(results.count) deployed Installomator policies")
-        return results
+        return InstallomatorScan(
+            deployed: results,
+            allPolicyNames: listResponse.policies.map(\.name)
+        )
     }
-    
+
     /// Fetches the Installomator Labels.txt from GitHub and parses individual labels.
     /// Each non-empty, non-comment line that matches the label pattern is extracted.
     func fetchInstallomatorLabelsFromGitHub() async throws -> [String] {
@@ -119,18 +208,28 @@ extension JamfAPIService {
             throw URLError(.cannotDecodeContentData)
         }
         
+        // Labels.txt is not guaranteed to be unique — at the time of writing `omnissahorizonclient`
+        // appears twice. A duplicate would be offered twice and the second POST of a run would come
+        // back as an HTTP 409 "already exists", reported as a failure the administrator can do
+        // nothing about. De-duplicate case-insensitively, keeping first-seen order.
         var labels: [String] = []
+        var seenKeys = Set<String>()
+        var duplicatesDropped = 0
         let lines = content.components(separatedBy: .newlines)
-        
+
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-            if !trimmed.contains(" ") {
+            if trimmed.contains(" ") { continue }
+
+            if seenKeys.insert(trimmed.lowercased()).inserted {
                 labels.append(trimmed)
+            } else {
+                duplicatesDropped += 1
             }
         }
-        
-        print("[Installomator] Parsed \(labels.count) labels from GitHub")
+
+        print("[Installomator] Parsed \(labels.count) unique labels from GitHub (\(duplicatesDropped) duplicate line(s) ignored)")
         return labels
     }
     
@@ -218,22 +317,83 @@ extension JamfAPIService {
         request.setValue("application/xml", forHTTPHeaderField: "Content-Type")
         request.setValue("application/xml", forHTTPHeaderField: "Accept")
         
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch let urlError as URLError {
+            throw PolicyCreationError.networkFailure(urlError.localizedDescription)
+        }
+
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
+            throw PolicyCreationError.networkFailure("Jamf returned an unreadable response.")
         }
-        
+
         if !(200...299).contains(httpResponse.statusCode) {
-            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
-            print("Jamf API Error (\(httpResponse.statusCode)): \(errorBody)")
-            
-            // HTTP 409 = Conflict (duplicate policy name — e.g. "Install Homebrew" already exists)
-            if httpResponse.statusCode == 409 {
-                throw PolicyCreationError.conflict(policyName)
-            }
-            
-            throw PolicyCreationError.serverError(httpResponse.statusCode, errorBody)
+            // Developer-facing only, and deliberately status-code-only: the response body can echo
+            // tenant data, so it is classified below and then discarded rather than logged.
+            print("[Installomator] Policy creation rejected by Jamf (HTTP \(httpResponse.statusCode))")
+
+            throw Self.creationFailure(
+                status: httpResponse.statusCode,
+                body: data,
+                policyName: policyName,
+                categoryName: categoryName
+            )
         }
+    }
+
+    // MARK: - Failure Classification
+
+    /// Turns a non-2xx Jamf response into an actionable error.
+    ///
+    /// The body is inspected in memory for the few markers Jamf actually uses, reduced to a
+    /// `JamfRejectionHint`, and then dropped — nothing from it reaches the error, the UI or a log.
+    private static func creationFailure(
+        status: Int,
+        body: Data,
+        policyName: String,
+        categoryName: String
+    ) -> PolicyCreationError {
+        // The status code is authoritative for auth, throttling and server faults; the body is only
+        // consulted for 400/409, where Jamf uses the same code for genuinely different problems.
+        switch status {
+        case 400, 409:
+            switch rejectionHint(from: body) {
+            case .duplicateName:
+                return .duplicateName(policyName)
+            case .category:
+                return .categoryRejected(categoryName)
+            case .malformedBody:
+                return .malformedRequest
+            case .none:
+                // A terse 409 on policy creation is nearly always a name clash; a terse 400 is a
+                // body Jamf could not read.
+                return status == 409 ? .duplicateName(policyName) : .malformedRequest
+            }
+        case 401:
+            return .unauthorised
+        case 403:
+            return .insufficientPrivileges
+        case 404:
+            return .notFound
+        case 429:
+            return .rateLimited
+        case 500...599:
+            return .serverFailure(status)
+        default:
+            return .unexpectedResponse(status)
+        }
+    }
+
+    /// Reduces a Jamf error body to a hint, without retaining any of its text.
+    private static func rejectionHint(from body: Data) -> JamfRejectionHint {
+        guard let raw = String(data: body, encoding: .utf8) else { return .none }
+        let text = String(raw.prefix(4_096)).lowercased()
+
+        if text.contains("duplicate") { return .duplicateName }
+        if text.contains("category") { return .category }
+        if text.contains("xml") || text.contains("parse") || text.contains("malformed") { return .malformedBody }
+        return .none
     }
 }

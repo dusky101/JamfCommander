@@ -11,11 +11,15 @@ struct PackagesDashboardView: View {
     @ObservedObject var api: JamfAPIService
     @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
 
+    /// The Installomator script last deployed with, remembered so a policy running it is recognised
+    /// as an Installomator deployment even when the script isn't named "Installomator".
+    @AppStorage("installomatorScriptID") private var lastUsedScriptID = ""
+
     // Data
     @State private var allItems: [InstallomatorItem] = []
     @State private var isLoading = false
     @State private var loadError: String?
-    
+
     // View mode & filtering
     @State private var viewMode: PackageViewMode = .all
     @State private var groupMode: PackageGroupMode = .alphabetical
@@ -125,6 +129,7 @@ struct PackagesDashboardView: View {
         .sheet(isPresented: $showConfigSheet) {
             DeploymentConfigSheet(
                 api: api,
+                pendingItems: selectedAvailableItems,
                 onConfirm: { category, scriptID, featured, displayInCat, scopeConfig, nameTemplate in
                     showConfigSheet = false
                     deployPolicies(
@@ -327,16 +332,31 @@ struct PackagesDashboardView: View {
         lastSelectedID = nil
         
         do {
-            async let deployedResult = api.fetchInstallomatorPolicies()
             async let labelsResult = api.fetchInstallomatorLabelsFromGitHub()
-            
-            let deployed = try await deployedResult
+            async let scriptIDsResult = api.fetchInstallomatorScriptIDs()
+
+            // Script ids widen detection beyond "the policy's script is called Installomator".
+            // A failure here only narrows detection, so it degrades rather than failing the load.
+            var knownScriptIDs = (try? await scriptIDsResult) ?? []
+            if !lastUsedScriptID.isEmpty {
+                knownScriptIDs.insert(lastUsedScriptID)
+            }
+
+            let scan = try await api.fetchInstallomatorPolicies(knownScriptIDs: knownScriptIDs)
             let allLabels = try await labelsResult
-            
+
+            let deployed = scan.deployed
             let deployedLabels = Set(deployed.map { $0.label.lowercased() })
-            
+
+            // Loose index of every policy name in the tenant, so an app already installed by a
+            // policy we can't identify as Installomator is flagged rather than offered blindly.
+            var policyNamesByAppKey: [String: String] = [:]
+            for name in scan.allPolicyNames {
+                policyNamesByAppKey[PolicyNameMatching.appKey(name)] = name
+            }
+
             var items: [InstallomatorItem] = []
-            
+
             for info in deployed {
                 items.append(InstallomatorItem(
                     label: info.label,
@@ -345,28 +365,35 @@ struct PackagesDashboardView: View {
                     policyID: info.policyID,
                     policyName: info.policyName,
                     categoryName: info.categoryName,
-                    enabled: info.enabled
+                    enabled: info.enabled,
+                    existingPolicyName: nil
                 ))
             }
-            
+
             for label in allLabels {
                 if !deployedLabels.contains(label.lowercased()) {
+                    let displayName = InstallomatorLabelFormatter.displayName(for: label)
+                    let existingPolicyName = policyNamesByAppKey[PolicyNameMatching.appKey(displayName)]
+                        ?? policyNamesByAppKey[PolicyNameMatching.appKey(label)]
+
                     items.append(InstallomatorItem(
                         label: label,
-                        displayName: InstallomatorLabelFormatter.displayName(for: label),
+                        displayName: displayName,
                         isDeployed: false,
                         policyID: nil,
                         policyName: nil,
                         categoryName: nil,
-                        enabled: false
+                        enabled: false,
+                        existingPolicyName: existingPolicyName
                     ))
                 }
             }
-            
+
             items.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-            
-            print("[Installomator] Loaded \(items.count) items (\(deployed.count) deployed, \(items.count - deployed.count) available)")
-            
+
+            let possiblyDeployedCount = items.filter(\.isPossiblyDeployed).count
+            print("[Installomator] Loaded \(items.count) items (\(deployed.count) deployed, \(items.count - deployed.count) available, \(possiblyDeployedCount) possibly deployed)")
+
             await MainActor.run {
                 allItems = items
                 isLoading = false
@@ -417,7 +444,11 @@ struct PackagesDashboardView: View {
     func deployPolicies(category: String, scriptID: String, featureOnMain: Bool, displayInCat: Bool, scopeConfig: DeploymentScopeConfig, nameTemplate: String) {
         let itemsToDeploy = selectedAvailableItems
         guard !itemsToDeploy.isEmpty else { return }
-        
+
+        // Remember the script the administrator actually deploys with, so the next scan recognises
+        // these policies even if the script is named something other than "Installomator".
+        lastUsedScriptID = scriptID
+
         isCreatingPolicies = true
         creationStatus = "Initialising..."
         deploymentResults = []
@@ -451,10 +482,10 @@ struct PackagesDashboardView: View {
                     results.append(OperationResult(
                         itemName: item.displayName,
                         success: false,
-                        error: error.localizedDescription
+                        error: failureReason(for: error)
                     ))
                 }
-                
+
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
             
@@ -484,6 +515,19 @@ struct PackagesDashboardView: View {
             
             await loadData()
         }
+    }
+
+    /// A reason the administrator can act on, for the per-item row in `OperationResultView`.
+    /// `PolicyCreationError` already carries the actionable copy; anything else is reported
+    /// plainly rather than leaking framework internals into the results sheet.
+    private func failureReason(for error: Error) -> String {
+        if let creationError = error as? JamfAPIService.PolicyCreationError {
+            return creationError.errorDescription ?? "Jamf rejected this item."
+        }
+        if let urlError = error as? URLError {
+            return "Could not reach Jamf: \(urlError.localizedDescription)"
+        }
+        return "Creation failed for an unexpected reason. Check this item in Jamf before retrying."
     }
 }
 

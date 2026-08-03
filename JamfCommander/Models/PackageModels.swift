@@ -19,23 +19,65 @@ struct InstallomatorItem: Identifiable, Hashable {
     let policyName: String?      // Jamf policy name (if deployed)
     let categoryName: String?    // Jamf category (if deployed)
     let enabled: Bool            // Policy enabled state (false for available items)
-    
+
+    /// An existing Jamf policy whose name matches this app even though no Installomator policy was
+    /// detected for it — typically a hand-made install policy, or one using a script we don't
+    /// recognise. A hint only: the item stays selectable, but creating it may collide on the name.
+    let existingPolicyName: String?
+
     var id: String { label }
-    
+
     var safeCategory: String {
         categoryName ?? "Uncategorised"
     }
-    
+
+    /// Not confirmed as an Installomator deployment, but something in Jamf already looks like it.
+    var isPossiblyDeployed: Bool {
+        !isDeployed && existingPolicyName != nil
+    }
+
     var statusText: String {
-        isDeployed ? "Deployed" : "Available"
+        if isDeployed { return "Deployed" }
+        return isPossiblyDeployed ? "Possibly Deployed" : "Available"
     }
-    
+
     var statusColor: Color {
-        isDeployed ? .green : .blue
+        if isDeployed { return .green }
+        return isPossiblyDeployed ? .orange : .blue
     }
-    
+
     var statusIcon: String {
-        isDeployed ? "checkmark.seal.fill" : "plus.circle"
+        if isDeployed { return "checkmark.seal.fill" }
+        return isPossiblyDeployed ? "exclamationmark.triangle.fill" : "plus.circle"
+    }
+}
+
+// MARK: - Policy Name Matching
+
+/// Policy-name comparison shared by the Installomator dashboard and the deployment sheet.
+///
+/// Two deliberately different strengths: an exact key that predicts a real Jamf rejection, and a
+/// looser key used only to hint that an app may already be installed by some other policy.
+enum PolicyNameMatching {
+
+    /// Case- and padding-insensitive form used to predict a genuine name clash (Jamf requires
+    /// unique policy names). Kept exact apart from case and surrounding whitespace so the pre-flight
+    /// check never cries wolf.
+    static func exactKey(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// Looser form that additionally drops a leading "install ", so a hand-made policy called
+    /// "Install Google Chrome" is recognised as covering the same app as the `googlechrome` label.
+    /// Only ever used to flag an item as *possibly* deployed — never to block a deployment.
+    static func appKey(_ name: String) -> String {
+        var key = exactKey(name)
+        let prefix = "install "
+        if key.hasPrefix(prefix) {
+            key.removeFirst(prefix.count)
+            key = key.trimmingCharacters(in: .whitespaces)
+        }
+        return key
     }
 }
 
@@ -64,7 +106,13 @@ enum PackageGroupMode: String, CaseIterable, Identifiable {
 /// Uses a known overrides dictionary for common apps, with a heuristic fallback.
 struct InstallomatorLabelFormatter {
     
-    /// Known label -> display name overrides where the heuristic would fail
+    /// Known label -> display name overrides where the heuristic would fail.
+    ///
+    /// A handful of these labels (e.g. `adobeacrobatreader`, `microsoftteamsclassic`,
+    /// `sublimetext4`) no longer exist upstream, and are **kept deliberately**: the Deployed list
+    /// formats names from each policy's own `parameter4`, so a policy created against a retired
+    /// label still needs a readable name. A miss here is a free dictionary lookup that falls
+    /// through to the heuristic, so retaining them costs nothing.
     private static let knownOverrides: [String: String] = [
         // Google
         "googlechrome": "Google Chrome",

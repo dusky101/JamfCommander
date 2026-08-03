@@ -86,10 +86,12 @@ struct ResultRow: View {
                     .foregroundColor(.primary)
                 
                 if let error = result.error {
+                    // Failure reasons are actionable sentences, so let them wrap in full rather
+                    // than truncating them to a monospaced fragment.
                     Text(error)
                         .font(.caption)
                         .foregroundColor(.red)
-                        .fontDesign(.monospaced)
+                        .fixedSize(horizontal: false, vertical: true)
                 } else if result.fromCategory == nil {
                     // Only show "Success" text if we AREN'T showing the move UI
                     Text("Operation Successful")
