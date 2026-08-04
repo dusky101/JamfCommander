@@ -18,6 +18,16 @@ struct JamfCommanderApp: App {
                 // the window and pushed its own controls off the screen.
                 .frame(minWidth: 960, minHeight: 600)
         }
+        .commands {
+            // Replace the default Help item so ⌘? opens the app's own help rather than looking for
+            // a help book that doesn't exist.
+            CommandGroup(replacing: .help) {
+                Button("Jamf Commander Help") {
+                    HelpPresenter.shared.isPresented = true
+                }
+                .keyboardShortcut("?", modifiers: .command)
+            }
+        }
         .defaultSize(width: 1360, height: 900)
         // `.contentMinSize` keeps the window under the user's control: it may be any size at or
         // above the content's minimum, and the content's *ideal* size no longer resizes it.

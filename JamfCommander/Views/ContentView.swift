@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var api = JamfAPIService()
+    @ObservedObject private var helpPresenter = HelpPresenter.shared
     
     // Navigation State
     @State private var currentModule: AppModule = .dashboard
@@ -119,6 +120,11 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showConfigSheet) {
             ConfigurationView()
+        }
+        // Help is reachable from the sidebar footer and the macOS Help menu, so the presenter is
+        // shared rather than local state.
+        .sheet(isPresented: $helpPresenter.isPresented) {
+            HelpView(onDismiss: { helpPresenter.isPresented = false })
         }
         // MARK: - AUTO LOGIN TRIGGER
         .task {

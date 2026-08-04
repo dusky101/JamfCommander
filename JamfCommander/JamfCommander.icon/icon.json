@@ -1,35 +1,64 @@
 {
   "fill" : {
-    "linear-gradient" : [
-      "extended-srgb:0.00000,0.75294,0.90980,1.00000",
-      "extended-srgb:1.00000,0.55294,0.15686,1.00000"
-    ],
-    "orientation" : {
-      "start" : {
-        "x" : 0.5,
-        "y" : 0
-      },
-      "stop" : {
-        "x" : 0.5,
-        "y" : 0.7
-      }
-    }
+    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
-          "image-name" : "Image.png",
-          "name" : "Image",
-          "position" : {
-            "scale" : 1,
-            "translation-in-points" : [
-              15.8671875,
-              0
-            ]
-          }
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "display-p3:0.04629,0.00000,0.19343,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "3.svg",
+          "name" : "3"
         }
       ],
+      "name" : "Arrow",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+        {
+          "image-name" : "2.svg",
+          "name" : "2"
+        }
+      ],
+      "name" : "FrontBox",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+        {
+          "image-name" : "4.svg",
+          "name" : "4"
+        }
+      ],
+      "name" : "BackBox",
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5

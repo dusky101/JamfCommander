@@ -61,7 +61,7 @@ struct SidebarView: View {
             
             Divider()
             
-            // Settings Button
+            // Settings & Help
             Button(action: { showConfigSheet = true }) {
                 HStack {
                     Image(systemName: "gearshape")
@@ -71,6 +71,17 @@ struct SidebarView: View {
                 .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
+
+            Button(action: { HelpPresenter.shared.isPresented = true }) {
+                HStack {
+                    Image(systemName: "questionmark.circle")
+                    Text("Help")
+                }
+                .padding(10)
+                .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Jamf API setup, the Installomator prerequisite, and what each section does")
         }
         .padding()
     }
