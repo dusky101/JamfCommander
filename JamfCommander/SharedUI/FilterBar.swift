@@ -19,7 +19,25 @@ struct FilterBar: View {
     
     var onRefresh: (() -> Void)?
     var onExport: (() -> Void)? // Optional export action
-    
+
+    /// Remembered across launches and shared by every dashboard that uses this bar.
+    @AppStorage("filterBarCategoriesExpanded") private var isCategoriesExpanded = true
+
+    /// Roughly four rows of chips. Past that the chip area scrolls rather than growing.
+    private let maxChipAreaHeight: CGFloat = 132
+
+    /// How many items a category holds, across whichever data source was supplied.
+    private func itemCount(for category: Category) -> Int {
+        let profileCount = profiles.filter { $0.categoryName == category.name }.count
+        let policyCount = policies.filter { ($0.categoryName ?? "No Category") == category.name }.count
+        return profileCount + policyCount
+    }
+
+    /// Categories that actually have something in them — the number shown next to the disclosure.
+    private var visibleCategoryCount: Int {
+        categories.filter { itemCount(for: $0) > 0 }.count
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             // --- ROW 1: Search Field ---
@@ -69,53 +87,112 @@ struct FilterBar: View {
                 }
             }
             
-            // --- ROW 2: Filter Chips (Flow Layout) ---
-            FlowLayout(spacing: 8) {
-                // "All" Chip
-                FilterChip(
-                    title: "All Categories",
-                    icon: "square.grid.2x2",
-                    color: .blue,
-                    isSelected: selectedCategory == nil,
-                    count: profiles.count + policies.count // Sum of all items
-                ) {
-                    withAnimation { selectedCategory = nil }
+            // --- ROW 2: Filter Chips (collapsible, and height-capped) ---
+            //
+            // A tenant with thirty categories wants far more rows than the pane can spare. The
+            // chips therefore live behind a disclosure and inside a fixed-height scroll area, so
+            // this bar's height is bounded no matter how many categories exist — it can never grow
+            // the pane (or the window) out from under the controls above it.
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { isCategoriesExpanded.toggle() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .rotationEffect(.degrees(isCategoriesExpanded ? 90 : 0))
+                            Text("Categories")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                            Text("\(visibleCategoryCount)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isCategoriesExpanded ? "Hide category filters" : "Show category filters")
+
+                    // Collapsing must not hide *which* filter is active.
+                    if !isCategoriesExpanded {
+                        if let selectedCategory {
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder.fill").font(.caption2)
+                                Text(selectedCategory.name).font(.caption)
+                                Button {
+                                    withAnimation { self.selectedCategory = nil }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill").font(.caption2)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Clear category filter")
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.15))
+                            .foregroundColor(.blue)
+                            .cornerRadius(12)
+                        } else {
+                            Text("All categories")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Spacer()
                 }
-                
-                // Category Chips
-                ForEach(categories) { category in
-                    // Calculate count dynamically based on what data is present
-                    let profileCount = profiles.filter { $0.categoryName == category.name }.count
-                    let policyCount = policies.filter { ($0.categoryName ?? "No Category") == category.name }.count
-                    let count = profileCount + policyCount
-                    
-                    // Only show categories that have items (Clean up the view)
-                    if count > 0 {
-                        FilterChip(
-                            title: category.name,
-                            icon: "folder",
-                            color: .blue,
-                            isSelected: selectedCategory?.id == category.id,
-                            count: count
-                        ) {
-                            // Command-Click Logic (Select purely this one)
-                            if NSEvent.modifierFlags.contains(.command) {
-                                withAnimation { selectedCategory = category }
-                            } else {
-                                // Toggle Logic
-                                withAnimation {
-                                    if selectedCategory?.id == category.id {
-                                        selectedCategory = nil
-                                    } else {
-                                        selectedCategory = category
+
+                if isCategoriesExpanded {
+                    ScrollView(.vertical) {
+                        FlowLayout(spacing: 8) {
+                            // "All" Chip
+                            FilterChip(
+                                title: "All Categories",
+                                icon: "square.grid.2x2",
+                                color: .blue,
+                                isSelected: selectedCategory == nil,
+                                count: profiles.count + policies.count // Sum of all items
+                            ) {
+                                withAnimation { selectedCategory = nil }
+                            }
+
+                            // Category Chips
+                            ForEach(categories) { category in
+                                // Calculate count dynamically based on what data is present
+                                let count = itemCount(for: category)
+
+                                // Only show categories that have items (Clean up the view)
+                                if count > 0 {
+                                    FilterChip(
+                                        title: category.name,
+                                        icon: "folder",
+                                        color: .blue,
+                                        isSelected: selectedCategory?.id == category.id,
+                                        count: count
+                                    ) {
+                                        // Command-Click Logic (Select purely this one)
+                                        if NSEvent.modifierFlags.contains(.command) {
+                                            withAnimation { selectedCategory = category }
+                                        } else {
+                                            // Toggle Logic
+                                            withAnimation {
+                                                if selectedCategory?.id == category.id {
+                                                    selectedCategory = nil
+                                                } else {
+                                                    selectedCategory = category
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+                        .padding(.vertical, 2)
                     }
+                    .frame(maxHeight: maxChipAreaHeight)
                 }
             }
-            .padding(.vertical, 4)
         }
         .padding()
         .overlay(
