@@ -244,7 +244,15 @@ not five across five — which is why the refactor stayed genuinely mechanical.
       de-duplicating a repeat — into three correctly-named policies with the right `parameter7`–`parameter9`
       strings; all nine validation rules fire on cue; a missing `{version}` leaves no trailing space in the
       name; and repeated faults are reported once
-- [ ] Verified: `python` deploys pinned to a chosen version and installs exactly that version on a test Mac
+- [x] **Verified on a real tenant and a real Mac (2026-08-04) — with `golang` rather than `python`.**
+      Three versions pinned in one run (1.24.13, 1.25.12, 1.26.5) → three policies, 3 successful /
+      0 failed, each carrying the right `appNewVersion=` and `darwin-arm64` `downloadURL` in
+      parameter7/8, all sharing one category, script, icon and scope. Installing the latest and then
+      1.24.13 left `/usr/local/go/bin/go version` reporting **1.24.13** — the pin beat the label's
+      own vendor scrape, which is the whole point of the feature. The name-collision guard also
+      earned itself: it blocked the run until `{version}` was added to the template.
+      Note Go installs to a single `/usr/local/go`, so pinned versions **replace** one another rather
+      than coexisting — the policies are a version switcher, not parallel installs.
 
 ### Phase 5 — Polish, docs and consistency pass
 - [x] Liquid Glass design pass over the new `DeploymentConfigSheet` steps — the summary box, pinning
