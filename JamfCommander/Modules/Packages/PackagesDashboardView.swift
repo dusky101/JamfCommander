@@ -374,6 +374,7 @@ struct PackagesDashboardView: View {
                     policyName: info.policyName,
                     categoryName: info.categoryName,
                     enabled: info.enabled,
+                    pinnedVersion: info.pinnedVersion,
                     existingPolicyName: nil
                 ))
             }
@@ -392,6 +393,7 @@ struct PackagesDashboardView: View {
                         policyName: nil,
                         categoryName: nil,
                         enabled: false,
+                        pinnedVersion: nil,
                         existingPolicyName: existingPolicyName
                     ))
                 }

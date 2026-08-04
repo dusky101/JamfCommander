@@ -80,6 +80,9 @@ extension JamfAPIService {
         let label: String
         let categoryName: String?
         let enabled: Bool
+        /// The version this policy pins, read back from an `appNewVersion=` override in
+        /// parameter7–parameter11. `nil` means the policy lets Installomator pick the version.
+        let pinnedVersion: String?
     }
 
     /// The outcome of one pass over the tenant's policies.
@@ -89,6 +92,30 @@ extension JamfAPIService {
         /// Every policy name in the tenant. Used to spot name collisions — including with policies
         /// that install the same app but were made by hand and so aren't recognised as Installomator.
         let allPolicyNames: [String]
+    }
+
+    /// Reads back the version a policy pins, from an `appNewVersion=` override in
+    /// parameter7–parameter11 — the same parameters the deployment sheet writes.
+    ///
+    /// Position isn't fixed: Installomator evaluates any argument containing `=` wherever it sits, so
+    /// this searches all five rather than assuming the sheet's ordering. A policy edited by hand in
+    /// Jamf is read just as happily as one this app created.
+    /// `nonisolated` because the scan calls it from inside a `TaskGroup`; it reads only its argument,
+    /// so there is no actor state to protect.
+    nonisolated private static func pinnedVersion(in script: PolicyScript) -> String? {
+        let overrides = [
+            script.parameter7, script.parameter8, script.parameter9,
+            script.parameter10, script.parameter11,
+        ]
+        let prefix = "appNewVersion="
+
+        for override in overrides {
+            let value = override?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard value.hasPrefix(prefix) else { continue }
+            let version = String(value.dropFirst(prefix.count))
+            return version.isEmpty ? nil : version
+        }
+        return nil
     }
 
     /// Names of every policy in the tenant — one list request, no per-policy hydration.
@@ -158,7 +185,8 @@ extension JamfAPIService {
                                             policyName: detail.general.name,
                                             label: label,
                                             categoryName: detail.general.category?.name,
-                                            enabled: detail.general.enabled
+                                            enabled: detail.general.enabled,
+                                            pinnedVersion: Self.pinnedVersion(in: script)
                                         )
                                     }
                                 }

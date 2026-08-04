@@ -20,12 +20,23 @@ struct InstallomatorItem: Identifiable, Hashable {
     let categoryName: String?    // Jamf category (if deployed)
     let enabled: Bool            // Policy enabled state (false for available items)
 
+    /// The version this policy pins, if any — read back from its `appNewVersion=` override. Several
+    /// deployed rows can share one label precisely because each pins a different version.
+    let pinnedVersion: String?
+
     /// An existing Jamf policy whose name matches this app even though no Installomator policy was
     /// detected for it — typically a hand-made install policy, or one using a script we don't
     /// recognise. A hint only: the item stays selectable, but creating it may collide on the name.
     let existingPolicyName: String?
 
-    var id: String { label }
+    /// Unique per row, not per label. Version pinning makes several policies share one label — three
+    /// pinned Go versions are three deployed rows all labelled `golang` — so identifying a row by its
+    /// label alone gave `ForEach` duplicate ids. Available rows keep the bare label, which is what
+    /// selection is keyed on.
+    var id: String {
+        guard let policyID else { return label }
+        return "\(label)#\(policyID)"
+    }
 
     var safeCategory: String {
         categoryName ?? "Uncategorised"

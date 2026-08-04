@@ -46,6 +46,24 @@ struct PackageCardView: View {
                     .foregroundColor(item.statusColor)
                     .cornerRadius(4)
                     
+                    // The version this policy pins. Several deployed rows can share a label — one per
+                    // pinned version — so this is what tells them apart at a glance.
+                    if let pinnedVersion = item.pinnedVersion {
+                        HStack(spacing: 4) {
+                            Image(systemName: "pin.fill")
+                                .font(.caption2)
+                            Text(pinnedVersion)
+                                .font(.caption)
+                                .fontDesign(.monospaced)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Color.purple.opacity(0.15))
+                        .foregroundColor(.purple)
+                        .cornerRadius(4)
+                        .accessibilityLabel("Pinned to version \(pinnedVersion)")
+                    }
+
                     // Something in Jamf already looks like this app, but it isn't a recognised
                     // Installomator policy — surface the name so the cause is obvious.
                     if let existingPolicyName = item.existingPolicyName {
