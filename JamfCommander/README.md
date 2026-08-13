@@ -9,12 +9,14 @@ The app uses both the Jamf Pro API and the Jamf Classic API because Jamf exposes
 - View fleet totals for computers, policies, configuration profiles, and scripts.
 - Manage Jamf categories from the dashboard.
 - Browse computers, filter by managed status, inspect hardware, OS, security, user, profile, script, and policy information.
+- Connect Apple Business Manager to add purchase date, warranty end and a calculated lifecycle date to every Mac, filter to devices out of warranty, and see which Macs Apple has assigned to Jamf that Jamf has never enrolled.
 - Browse configuration profiles by category, inspect scope and raw source, move profiles between categories, update profile scope, clone profiles, delete profiles, and export profile data.
 - Browse policies by category, inspect scope and raw source, move policies between categories, clone policies, delete policies, and export policy data.
 - Browse scripts by category, inspect script metadata, parameters, and script source, and export script data.
 - Compare deployed Installomator policies against the upstream Installomator label list.
 - Create Jamf Self Service policies for selected Installomator labels.
-- Export computers, policies, profiles, scripts, or all supported data to CSV/ZIP files.
+- Export computers, policies, profiles, scripts, deployed Installomator apps, or all supported data to CSV/ZIP files.
+- See the number of Installomator apps deployed alongside the other fleet totals on the dashboard.
 - Import and export Jamf Commander connection settings with `.jamfconfig` files.
 
 ## Requirements
@@ -131,7 +133,8 @@ The dashboard is the starting point after connection. It shows clickable totals 
 The Computers module uses Jamf Pro computer inventory records. You can:
 
 - Search devices by name or serial number.
-- Filter to all devices or managed devices only.
+- Filter to all devices, managed devices only, or devices out of warranty.
+- Sort by purchase date, warranty end or lifecycle date, and hide or reorder columns from the header's context menu.
 - Export the visible computer data to CSV.
 - Inspect a computer record.
 - Copy a device serial number from the context menu.
@@ -139,10 +142,13 @@ The Computers module uses Jamf Pro computer inventory records. You can:
 The computer inspector includes tabs for:
 
 - Hardware, OS, FileVault, IP address, last contact, and remote management status.
+- Purchase, warranty and lifecycle data from Apple Business Manager, when configured.
 - Installed configuration profiles.
 - Available Jamf scripts.
 - Policies.
 - User and location data.
+
+The Apple Business Manager columns, filter and inspector section are hidden entirely unless Apple Business Manager is configured. See the [Apple Business Manager](#apple-business-manager) section for setup.
 
 ### Profiles
 
@@ -292,9 +298,12 @@ Jamf Commander can export:
 - Profiles CSV
 - Detailed profiles CSV
 - Scripts CSV
+- Packages CSV — the Installomator apps deployed in this tenant, with policy ID and name, label, application name, category, enabled state and pinned version
 - All supported data as a ZIP archive
 
 Exports use macOS save panels, so you choose the destination at export time.
+
+The Computers CSV includes Apple Business Manager purchase, warranty and lifecycle columns when that data has been fetched, giving one file that answers who has a Mac, what it cost, when its cover ends and when it is due for replacement. Those columns come from the local cache, so an export never waits on Apple.
 
 Detailed policy and profile exports fetch extra object data in batches and include richer information such as scope, triggers, frequency, packages, scripts, exclusions, and deployment metadata where available.
 
@@ -333,6 +342,9 @@ JamfCommander/
   Core/
     SidebarView.swift
   Models/
+    ABMDeviceModels.swift
+    ABMModels.swift
+    ComputerFleetRow.swift
     ComputerModels.swift
     InspectorSelection.swift
     JamfModels.swift
@@ -350,11 +362,20 @@ JamfCommander/
     Scripts/
   Services/
     Exports/
+    ABMAPIService.swift
+    ABMAPIService+Fleet.swift
+    ABMCache.swift
+    ABMClientAssertion.swift
+    ABMFleetStore.swift
+    ABMLog.swift
+    ABMPrivateKey.swift
+    CredentialStore.swift
     ExportService.swift
     JamfAPIService.swift
     JamfAPIService+Cloning.swift
     JamfAPIService+Dashboard.swift
     JamfAPIService+Packages.swift
+    KeychainStore.swift
     SettingsService.swift
   Shared/
   SharedUI/
@@ -373,6 +394,10 @@ JamfCommander/
 - `Modules` contain feature-specific dashboards, inspectors, cards, and sheets.
 - `ExportService` coordinates CSV and ZIP export flows and delegates CSV generation to specialised export services.
 - `SettingsService` imports and exports `.jamfconfig` settings files.
+- `KeychainStore` and `CredentialStore` hold the Jamf and Apple Business Manager credentials in the Keychain; views observe `CredentialStore` rather than reading the Keychain themselves.
+- `ABMAPIService` is a second, separate API client for Apple Business Manager, read-only by construction. `ABMPrivateKey` loads the key Apple issues, `ABMClientAssertion` signs the ES256 token request, and `ABMAPIService+Fleet` fetches the fleet scoped to one MDM server.
+- `ABMCache` persists the fetched fleet to Application Support; `ABMFleetStore` is what the views read, so no list ever makes a request per row.
+- `ComputerFleetRow` joins a Jamf computer to its Apple Business Manager record on serial number, and is the single source of the dates shown in the table, the inspector and the CSV.
 
 The UI is built with SwiftUI and uses async/await for network operations.
 
@@ -424,6 +449,10 @@ The app creates Jamf policies that call the selected script and use the selected
   proper names, but a label the app cannot split is flagged in the deployment sheet rather than
   corrected, and individual names cannot yet be edited — only the name template.
 - Large Jamf tenants may take time to hydrate policy and profile details because detailed exports and dashboards fetch additional data in batches.
+- Apple Business Manager has no bulk warranty endpoint, so a full refresh makes one request per Mac and takes around a minute for 150 devices. It is cached for seven days rather than fetched on demand.
+- Apple Business Manager purchase dates are only as good as what Apple holds. For devices added by hand through Apple Configurator there is no real purchase date, so the warranty start is used and labelled as inferred.
+- An Apple Business Manager API account has no read-only option. The key you import can also change your organisation's devices. Jamf Commander only ever reads, but store and share the key accordingly.
+- Apple's own API intermittently returns a header that macOS networking rejects, which shows in Xcode's console as `-1005` connection errors during a refresh. Requests are retried automatically and the fetch completes; the messages can be ignored.
 
 ## Contributing
 

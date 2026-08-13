@@ -90,14 +90,20 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
 - **Computers** — `computers-inventory` (Pro, **v3**). Table-style list (no `CardView`; that file was
   removed) + inspector (general/hardware/OS/profiles/scripts/policies/user & location). Building and
   Department IDs from `userAndLocation` are resolved to names via `+UserLocation`
-  (`fetchBuildings`/`fetchDepartments`).
+  (`fetchBuildings`/`fetchDepartments`). When Apple Business Manager is configured the list gains
+  **Purchased / Warranty Ends / Lifecycle** columns, an **Out of Warranty** filter, an
+  **Apple Business Manager** inspector section, and a sheet listing Macs ABM has assigned to Jamf that
+  Jamf has no record of (`ABMUnmatchedSheet`).
 - **Policies** — `policies` (Classic). List (hydrated for category/enabled), move category, delete,
   clone, raw JSON. Moving a policy keeps its **Self Service category in sync**, and a bulk
   **"Match Self Service"** action realigns policies whose two categories have drifted.
 - **Scripts** — `api/v1/scripts` (Pro). List + inspector (contents/category) + delete.
 - **Packages** — Installomator-centric: discovers deployed Installomator policies and the available
   label set from GitHub, then creates Self Service install policies (`DeploymentConfigSheet`,
-  `PackageModels.InstallomatorLabelFormatter`).
+  `PackageModels.InstallomatorLabelFormatter`). **Not** Jamf package objects — `JSSResource/packages`
+  is not used anywhere. Exports the deployed apps to CSV, and the dashboard's Packages card counts
+  them. Both go through `fetchDeployedInstallomatorPolicies` so the count, the export and the module
+  itself cannot disagree.
 - **Cloning** — `CloneConfigSheet` + `JamfAPIService+Cloning` (regex XML surgery).
 - **Export** — `ExportProgressSheet` + `ExportService`/`Services/Exports/*`. Per-domain CSV plus an
   "Export All" that bundles every CSV into a single timestamped **ZIP** (`exportAllDataToZip`).
@@ -113,7 +119,15 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
   lookups for Buildings and Departments.
 - `JamfItemStatus` — shared status enum (Scoped/Unscoped/Pending/Failed/Unknown) with colour + icon.
 - `InstallomatorItem` / `InstallomatorLabelFormatter` — package label model + display-name mapping.
-- `JamfConfiguration` (in `SettingsService`) — the `.jamfconfig` payload.
+- `JamfConfiguration` (in `SettingsService`) — the decrypted `.jamfconfig` payload.
+- `KeychainStore` / `CredentialStore` — Keychain-backed credentials (Jamf **and** ABM) and the
+  `ObservableObject` views observe. Nothing reads the Keychain directly from a view.
+- `ABMDeviceRecord` / `ABMDeviceAttributes` / `ABMCoverage` — one Mac as Apple Business Manager knows
+  it, plus the derived purchase date, its source, warranty state and lifecycle date.
+  `ABMPurchaseDateSource` records whether a date is known or inferred.
+- `ComputerFleetRow` — Jamf ⨝ ABM on serial, for the table, the inspector and the CSV. Unlike the
+  `ABM…` models it is **not** `nonisolated`: it wraps a main-actor type and never crosses into
+  `ABMCache`.
 
 ## 7. External services
 
@@ -124,6 +138,24 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
   the IDs in `userAndLocation` to names. Full endpoint list in `docs/JAMF_API_REFERENCE.md`.
 - **Installomator GitHub** — fetches `https://raw.githubusercontent.com/Installomator/Installomator/main/Labels.txt`
   to populate the available-apps list (read-only, unauthenticated).
+- **Apple Business Manager API** — a **second, entirely separate** client (`ABMAPIService`), read-only
+  by construction; every request it builds is a GET. Supplies the purchase and warranty data Jamf only
+  exposes with a GSX connection, which Zellis does not have. Auth is an ES256 JWT signed with a P-256
+  key (`ABMClientAssertion`), exchanged at `https://account.apple.com/auth/oauth2/token` for a
+  one-hour bearer token, then used against `https://api-business.apple.com/v1/…`.
+  See `.claude/rules/services-and-networking.md` for the endpoints and the traps — each fails as a
+  bare `invalid_client` with no further detail:
+  - the `aud` claim contains `/v2/`, the POST URL does not;
+  - the JWS signature must be `rawRepresentation`, never `derRepresentation`;
+  - ABM issues **SEC1** keys, not PKCS#8 (`ABMPrivateKey` converts, so nobody runs `openssl`).
+  - **Known Apple-side fault:** `api-business.apple.com` sometimes returns `transfer-encoding: chunked`
+    on an HTTP/2 connection, which RFC 9113 forbids. CFNetwork rejects the frame and drops the
+    connection, surfacing as `URLError -1005`. Transport retries absorb it; do not remove them.
+  - **Scoping and pacing are load-bearing.** The fleet fetch scopes to one MDM server's membership
+    list, takes attributes from the bulk `/orgDevices` collection, then makes one warranty request per
+    Mac at 150ms intervals. Per-device attribute calls doubled the volume and were throttled.
+  - `ABMCache` (actor) persists a snapshot to Application Support with a 7-day lifetime;
+    `ABMFleetStore` is what views read. **The Computers table never makes a request per row.**
 
 ## 8. Security & correctness notes (and improvement areas)
 

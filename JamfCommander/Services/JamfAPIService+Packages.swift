@@ -118,6 +118,32 @@ extension JamfAPIService {
         return nil
     }
 
+    /// Every deployed Installomator policy, discovered the same way the Packages module discovers them.
+    ///
+    /// The detection scope is the fiddly part: a policy counts as Installomator if its script is one of
+    /// the known Installomator script IDs, which are looked up rather than assumed. Both the dashboard
+    /// count and the CSV export go through here so they cannot disagree with what the Packages module
+    /// shows — a headline figure that quietly differs from the screen behind it is worse than none.
+    ///
+    /// A failure looking up the script IDs only narrows detection, so it degrades rather than throwing.
+    /// Unlike the Packages module this makes no GitHub request: the available-label list is only needed
+    /// to show what *could* be deployed, not what is.
+    ///
+    /// - Parameter preferredScriptID: the script last deployed with, if known. Widens detection to a
+    ///   script this tenant uses that the lookup may not recognise.
+    func fetchDeployedInstallomatorPolicies(
+        preferredScriptID: String = ""
+    ) async throws -> [InstallomatorPolicyInfo] {
+        var knownScriptIDs = (try? await fetchInstallomatorScriptIDs()) ?? []
+
+        let preferred = preferredScriptID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !preferred.isEmpty {
+            knownScriptIDs.insert(preferred)
+        }
+
+        return try await fetchInstallomatorPolicies(knownScriptIDs: knownScriptIDs).deployed
+    }
+
     /// Names of every policy in the tenant — one list request, no per-policy hydration.
     /// Used for the pre-flight duplicate-name check before a batch creation runs.
     func fetchPolicyNames() async throws -> [String] {

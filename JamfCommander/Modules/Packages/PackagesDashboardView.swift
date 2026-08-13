@@ -209,6 +209,13 @@ struct PackagesDashboardView: View {
                     lastSelectedID = nil
                 }
                 
+                Button(action: { exportDeployedPackages() }) {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isLoading || deployedCount == 0)
+                .help("Export the deployed Installomator apps to CSV")
+
                 Button(action: {
                     Task { await loadData() }
                 }) {
@@ -331,8 +338,24 @@ struct PackagesDashboardView: View {
         }
     }
     
+    // MARK: - Export
+
+    /// Exports the deployed Installomator apps.
+    ///
+    /// Built from the rows already on screen rather than re-scanning the tenant, so the file matches
+    /// exactly what the Deployed tab is showing and costs no further API calls.
+    private func exportDeployedPackages() {
+        let csv = PackageExportService.exportToCSV(items: allItems)
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let dateString = dateFormatter.string(from: Date())
+
+        ExportService.saveCSVToFile(content: csv, defaultName: "Packages_\(dateString).csv")
+    }
+
     // MARK: - Data Loading
-    
+
     func loadData() async {
         isLoading = true
         loadError = nil

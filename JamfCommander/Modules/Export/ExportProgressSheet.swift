@@ -78,6 +78,15 @@ struct ExportProgressSheet: View {
                     count: progress.scriptsCount,
                     total: progress.scriptsTotal
                 )
+
+                ExportProgressRow(
+                    title: "Packages",
+                    icon: "shippingbox.fill",
+                    color: .teal,
+                    status: progress.packagesStatus,
+                    count: progress.packagesCount,
+                    total: progress.packagesTotal
+                )
             }
             .padding()
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
@@ -204,7 +213,11 @@ class ExportProgress: ObservableObject {
     @Published var scriptsStatus: ExportStatus = .pending
     @Published var scriptsCount: Int = 0
     @Published var scriptsTotal: Int = 0
-    
+
+    @Published var packagesStatus: ExportStatus = .pending
+    @Published var packagesCount: Int = 0
+    @Published var packagesTotal: Int = 0
+
     func reset() {
         currentTask = "Preparing..."
         isComplete = false
@@ -212,14 +225,17 @@ class ExportProgress: ObservableObject {
         policiesStatus = .pending
         profilesStatus = .pending
         scriptsStatus = .pending
+        packagesStatus = .pending
         computersCount = 0
         policiesCount = 0
         profilesCount = 0
         scriptsCount = 0
+        packagesCount = 0
         computersTotal = 0
         policiesTotal = 0
         profilesTotal = 0
         scriptsTotal = 0
+        packagesTotal = 0
     }
     
     func updateProgress(for type: ExportType, status: ExportStatus, count: Int = 0, total: Int = 0) {
@@ -241,6 +257,10 @@ class ExportProgress: ObservableObject {
                 self.scriptsStatus = status
                 self.scriptsCount = count
                 self.scriptsTotal = total
+            case .packages:
+                self.packagesStatus = status
+                self.packagesCount = count
+                self.packagesTotal = total
             }
         }
     }
@@ -264,4 +284,6 @@ enum ExportType {
     case policies
     case profiles
     case scripts
+    /// Installomator deployments, not Jamf package objects — see `PackageExportService`.
+    case packages
 }

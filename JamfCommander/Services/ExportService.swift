@@ -50,6 +50,14 @@ class ExportService {
         return await ComputerExportService.exportToCSV(computers: computers, api: api)
     }
 
+    // MARK: - Package Export Delegation
+
+    /// Installomator apps deployed in this tenant. Discovers them through the same path the Packages
+    /// module uses, so the export and the screen always agree.
+    static func exportPackagesToCSV(api: JamfAPIService, preferredScriptID: String = "") async throws -> String {
+        return try await PackageExportService.exportToCSV(api: api, preferredScriptID: preferredScriptID)
+    }
+
     // MARK: - Export All Data
 
     /// Export all data types to a single ZIP file containing separate CSVs
@@ -68,6 +76,25 @@ class ExportService {
 
             let policyData = try await api.fetchPolicies()
             let profileData = try await api.fetchProfiles()
+
+            // Installomator deployments. A failure here drops one CSV from the archive rather than
+            // losing the whole export — detection depends on discovering the tenant's Installomator
+            // script, which the other exports do not, and is reported as failed rather than silently
+            // producing an archive one file short.
+            progress?.updateProgress(for: .packages, status: .fetching)
+            let packageCSV: String?
+            if let deployedPackages = try? await api.fetchDeployedInstallomatorPolicies() {
+                packageCSV = PackageExportService.exportToCSV(policies: deployedPackages)
+                progress?.updateProgress(
+                    for: .packages,
+                    status: .complete,
+                    count: deployedPackages.count,
+                    total: deployedPackages.count
+                )
+            } else {
+                packageCSV = nil
+                progress?.updateProgress(for: .packages, status: .failed)
+            }
 
             // Generate CSVs
             progress?.setCurrentTask("Generating CSV files...")
@@ -92,6 +119,10 @@ class ExportService {
             try policyCSV.write(to: tempDir.appendingPathComponent("Policies_\(dateString).csv"), atomically: true, encoding: .utf8)
             try profileCSV.write(to: tempDir.appendingPathComponent("Profiles_\(dateString).csv"), atomically: true, encoding: .utf8)
             try scriptCSV.write(to: tempDir.appendingPathComponent("Scripts_\(dateString).csv"), atomically: true, encoding: .utf8)
+
+            if let packageCSV {
+                try packageCSV.write(to: tempDir.appendingPathComponent("Packages_\(dateString).csv"), atomically: true, encoding: .utf8)
+            }
 
             // Create ZIP archive
             let zipURL = tempDir.appendingPathComponent("JamfCommander_Export_\(dateString).zip")

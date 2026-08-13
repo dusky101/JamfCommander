@@ -18,6 +18,12 @@ struct DashboardView: View {
     @State private var profileCount = 0
     @State private var scriptCount = 0
     @State private var policyCount = 0
+    /// Installomator deployments. `nil` until counted — it needs its own pass over the tenant's
+    /// policies, so it is loaded after the others rather than delaying the whole dashboard.
+    @State private var packageCount: Int?
+
+    /// The script last deployed with, so the count matches the Packages module's detection exactly.
+    @AppStorage("installomatorScriptID") private var lastUsedScriptID = ""
     
     // Data Lists
     @State private var categories: [Category] = []
@@ -76,6 +82,18 @@ struct DashboardView: View {
                             StatCard(title: "Scripts", count: scriptCount, icon: "applescript.fill", color: .gray)
                         }
                         .buttonStyle(.plain)
+
+                        Button(action: { currentModule = .packages }) {
+                            StatCard(
+                                title: "Packages",
+                                count: packageCount ?? 0,
+                                icon: "shippingbox.fill",
+                                color: .teal,
+                                isLoading: packageCount == nil
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .help("Apps deployed through Installomator")
                     }
                     
                     Spacer()
@@ -344,6 +362,27 @@ struct DashboardView: View {
             print("Dashboard Refresh Error: \(error)")
             self.isLoading = false
         }
+
+        // Counted separately and last. Installomator detection needs its own hydrated pass over every
+        // policy in the tenant; folding it into the parallel fetch above would double the dashboard's
+        // policy work and delay everything else behind it.
+        await refreshPackageCount()
+    }
+
+    /// Counts the Installomator apps deployed in this tenant.
+    ///
+    /// A failure leaves the card showing its spinner rather than a `0`, because an unreachable count
+    /// and a tenant with nothing deployed are not the same thing.
+    func refreshPackageCount() async {
+        packageCount = nil
+        do {
+            let deployed = try await api.fetchDeployedInstallomatorPolicies(
+                preferredScriptID: lastUsedScriptID
+            )
+            self.packageCount = deployed.count
+        } catch {
+            print("Dashboard package count error: \(error)")
+        }
     }
     
     func openCategorySheet(for category: Category?) {
@@ -416,7 +455,10 @@ struct StatCard: View {
     let count: Int
     let icon: String
     let color: Color
-    
+    /// Shown while a count is still being worked out. The Installomator count needs its own pass over
+    /// the tenant's policies, so it arrives after the rest — a spinner is honest where a `0` is not.
+    var isLoading: Bool = false
+
     @State private var isHovering = false
     
     var body: some View {
@@ -431,9 +473,15 @@ struct StatCard: View {
                         .foregroundColor(color)
                 }
                 Spacer()
-                Text("\(count)")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(height: 38)
+                } else {
+                    Text("\(count)")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                }
             }
             
             Text(title)
