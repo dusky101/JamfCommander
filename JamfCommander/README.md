@@ -103,6 +103,10 @@ Create an API account in Apple Business Manager under Preferences → API. It gi
 
 Once data has been fetched, the Computers module gains three sortable columns — **Purchased**, **Warranty Ends** and **Lifecycle** — and an **Out of Warranty** filter. Right-click the table header to hide or reorder columns. Opening a computer shows an **Apple Business Manager** section with the purchase date and where it came from, warranty end with days remaining, the lifecycle date, order number, purchase source, and Apple's own model, capacity and colour.
 
+The CSV export from the Computers module carries the same data joined together: the Jamf columns as before, plus Apple's model, capacity and colour, the purchase date and the source it was derived from, order number, warranty start and end, warranty status, the calculated lifecycle date, and the dates the device was added to or released from Apple Business Manager. Dates are written as `YYYY-MM-DD` so they sort correctly in Excel. These columns are omitted entirely if you are not using Apple Business Manager.
+
+Warranty status distinguishes three things that look alike but are not: `NO_RECORD` means Apple holds no cover for the device, `UNAVAILABLE` means the warranty could not be fetched, and `NOT_IN_ABM` means Apple Business Manager has no record of the Mac at all.
+
 A Mac that Jamf manages but Apple Business Manager has no record of still appears in the list, marked "Not in Apple Business Manager". That is deliberate: it is an asset management gap worth investigating, and it is a different thing from a Mac Apple simply holds no warranty record for.
 
 Purchase dates are not all equally trustworthy. For devices bought through Apple or a reseller the order date is used directly. For devices added by hand through Apple Configurator, the order date records when someone added the device rather than when it was bought, so the warranty start date is used instead and the source is shown alongside it.
