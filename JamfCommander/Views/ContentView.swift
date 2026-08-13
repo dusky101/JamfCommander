@@ -26,9 +26,10 @@ struct ContentView: View {
     @State private var selectedProfileIDs = Set<ConfigProfile.ID>()
     
     // MARK: - Auto-Login Storage
+    // The instance URL is a non-secret endpoint and stays in UserDefaults; the credentials come from
+    // the Keychain via CredentialStore.
     @AppStorage("jamfInstanceURL") private var storedURL = ""
-    @AppStorage("clientId") private var storedClientId = ""
-    @AppStorage("clientSecret") private var storedClientSecret = ""
+    @ObservedObject private var credentials = CredentialStore.shared
     
     var body: some View {
         NavigationSplitView {
@@ -128,7 +129,7 @@ struct ContentView: View {
         }
         // MARK: - AUTO LOGIN TRIGGER
         .task {
-            if !isLoggedIn && !storedURL.isEmpty && !storedClientId.isEmpty && !storedClientSecret.isEmpty {
+            if !isLoggedIn && !storedURL.isEmpty && credentials.hasCredentials {
                 await performAutoLogin()
             }
         }
@@ -173,8 +174,8 @@ struct ContentView: View {
         do {
             try await api.authenticate(
                 url: storedURL,
-                clientId: storedClientId,
-                clientSecret: storedClientSecret
+                clientId: credentials.clientId,
+                clientSecret: credentials.clientSecret
             )
             await refreshAllData()
             await MainActor.run {

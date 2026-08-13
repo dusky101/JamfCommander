@@ -43,7 +43,7 @@ safe helpdesk build; the code below just makes it pleasant.
 | H5 | The deployment sheet reads **categories, scripts, computers, computer groups and all policy names** before it can be used (`DeploymentConfigSheet.loadData`). | The role needs **Read Scripts** even though the Scripts *module* is hidden — hiding a module does not remove the privilege its features depend on. Same for computers and groups. |
 | H6 | `AppModule` is a plain enum in `Core/SidebarView.swift` (`dashboard`, `policies`, `profiles`, `computers`, `packages`, `scripts`) and `ContentView` switches on it. | Hiding a module is a filtered `allCases`, not a refactor. |
 | H7 | `genericFetch` / `genericRequest` already throw `APIError.httpError(code)`, and `PolicyCreationError` already distinguishes 401 / 403 with actionable copy. | The "your key can't do this" plumbing partly exists. Reuse it rather than inventing a second error path. |
-| H8 | Credentials live in `@AppStorage` — plain `UserDefaults` — and `.jamfconfig` export is obfuscated, **not** encrypted (see the project README and `auth-and-credentials.md`). | Both get materially worse once several people hold the app. See "Before you distribute". |
+| H8 | ~~Credentials live in `@AppStorage` — plain `UserDefaults` — and `.jamfconfig` export is obfuscated, **not** encrypted.~~ **Resolved.** Credentials are in the Keychain (`KeychainStore`/`CredentialStore`) and `.jamfconfig` v2 is AES-GCM encrypted under a PBKDF2-derived passphrase. | What remains is a distribution question, not a storage one: the passphrase must reach recipients by a separate channel. See "Before you distribute". |
 
 ## The Jamf role recipe (do this first)
 
@@ -146,12 +146,14 @@ The ones that bite this work:
 
 Not blockers, but they get worse the moment more than one person holds the app (H8):
 
-- [ ] **Move credentials to the Keychain.** A key that can create policies sitting in plaintext
-      `UserDefaults` on several machines is a different risk from one on the maintainer's own Mac.
-      Contained change; worth doing as part of this work.
-- [ ] **Decide how the helpdesk gets its credentials.** `.jamfconfig` is obfuscated, not encrypted, so
-      distributing one is effectively distributing a plaintext secret. Prefer each person entering the
-      client id and secret once, or ship the config through a channel you'd trust with a password.
+- [x] **Move credentials to the Keychain.** Done — `KeychainStore` / `CredentialStore`, with automatic
+      migration from the old `UserDefaults` keys.
+- [ ] **Decide how the helpdesk gets its credentials.** `.jamfconfig` v2 is encrypted, so the file is
+      safe to send over ordinary channels — but the **passphrase must travel separately**, or the
+      encryption buys nothing. Prefer each person entering the client id and secret once; if you do
+      distribute a config, treat the passphrase the way you'd treat the secret itself.
+- [ ] **Give the helpdesk its own Jamf API client** with a role scoped to what they actually need,
+      rather than sharing the maintainer's. A shared credential cannot be revoked for one person.
 - [ ] Confirm the archived maintainer build and the helpdesk build can't be confused for one another.
 
 ## Notes

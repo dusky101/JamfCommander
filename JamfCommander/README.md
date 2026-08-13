@@ -83,7 +83,11 @@ The settings screen can export and import `.jamfconfig` files. These files conta
 - App version
 - Jamf Commander file signature
 
-Important: `.jamfconfig` files are Base64 encoded for light obfuscation, not encrypted. Treat exported settings files as secrets and only share them through secure internal channels.
+Exported files are encrypted. You choose a passphrase when exporting (minimum 8 characters, entered twice), and whoever imports the file is asked for it. The file is sealed with AES-GCM under a key derived from that passphrase using PBKDF2-HMAC-SHA256.
+
+Important: send the passphrase to your colleagues by a different route from the file itself, and choose a passphrase you would be comfortable protecting an API secret with. The file's protection is only as good as the passphrase. If the passphrase is lost the file cannot be recovered — export a new one.
+
+Configuration files produced by earlier versions were Base64 encoded rather than encrypted. Those files still import, but treat any copy of one as a plaintext secret and replace it with a fresh export.
 
 ## App Modules
 
@@ -286,7 +290,9 @@ For safer cloning, cloned policies are disabled by default and can have scope, t
 
 ## Data Storage
 
-Connection settings are stored locally using SwiftUI `@AppStorage`, which is backed by the app's user defaults. The access token is kept in memory by `JamfAPIService` during the running session.
+The Client ID and Client Secret are stored in your login Keychain, available only while your Mac is unlocked and never synchronised to iCloud. The Jamf instance URL is stored in the app's user defaults, as it is an address rather than a secret. The access token is kept in memory by `JamfAPIService` during the running session and is never written to disk.
+
+If you used an earlier version, your existing credentials move to the Keychain automatically the first time you launch this one. Nothing is removed from the old location until the Keychain copy has been written and read back successfully.
 
 The app does not include its own database.
 
@@ -379,7 +385,7 @@ The app creates Jamf policies that call the selected script and use the selected
 
 ## Known Limitations
 
-- `.jamfconfig` exports are obfuscated, not encrypted.
+- `.jamfconfig` exports are encrypted, but only as strongly as the passphrase chosen and the channel the passphrase travels by. A forgotten passphrase cannot be recovered.
 - The app assumes the Jamf API client has the required privileges for the selected action.
 - Some inspectors expose raw source views, but not every visible editor control currently writes changes back to Jamf.
 - Installomator label discovery depends on GitHub availability. **Explain This Label** also reads from

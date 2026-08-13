@@ -132,9 +132,12 @@ These are real characteristics of the current code. Respect them; flag before ch
 - **Live tenant by default.** The app points at whatever instance is configured (Zellis production by
   default); treat all writes as live. The README's disclaimer recommends testing bulk actions against a
   **non-production** Jamf tenant first — follow that.
-- **Credential storage.** Client ID/secret/URL live in `UserDefaults` (`@AppStorage`) in clear; the
-  `.jamfconfig` export is base64 (obfuscation, not encryption). The token is in memory only. The
-  documented hardening path is the **Keychain** (see `.claude/rules/auth-and-credentials.md`).
+- **Credential storage.** The client ID and secret are in the **Keychain** (`KeychainStore`, exposed to
+  views via `CredentialStore.shared`); the instance URL stays in `UserDefaults` as a non-secret
+  endpoint. The token is in memory only. `.jamfconfig` exports are **AES-GCM encrypted** under a
+  PBKDF2-derived passphrase (v2); the old unencrypted v1 files are still readable but never written.
+  A shared file is still only as strong as its passphrase and the channel it travels by. See
+  `.claude/rules/auth-and-credentials.md`.
 - **XML injection / breakage.** Classic write bodies are string-interpolated. Cloning escapes via
   `xmlEscape`; `createCategory` and `createInstallomatorPolicyAsync` currently do **not** — escape new
   call sites.

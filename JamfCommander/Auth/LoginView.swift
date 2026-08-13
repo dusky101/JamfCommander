@@ -17,11 +17,11 @@ struct LoginView: View {
     @Binding var isBusy: Bool
     @Binding var showConfigSheet: Bool // NEW: Allow opening settings
     
-    // Local Access to settings
+    // Local Access to settings. The instance URL is a non-secret endpoint; the credentials come from
+    // the Keychain via CredentialStore.
     @AppStorage("jamfInstanceURL") private var savedInstanceURL = "https://zellis.jamfcloud.com"
-    @AppStorage("clientId") private var savedClientId = ""
-    @AppStorage("clientSecret") private var savedClientSecret = ""
-    
+    @ObservedObject private var credentials = CredentialStore.shared
+
     var onLoginSuccess: () async -> Void
     
     var body: some View {
@@ -29,7 +29,7 @@ struct LoginView: View {
             Text("Connect to Jamf")
                 .font(.headline)
             
-            if savedClientId.isEmpty || savedClientSecret.isEmpty {
+            if !credentials.hasCredentials {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -92,7 +92,11 @@ struct LoginView: View {
         
         Task {
             do {
-                try await api.authenticate(url: savedInstanceURL, clientId: savedClientId, clientSecret: savedClientSecret)
+                try await api.authenticate(
+                    url: savedInstanceURL,
+                    clientId: credentials.clientId,
+                    clientSecret: credentials.clientSecret
+                )
                 
                 await onLoginSuccess()
                 

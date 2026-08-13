@@ -9,10 +9,11 @@
 import SwiftUI
 
 struct ConfigurationView: View {
+    // The instance URL is an endpoint rather than a secret, so it stays in UserDefaults where the
+    // "open in Jamf" links can read it. The client ID and secret live in the Keychain.
     @AppStorage("jamfInstanceURL") private var instanceURL = "https://zellis.jamfcloud.com"
-    @AppStorage("clientId") private var clientId = ""
-    @AppStorage("clientSecret") private var clientSecret = ""
-    
+    @ObservedObject private var credentials = CredentialStore.shared
+
     @Environment(\.dismiss) var dismiss
     
     // Alert State
@@ -59,9 +60,10 @@ struct ConfigurationView: View {
                         .font(.headline)
                 }
                 
-                Text("Share your Jamf connection settings with team members using configuration files.")
+                Text("Share your Jamf connection settings with team members using configuration files. Exported files are encrypted with a passphrase you choose — send the passphrase separately from the file.")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 
                 HStack(spacing: 12) {
                     // Import Button
@@ -78,8 +80,8 @@ struct ConfigurationView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    .disabled(instanceURL.isEmpty || clientId.isEmpty || clientSecret.isEmpty)
-                    .help("Export current settings to a .jamfconfig file")
+                    .disabled(instanceURL.isEmpty || !credentials.hasCredentials)
+                    .help("Export current settings to an encrypted .jamfconfig file")
                 }
             }
             .padding()
@@ -109,15 +111,32 @@ struct ConfigurationView: View {
                 VStack(alignment: .leading) {
                     Text("Client ID")
                         .font(.caption)
-                    TextField("e.g. 34065bc6-...", text: $clientId)
+                    TextField("e.g. 34065bc6-...", text: $credentials.clientId)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
-                
+
                 VStack(alignment: .leading) {
                     Text("Client Secret")
                         .font(.caption)
-                    SecureField("Paste Secret Here", text: $clientSecret)
+                    SecureField("Paste Secret Here", text: $credentials.clientSecret)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+
+                // The credentials are stored in the Keychain. If that ever fails they are held for
+                // this session only, so the failure has to be visible rather than silent.
+                if let keychainError = credentials.lastError {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text(keychainError)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                } else {
+                    Label("Stored securely in your Keychain.", systemImage: "lock.fill")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
             .padding()
@@ -129,7 +148,7 @@ struct ConfigurationView: View {
             // Footer Buttons
             HStack {
                 // Clear All Button
-                if !instanceURL.isEmpty || !clientId.isEmpty || !clientSecret.isEmpty {
+                if !instanceURL.isEmpty || !credentials.clientId.isEmpty || !credentials.clientSecret.isEmpty {
                     Button(action: clearAllSettings) {
                         Label("Clear All", systemImage: "trash")
                             .foregroundColor(.red)
@@ -163,11 +182,11 @@ struct ConfigurationView: View {
         
         switch result {
         case .success(let config):
-            // Update all settings
+            // Update all settings. The credentials are applied together so a partial import cannot
+            // leave a client ID and secret belonging to different instances.
             instanceURL = config.instanceURL
-            clientId = config.clientId
-            clientSecret = config.clientSecret
-            
+            credentials.apply(clientId: config.clientId, clientSecret: config.clientSecret)
+
             // Show success message
             alertType = .success
             alertTitle = "Import Successful"
@@ -202,8 +221,8 @@ struct ConfigurationView: View {
     func exportSettings() {
         let result = SettingsService.exportSettings(
             instanceURL: instanceURL,
-            clientId: clientId,
-            clientSecret: clientSecret
+            clientId: credentials.clientId,
+            clientSecret: credentials.clientSecret
         )
         
         switch result {
@@ -216,7 +235,7 @@ struct ConfigurationView: View {
             File saved to:
             \(url.path)
             
-            Share this file with team members to quickly configure their Jamf Commander app.
+            Share this file with team members to quickly configure their Jamf Commander app. They will need the passphrase you chose — send it to them separately from the file.
             """
             showAlert = true
             
@@ -234,9 +253,8 @@ struct ConfigurationView: View {
     
     func clearAllSettings() {
         instanceURL = ""
-        clientId = ""
-        clientSecret = ""
-        
+        credentials.clearAll()
+
         alertType = .info
         alertTitle = "Settings Cleared"
         alertMessage = "All configuration settings have been cleared."
