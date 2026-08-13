@@ -59,6 +59,11 @@ nonisolated struct ABMListResponse<Element: Codable & Sendable>: Codable, Sendab
     }
 }
 
+/// The single-object equivalent of `ABMListResponse`, used by `/orgDevices/{serial}`.
+nonisolated struct ABMSingleResponse<Element: Codable & Sendable>: Codable, Sendable {
+    let data: Element
+}
+
 /// The error shape returned by `api-business.apple.com`.
 nonisolated struct ABMErrorResponse: Codable, Sendable {
     let errors: [Detail]?

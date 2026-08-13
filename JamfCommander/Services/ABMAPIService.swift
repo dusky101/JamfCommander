@@ -33,6 +33,9 @@ final class ABMAPIService: ObservableObject {
     // MARK: - Throttling
 
     private static let maxRetries = 4
+    /// Rate limits get a longer budget than server errors: when a bulk fetch trips an unpublished
+    /// limit, waiting is the only thing that helps and giving up early loses the device entirely.
+    private static let maxRateLimitRetries = 8
     /// Refresh this far ahead of expiry so a request never starts with a token about to lapse.
     private static let refreshMargin: TimeInterval = 300
 
@@ -151,7 +154,10 @@ final class ABMAPIService: ObservableObject {
 
     /// Follows cursor paging to exhaustion. The **absence** of `nextCursor` ends the walk; the
     /// returned count is not a reliable terminator.
-    private func fetchAllPages<Element: Codable & Sendable>(
+    ///
+    /// Internal rather than private so `+Fleet` can reach it, matching how `JamfAPIService` exposes
+    /// its shared helpers to its extensions.
+    func fetchAllPages<Element: Codable & Sendable>(
         path: String,
         as type: Element.Type
     ) async throws -> [Element] {
@@ -182,7 +188,9 @@ final class ABMAPIService: ObservableObject {
 
     /// An authorised GET, retrying rate limits and transient server errors, and refreshing the token
     /// once on a 401 as Apple's documentation directs.
-    private func authorisedData(path: String, query: [URLQueryItem]) async throws -> Data {
+    ///
+    /// Internal so `+Fleet` can use it. Every caller must keep this a GET — see the type's note.
+    func authorisedData(path: String, query: [URLQueryItem]) async throws -> Data {
         guard var components = URLComponents(string: "\(Self.apiBase)/\(path)") else {
             throw ABMError.invalidURL
         }
@@ -191,6 +199,7 @@ final class ABMAPIService: ObservableObject {
 
         var hasRefreshed = false
         var attempt = 0
+        var rateLimitAttempt = 0
 
         while true {
             let token = try await accessToken()
@@ -220,9 +229,9 @@ final class ABMAPIService: ObservableObject {
                 invalidateSession()
 
             case 429:
-                guard attempt < Self.maxRetries else { throw ABMError.rateLimited }
-                try await sleep(seconds: retryAfter(from: http) ?? backoff(for: attempt))
-                attempt += 1
+                guard rateLimitAttempt < Self.maxRateLimitRetries else { throw ABMError.rateLimited }
+                try await sleep(seconds: retryAfter(from: http) ?? backoff(for: rateLimitAttempt))
+                rateLimitAttempt += 1
 
             case 500...599:
                 guard attempt < Self.maxRetries else {
@@ -321,11 +330,14 @@ final class ABMAPIService: ObservableObject {
         return max(1, min(seconds, 60))
     }
 
+    /// Exponential backoff with jitter. Without the jitter, concurrent requests that trip the same
+    /// limit sleep for the same interval, wake together and trip it again.
     private func backoff(for attempt: Int) -> TimeInterval {
-        min(pow(2.0, Double(attempt)), 30)
+        let base = min(pow(2.0, Double(attempt)), 30)
+        return base + Double.random(in: 0...min(base, 2))
     }
 
-    private func sleep(seconds: TimeInterval) async throws {
+    func sleep(seconds: TimeInterval) async throws {
         try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
     }
 

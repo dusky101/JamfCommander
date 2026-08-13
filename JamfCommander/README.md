@@ -99,6 +99,10 @@ Create an API account in Apple Business Manager under Preferences → API. It gi
 
 **Lifecycle** is not a value Apple Business Manager holds. It is calculated as the purchase date plus the number of years set here, defaulting to four.
 
+**Refresh Apple Business Manager Data** fetches the fleet and caches it for seven days. Apple has no bulk warranty endpoint, so every device costs its own requests — the refresh shows a progress bar and reports what it found, including how many devices are out of warranty and how many have a purchase date that had to be inferred. The cache survives quitting the app, and the Computers views read from it rather than the network.
+
+Purchase dates are not all equally trustworthy. For devices bought through Apple or a reseller the order date is used directly. For devices added by hand through Apple Configurator, the order date records when someone added the device rather than when it was bought, so the warranty start date is used instead and the source is shown alongside it.
+
 Two things to be aware of:
 
 - An Apple Business Manager API account has **no read-only option**. The key you import can read your organisation's devices and also change them. Jamf Commander only ever reads, but store and share the key accordingly.

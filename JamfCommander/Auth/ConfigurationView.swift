@@ -13,6 +13,7 @@ struct ConfigurationView: View {
     // "open in Jamf" links can read it. The client ID and secret live in the Keychain.
     @AppStorage("jamfInstanceURL") private var instanceURL = "https://zellis.jamfcloud.com"
     @ObservedObject private var credentials = CredentialStore.shared
+    @ObservedObject private var fleet = ABMFleetStore.shared
 
     // Apple Business Manager settings. Neither is a secret: the MDM server identifier scopes the
     // fetch, and the lifecycle interval is a local preference.
@@ -224,11 +225,133 @@ struct ConfigurationView: View {
                 abmCredentialsSection
                 abmScopeSection
                 abmTestSection
+                abmDataSection
             }
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .task {
+            await fleet.loadFromCache()
+        }
     }
+
+    private var abmDataSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "internaldrive")
+                    .foregroundColor(.secondary)
+                Text("Fleet Data")
+                    .font(.headline)
+            }
+
+            Text("Purchase and warranty data is fetched once and cached for seven days, because Apple Business Manager has no bulk warranty endpoint — every device costs its own request.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                Image(systemName: fleet.isStale ? "clock.badge.exclamationmark" : "checkmark.circle.fill")
+                    .foregroundColor(fleet.isStale ? .orange : .green)
+                Text(cacheAgeText)
+                    .font(.caption)
+                Spacer()
+            }
+
+            if fleet.isRefreshing, let progress = fleet.progress {
+                VStack(alignment: .leading, spacing: 4) {
+                    if progress.total > 0 {
+                        ProgressView(value: progress.fraction)
+                        Text("\(progress.completed) of \(progress.total) devices")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    } else {
+                        ProgressView()
+                            .progressViewStyle(.linear)
+                        Text("Fetching the device list…")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            HStack {
+                Button(action: refreshABMData) {
+                    Label("Refresh Apple Business Manager Data", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(fleet.isRefreshing || !credentials.hasABMCredentials || abmMDMServerId.isEmpty)
+
+                Spacer()
+            }
+
+            if let summary = fleet.lastSummary {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(summary.macCount) Mac\(summary.macCount == 1 ? "" : "s") retrieved")
+                        .fontWeight(.medium)
+                    Text("\(summary.outOfWarranty) out of warranty")
+                    if summary.noWarrantyRecord > 0 {
+                        Text("\(summary.noWarrantyRecord) with no warranty record")
+                    }
+                    Text("\(summary.inferredPurchaseDates) with an inferred purchase date")
+                    if summary.missingPurchaseDates > 0 {
+                        Text("\(summary.missingPurchaseDates) with no purchase date at all")
+                    }
+                    if summary.nonMacCount > 0 {
+                        Text("\(summary.nonMacCount) assigned device\(summary.nonMacCount == 1 ? "" : "s") skipped as not a Mac")
+                    }
+                    if summary.failedCount > 0 {
+                        Text("\(summary.failedCount) could not be retrieved")
+                            .foregroundColor(.orange)
+                        if let reason = summary.failureReason {
+                            Text(reason)
+                                .foregroundColor(.orange)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Color.secondary.opacity(0.08))
+                .cornerRadius(8)
+            }
+
+            if let error = fleet.lastError {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text(error)
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Color.orange.opacity(0.08))
+                .cornerRadius(8)
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(8)
+    }
+
+    private var cacheAgeText: String {
+        guard let refreshedAt = fleet.refreshedAt else {
+            return "No data cached yet."
+        }
+        let relative = Self.relativeFormatter.localizedString(for: refreshedAt, relativeTo: Date())
+        return fleet.isStale
+            ? "Last refreshed \(relative) — out of date."
+            : "Last refreshed \(relative)."
+    }
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
 
     private var abmCredentialsSection: some View {
         VStack(alignment: .leading, spacing: 15) {
@@ -543,10 +666,17 @@ struct ConfigurationView: View {
         """
     }
 
+    private func refreshABMData() {
+        Task { await fleet.refresh() }
+    }
+
     func clearAllSettings() {
         instanceURL = ""
         abmTestResult = nil
         credentials.clearAll()
+        // The cached fleet was fetched with credentials that no longer exist; keeping it would show
+        // data the app can no longer refresh or verify.
+        Task { await fleet.clear() }
 
         alertType = .info
         alertTitle = "Settings Cleared"
