@@ -45,7 +45,7 @@ final class ABMAPIService: ObservableObject {
         case notConfigured
         case invalidURL
         case authFailed(String?)
-        case requestFailed
+        case requestFailed(String?)
         case httpError(Int, String?)
         case rateLimited
         case decodingFailed
@@ -62,8 +62,11 @@ final class ABMAPIService: ObservableObject {
                     return "\(base) Check the Client ID and Key ID match the private key you imported."
                 }
                 return "\(base) \(detail)"
-            case .requestFailed:
-                return "Could not reach Apple Business Manager. Check your network connection."
+            case .requestFailed(let detail):
+                guard let detail, !detail.isEmpty else {
+                    return "Could not reach Apple Business Manager."
+                }
+                return "Could not reach Apple Business Manager: \(detail)"
             case .httpError(let code, let detail):
                 guard let detail, !detail.isEmpty else {
                     return "Apple Business Manager returned an error (HTTP \(code))."
@@ -200,6 +203,7 @@ final class ABMAPIService: ObservableObject {
         var hasRefreshed = false
         var attempt = 0
         var rateLimitAttempt = 0
+        var transportAttempt = 0
 
         while true {
             let token = try await accessToken()
@@ -208,39 +212,70 @@ final class ABMAPIService: ObservableObject {
             request.httpMethod = "GET"
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Accept")
+            // Workaround for a server-side fault: `api-business.apple.com` has been observed returning
+            // `transfer-encoding: chunked` on an HTTP/2 connection, which RFC 9113 forbids. CFNetwork
+            // rejects the frame and drops the connection, surfacing as URLError -1005. Asking for an
+            // unencoded body encourages the server to send a buffered response with a Content-Length
+            // instead of a chunked one. The payloads are small, so losing compression costs nothing.
+            request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
             request.timeoutInterval = 30
 
-            let data: Data
-            let response: URLResponse
+            var payload: (data: Data, response: URLResponse)?
             do {
-                (data, response) = try await URLSession.shared.data(for: request)
+                payload = try await URLSession.shared.data(for: request)
+            } catch let error as URLError where error.code != .cancelled {
+                // Transport failures across a bulk run are often transient — a timeout, or a
+                // connection the server closed between requests — so one is not fatal to the device.
+                guard transportAttempt < Self.maxRetries else {
+                    ABMLog.error("GET \(path) failed after \(transportAttempt + 1) attempts: \(Self.describe(error))")
+                    throw ABMError.requestFailed(Self.describe(error))
+                }
+                ABMLog.warning("GET \(path) — \(Self.describe(error)); retry \(transportAttempt + 1) of \(Self.maxRetries)")
+                try await sleep(seconds: backoff(for: transportAttempt))
+                transportAttempt += 1
+                continue
             } catch {
-                throw ABMError.requestFailed
+                ABMLog.error("GET \(path) failed: \(error.localizedDescription)")
+                throw ABMError.requestFailed(error.localizedDescription)
             }
 
-            guard let http = response as? HTTPURLResponse else { throw ABMError.requestFailed }
+            guard let payload else { throw ABMError.requestFailed(nil) }
+            let data = payload.data
+
+            guard let http = payload.response as? HTTPURLResponse else {
+                throw ABMError.requestFailed("The response was not an HTTP response.")
+            }
 
             switch http.statusCode {
             case 200...299:
                 return data
 
             case 401 where !hasRefreshed:
+                ABMLog.warning("GET \(path) returned 401; refreshing the token and retrying")
                 hasRefreshed = true
                 invalidateSession()
 
             case 429:
-                guard rateLimitAttempt < Self.maxRateLimitRetries else { throw ABMError.rateLimited }
-                try await sleep(seconds: retryAfter(from: http) ?? backoff(for: rateLimitAttempt))
+                guard rateLimitAttempt < Self.maxRateLimitRetries else {
+                    ABMLog.error("GET \(path) rate limited after \(rateLimitAttempt) waits; giving up")
+                    throw ABMError.rateLimited
+                }
+                let wait = retryAfter(from: http) ?? backoff(for: rateLimitAttempt)
+                ABMLog.warning("GET \(path) returned 429; waiting \(String(format: "%.1f", wait))s")
+                try await sleep(seconds: wait)
                 rateLimitAttempt += 1
 
             case 500...599:
                 guard attempt < Self.maxRetries else {
+                    ABMLog.error("GET \(path) returned \(http.statusCode) after \(attempt) retries")
                     throw ABMError.httpError(http.statusCode, decodeErrorSummary(from: data))
                 }
+                ABMLog.warning("GET \(path) returned \(http.statusCode); retry \(attempt + 1) of \(Self.maxRetries)")
                 try await sleep(seconds: backoff(for: attempt))
                 attempt += 1
 
             default:
+                ABMLog.error("GET \(path) returned \(http.statusCode)")
                 throw ABMError.httpError(http.statusCode, decodeErrorSummary(from: data))
             }
         }
@@ -296,26 +331,47 @@ final class ABMAPIService: ObservableObject {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         request.httpBody = components.percentEncodedQuery?.data(using: .utf8)
         request.timeoutInterval = 30
 
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw ABMError.requestFailed
+        // The token is fetched once an hour, but a transport blip here fails the entire run rather
+        // than one device, so it gets the same retry treatment.
+        var payload: (data: Data, response: URLResponse)?
+        var transportAttempt = 0
+
+        while payload == nil {
+            do {
+                payload = try await URLSession.shared.data(for: request)
+            } catch let error as URLError where error.code != .cancelled {
+                guard transportAttempt < Self.maxRetries else {
+                    throw ABMError.requestFailed(Self.describe(error))
+                }
+                try await sleep(seconds: backoff(for: transportAttempt))
+                transportAttempt += 1
+            } catch {
+                throw ABMError.requestFailed(error.localizedDescription)
+            }
         }
 
-        guard let http = response as? HTTPURLResponse else { throw ABMError.requestFailed }
+        guard let payload else { throw ABMError.requestFailed(nil) }
+        let data = payload.data
+
+        guard let http = payload.response as? HTTPURLResponse else {
+            throw ABMError.requestFailed("The response was not an HTTP response.")
+        }
 
         guard http.statusCode == 200 else {
+            ABMLog.error("Token exchange failed with HTTP \(http.statusCode)")
             throw ABMError.authFailed(decodeTokenErrorSummary(from: data))
         }
 
         guard let token = try? JSONDecoder().decode(ABMTokenResponse.self, from: data) else {
+            ABMLog.error("Token response could not be decoded")
             throw ABMError.decodingFailed
         }
+
+        ABMLog.info("Access token obtained, valid for \(token.expiresIn ?? 3600)s")
 
         // Apple issues one-hour tokens; the response is trusted over that assumption.
         let lifetime = TimeInterval(token.expiresIn ?? 3600)
@@ -323,6 +379,29 @@ final class ABMAPIService: ObservableObject {
     }
 
     // MARK: - Helpers
+
+    /// A readable description of a transport failure, carrying the numeric code so an intermittent
+    /// fault can actually be identified rather than guessed at.
+    private static func describe(_ error: URLError) -> String {
+        let reason: String
+        switch error.code {
+        case .timedOut:
+            reason = "the request timed out"
+        case .networkConnectionLost:
+            reason = "the connection was closed"
+        case .cannotConnectToHost:
+            reason = "the host refused the connection"
+        case .notConnectedToInternet:
+            reason = "there is no internet connection"
+        case .cannotFindHost, .dnsLookupFailed:
+            reason = "the host could not be found"
+        case .secureConnectionFailed:
+            reason = "the secure connection failed"
+        default:
+            reason = error.localizedDescription
+        }
+        return "\(reason) (URLError \(error.errorCode))"
+    }
 
     private func retryAfter(from response: HTTPURLResponse) -> TimeInterval? {
         guard let header = response.value(forHTTPHeaderField: "Retry-After"),
@@ -333,7 +412,9 @@ final class ABMAPIService: ObservableObject {
     /// Exponential backoff with jitter. Without the jitter, concurrent requests that trip the same
     /// limit sleep for the same interval, wake together and trip it again.
     private func backoff(for attempt: Int) -> TimeInterval {
-        let base = min(pow(2.0, Double(attempt)), 30)
+        // Capped at 10s rather than 30s: a bulk run waits on this once per device, and a 30s ceiling
+        // turned a throttled fetch into something that looked hung.
+        let base = min(pow(2.0, Double(attempt)), 10)
         return base + Double.random(in: 0...min(base, 2))
     }
 

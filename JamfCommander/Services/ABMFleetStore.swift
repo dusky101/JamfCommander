@@ -42,6 +42,10 @@ final class ABMFleetStore: ObservableObject {
         let macCount: Int
         let outOfWarranty: Int
         let noWarrantyRecord: Int
+        /// Devices retrieved, but whose warranty request failed after every retry. Counted separately
+        /// from `noWarrantyRecord`: one is a device Apple holds no cover for, the other is data we
+        /// simply do not have. Without this line a run reports its full total with silent holes in it.
+        let warrantyUnavailable: Int
         let inferredPurchaseDates: Int
         let missingPurchaseDates: Int
         let nonMacCount: Int
@@ -164,6 +168,7 @@ final class ABMFleetStore: ObservableObject {
         let now = Date()
         var outOfWarranty = 0
         var noRecord = 0
+        var unavailable = 0
         var inferred = 0
         var missing = 0
 
@@ -178,7 +183,7 @@ final class ABMFleetStore: ObservableObject {
                 // date is what an administrator will act on, not Apple's status field.
                 if let end, end < now { outOfWarranty += 1 }
             case .unavailable:
-                break
+                unavailable += 1
             }
 
             if record.purchaseDate == nil {
@@ -192,6 +197,7 @@ final class ABMFleetStore: ObservableObject {
             macCount: result.records.count,
             outOfWarranty: outOfWarranty,
             noWarrantyRecord: noRecord,
+            warrantyUnavailable: unavailable,
             inferredPurchaseDates: inferred,
             missingPurchaseDates: missing,
             nonMacCount: result.nonMacCount,

@@ -292,6 +292,10 @@ struct ConfigurationView: View {
                     if summary.noWarrantyRecord > 0 {
                         Text("\(summary.noWarrantyRecord) with no warranty record")
                     }
+                    if summary.warrantyUnavailable > 0 {
+                        Text("\(summary.warrantyUnavailable) whose warranty could not be fetched")
+                            .foregroundColor(.orange)
+                    }
                     Text("\(summary.inferredPurchaseDates) with an inferred purchase date")
                     if summary.missingPurchaseDates > 0 {
                         Text("\(summary.missingPurchaseDates) with no purchase date at all")

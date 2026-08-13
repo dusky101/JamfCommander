@@ -9,21 +9,20 @@ import Foundation
 
 extension ABMAPIService {
 
-    /// Devices fetched per batch, and the pause between batches.
+    /// The pause between warranty requests.
     ///
-    /// **Deliberately lower than the Jamf throttle.** Apple publishes no rate limit for this API. The
-    /// only measured figure is from the proof-of-concept extract: 153 sequential calls at 150ms apart
-    /// were never throttled. Ten devices in flight — twenty requests, since each device needs two —
-    /// was far past that and produced partial results that varied run to run.
-    ///
-    /// Three devices per batch with a half-second pause is roughly six requests per second, which
-    /// stays near the proven rate while finishing in about a minute rather than three.
-    private static var batchSize: Int { 3 }
-    private static var batchDelay: TimeInterval { 0.5 }
+    /// Apple publishes no rate limit for this API. The one measured figure comes from the
+    /// proof-of-concept extract: 153 sequential requests 150ms apart were never throttled. Fetching
+    /// three devices at a time — six requests, roughly seven per second — was throttled after about a
+    /// minute, and the resulting backoff turned the run into a crawl. This matches the proven pace.
+    private static var requestDelay: TimeInterval { 0.15 }
 
     // MARK: - Single device
 
     /// Attributes for one device. Returns `nil` when ABM has no record for the serial.
+    ///
+    /// Not used by `fetchFleet`, which takes attributes from the collection endpoint in one call.
+    /// Kept for looking up a single machine without a full refresh.
     ///
     /// The verified payloads for this API all come from collection endpoints, which wrap results in
     /// `data`. A single-resource response conventionally does the same, but that is convention rather
@@ -46,8 +45,8 @@ extension ABMAPIService {
 
     /// Every coverage record for one device.
     ///
-    /// There is no bulk warranty endpoint — this is one request per device, which is the whole reason
-    /// the results are cached rather than fetched on demand.
+    /// There is no bulk warranty endpoint — this is one request per device, which is both why the
+    /// results are cached and why the pacing above matters.
     func fetchCoverage(serial: String) async throws -> [ABMCoverage] {
         let data = try await authorisedData(path: "orgDevices/\(serial)/appleCareCoverage", query: [])
 
@@ -61,11 +60,11 @@ extension ABMAPIService {
         return response.data.compactMap(\.attributes)
     }
 
-    // MARK: - Fleet
+    // MARK: - Results
 
     /// One device that could not be retrieved, and why.
     ///
-    /// The reason is carried rather than discarded: a run that quietly returns 18 of 153 devices is
+    /// The reason is carried rather than discarded: a run that quietly returns 34 of 153 devices is
     /// indistinguishable from a rate limit, an auth lapse and a decoding fault unless the failure
     /// says which it was.
     nonisolated struct FleetFailure: Sendable, Hashable {
@@ -78,7 +77,7 @@ extension ABMAPIService {
         let records: [ABMDeviceRecord]
         /// Serials assigned to the MDM server in ABM.
         let assignedSerialCount: Int
-        /// Assigned serials whose device record was not a Mac — iPhones or iPads on a mixed server.
+        /// Assigned serials whose device record was not a Mac.
         let nonMacCount: Int
         /// Devices that could not be retrieved at all. Reported rather than silently dropped.
         let failures: [FleetFailure]
@@ -91,111 +90,123 @@ extension ABMAPIService {
         }
     }
 
+    // MARK: - Fleet
+
     /// Fetches every Mac assigned to the given MDM server, with its warranty.
     ///
-    /// Scoped from the MDM server's membership list rather than the bulk `/orgDevices` collection, so
-    /// the iPhones and iPads in the organisation are never downloaded. That costs two requests per
-    /// device instead of one shared list call, which the batching absorbs.
+    /// Three stages:
+    /// 1. The MDM server's membership list — identifiers only, and **the scope for everything below**.
+    /// 2. One paged pass over `/orgDevices` for attributes, filtered immediately to that membership.
+    /// 3. One warranty request per in-scope Mac, paced.
     ///
-    /// A device that fails is recorded in `failedSerials` and omitted; one bad serial never aborts the
-    /// run. A device whose *coverage* call fails is kept with `coverage == nil`, so the UI reports
+    /// Stage 2 returns every device in the organisation, including those managed elsewhere. They are
+    /// discarded at the filter — never decoded into a record, never cached, never shown or exported.
+    /// The alternative, fetching each device individually, doubles the request count to 306 and is
+    /// what Apple throttled.
+    ///
+    /// A device that fails is recorded in `failures` and omitted; one bad serial never aborts the run.
+    /// A device whose *warranty* call fails is kept with `coverage == nil`, so the UI reports
     /// "unavailable" rather than claiming it is out of warranty.
     ///
-    /// - Parameter onProgress: called with (completed, total) after each batch, on the main actor.
+    /// - Parameter onProgress: called with (completed, total) as warranty is fetched.
     func fetchFleet(
         mdmServerId: String,
         onProgress: ((Int, Int) -> Void)? = nil
     ) async throws -> FleetResult {
-        let serials = try await fetchAssignedSerials(mdmServerId: mdmServerId)
 
-        guard !serials.isEmpty else {
+        ABMLog.info("Refresh started for MDM server \(mdmServerId)")
+
+        // 1. Scope.
+        let assignedSerials = Set(try await fetchAssignedSerials(mdmServerId: mdmServerId))
+        ABMLog.info("Stage 1: \(assignedSerials.count) serials assigned to the MDM server")
+
+        guard !assignedSerials.isEmpty else {
+            ABMLog.warning("No devices are assigned to that MDM server; nothing to fetch")
             return FleetResult(records: [], assignedSerialCount: 0, nonMacCount: 0, failures: [])
         }
 
+        // 2. Attributes for the whole organisation in one paged call, filtered to the scope as we go.
+        let allDevices = try await fetchAllPages(path: "orgDevices", as: ABMDeviceEnvelope.self)
+        ABMLog.info("Stage 2: \(allDevices.count) device records in the organisation")
+
+        var scoped: [(serial: String, attributes: ABMDeviceAttributes)] = []
+        var nonMacCount = 0
+
+        for envelope in allDevices {
+            let serial = envelope.attributes?.serialNumber ?? envelope.id
+            guard assignedSerials.contains(serial) else { continue }
+            guard let attributes = envelope.attributes else { continue }
+            guard attributes.isMac else {
+                nonMacCount += 1
+                continue
+            }
+            scoped.append((serial, attributes))
+        }
+
+        var failures: [FleetFailure] = []
+
+        // Assigned to the MDM server but absent from /orgDevices. Worth reporting rather than
+        // quietly returning a smaller fleet than the server says it has.
+        let matched = Set(scoped.map(\.serial))
+        for missing in assignedSerials.subtracting(matched).sorted() {
+            ABMLog.warning("\(missing) is assigned to the MDM server but has no /orgDevices record")
+            failures.append(
+                FleetFailure(
+                    serialNumber: missing,
+                    reason: "Assigned to the MDM server but no device record exists in Apple Business Manager."
+                )
+            )
+        }
+
+        ABMLog.info("Stage 2 filtered to \(scoped.count) Macs in scope (\(nonMacCount) not a Mac, \(failures.count) with no record)")
+        ABMLog.info("Stage 3: fetching warranty for \(scoped.count) devices at \(Int(Self.requestDelay * 1000))ms intervals")
+
+        // 3. Warranty, one request per in-scope Mac.
         let fetchedAt = Date()
         var records: [ABMDeviceRecord] = []
-        var failures: [FleetFailure] = []
-        var nonMacCount = 0
-        var completed = 0
+        records.reserveCapacity(scoped.count)
 
-        records.reserveCapacity(serials.count)
-        onProgress?(0, serials.count)
+        onProgress?(0, scoped.count)
 
-        for start in stride(from: 0, to: serials.count, by: Self.batchSize) {
-            let batch = Array(serials[start..<min(start + Self.batchSize, serials.count)])
+        var coverageFailures = 0
 
-            let outcomes = await withTaskGroup(of: DeviceOutcome.self) { group in
-                for serial in batch {
-                    group.addTask {
-                        await self.fetchRecord(serial: serial, fetchedAt: fetchedAt)
-                    }
-                }
+        for (index, entry) in scoped.enumerated() {
+            let position = "\(index + 1)/\(scoped.count)"
 
-                var collected: [DeviceOutcome] = []
-                for await outcome in group {
-                    collected.append(outcome)
-                }
-                return collected
+            // `nil` and `[]` mean different things downstream, so a failed call must not become an
+            // empty array. An empty array is a real answer: the device has no coverage records.
+            var coverage: [ABMCoverage]?
+            do {
+                coverage = try await fetchCoverage(serial: entry.serial)
+                ABMLog.info("\(position) \(entry.serial) — \(coverage?.count ?? 0) coverage record(s)")
+            } catch {
+                coverageFailures += 1
+                ABMLog.warning("\(position) \(entry.serial) — warranty unavailable: \(error.localizedDescription)")
             }
 
-            for outcome in outcomes {
-                switch outcome {
-                case .record(let record): records.append(record)
-                case .notAMac: nonMacCount += 1
-                case .failed(let failure): failures.append(failure)
-                }
-            }
+            records.append(
+                ABMDeviceRecord(
+                    serialNumber: entry.serial,
+                    attributes: entry.attributes,
+                    coverage: coverage,
+                    fetchedAt: fetchedAt
+                )
+            )
 
-            completed += batch.count
-            onProgress?(completed, serials.count)
+            onProgress?(index + 1, scoped.count)
 
-            if start + Self.batchSize < serials.count {
-                try await sleep(seconds: Self.batchDelay)
+            if index + 1 < scoped.count {
+                try await sleep(seconds: Self.requestDelay)
             }
         }
+
+        ABMLog.info("Refresh finished: \(records.count) Macs, \(coverageFailures) without warranty data, \(failures.count) not retrieved")
 
         return FleetResult(
             records: records.sorted { $0.serialNumber < $1.serialNumber },
-            assignedSerialCount: serials.count,
+            assignedSerialCount: assignedSerials.count,
             nonMacCount: nonMacCount,
             failures: failures.sorted { $0.serialNumber < $1.serialNumber }
-        )
-    }
-
-    /// The three ways one device can turn out.
-    private enum DeviceOutcome: Sendable {
-        case record(ABMDeviceRecord)
-        case notAMac
-        case failed(FleetFailure)
-    }
-
-    private func fetchRecord(serial: String, fetchedAt: Date) async -> DeviceOutcome {
-        let attributes: ABMDeviceAttributes?
-        do {
-            attributes = try await fetchDeviceAttributes(serial: serial)
-        } catch {
-            return .failed(FleetFailure(serialNumber: serial, reason: error.localizedDescription))
-        }
-
-        guard let attributes else {
-            return .failed(FleetFailure(serialNumber: serial, reason: "No device record in Apple Business Manager."))
-        }
-
-        // The Jamf Pro server should only hold Macs, but a mixed MDM server would otherwise put an
-        // iPhone into the Computers views.
-        guard attributes.isMac else { return .notAMac }
-
-        // `nil` and `[]` mean different things downstream, so a failed call must not become an empty
-        // array. An empty array is a real answer: the device has no coverage records.
-        let coverage = try? await fetchCoverage(serial: serial)
-
-        return .record(
-            ABMDeviceRecord(
-                serialNumber: serial,
-                attributes: attributes,
-                coverage: coverage,
-                fetchedAt: fetchedAt
-            )
         )
     }
 }
