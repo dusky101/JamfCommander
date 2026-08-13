@@ -24,6 +24,15 @@ enum KeychainStore {
     enum Key: String, CaseIterable {
         case jamfClientId = "jamf.clientId"
         case jamfClientSecret = "jamf.clientSecret"
+
+        // Apple Business Manager. The client ID and key ID are identifiers rather than secrets — they
+        // are useless without the key — but they live here so one credential set is cleared together.
+        case abmClientId = "abm.clientId"
+        case abmKeyId = "abm.keyId"
+        /// The PEM text of the ABM private key. ABM API accounts have **no read-only scope**, so this
+        /// single key is full read and write over the whole organisation. It is never displayed,
+        /// never logged, and never leaves this store except to sign an assertion.
+        case abmPrivateKey = "abm.privateKey"
     }
 
     enum KeychainError: LocalizedError {

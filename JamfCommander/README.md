@@ -89,6 +89,21 @@ Important: send the passphrase to your colleagues by a different route from the 
 
 Configuration files produced by earlier versions were Base64 encoded rather than encrypted. Those files still import, but treat any copy of one as a plaintext secret and replace it with a fresh export.
 
+### Apple Business Manager
+
+Optional. Connecting Apple Business Manager adds purchase date, warranty and lifecycle information to the Computers module, none of which Jamf Pro holds without a GSX connection.
+
+Create an API account in Apple Business Manager under Preferences → API. It gives you a Client ID, a Key ID, and a one-time private key download. Enter these on the **Apple Business Manager** tab of the settings screen and import the key file — the app accepts the key exactly as Apple issues it, with no conversion needed.
+
+**Test Connection** proves the whole chain and lists the MDM servers in your organisation with their identifiers. Copy the identifier of the server Jamf Pro uses into the **MDM Server ID** field. Only devices assigned to that server are fetched, so iPhones and iPads in your organisation are never downloaded.
+
+**Lifecycle** is not a value Apple Business Manager holds. It is calculated as the purchase date plus the number of years set here, defaulting to four.
+
+Two things to be aware of:
+
+- An Apple Business Manager API account has **no read-only option**. The key you import can read your organisation's devices and also change them. Jamf Commander only ever reads, but store and share the key accordingly.
+- The private key is kept in your Keychain and is **never** written to an exported settings file. Colleagues who want Apple Business Manager data need their own key.
+
 ## App Modules
 
 ### Dashboard

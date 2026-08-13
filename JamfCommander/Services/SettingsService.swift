@@ -217,6 +217,36 @@ struct SettingsService {
         }
     }
 
+    // MARK: - Apple Business Manager private key
+
+    /// Presents a file picker for the ABM private key and returns its PEM text.
+    ///
+    /// The file's location is deliberately **not** retained: the key is copied into the Keychain by
+    /// `CredentialStore`, and the downloaded `.pem` should then be deleted. Apple issues it once.
+    static func importABMPrivateKeyFile() -> Result<String, SettingsError> {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "Import Apple Business Manager Private Key"
+        openPanel.message = "Select the private key file downloaded from Apple Business Manager."
+        // The download is not reliably given a .pem extension, so any file may be chosen; an
+        // incorrect one is rejected by validation rather than by the picker.
+        openPanel.allowedContentTypes = [UTType(filenameExtension: "pem") ?? .data, .data]
+        openPanel.allowsMultipleSelection = false
+        openPanel.canChooseDirectories = false
+
+        guard openPanel.runModal() == .OK, let url = openPanel.url else {
+            return .failure(.userCancelled)
+        }
+
+        let isAccessing = url.startAccessingSecurityScopedResource()
+        defer { if isAccessing { url.stopAccessingSecurityScopedResource() } }
+
+        guard let contents = try? String(contentsOf: url, encoding: .utf8) else {
+            return .failure(.readFailed)
+        }
+
+        return .success(contents)
+    }
+
     // MARK: - Encryption
 
     private static func seal(payload: Data, passphrase: String) throws -> EncryptedEnvelope {

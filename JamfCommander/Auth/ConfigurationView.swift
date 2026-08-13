@@ -14,8 +14,25 @@ struct ConfigurationView: View {
     @AppStorage("jamfInstanceURL") private var instanceURL = "https://zellis.jamfcloud.com"
     @ObservedObject private var credentials = CredentialStore.shared
 
+    // Apple Business Manager settings. Neither is a secret: the MDM server identifier scopes the
+    // fetch, and the lifecycle interval is a local preference.
+    @AppStorage("abmMDMServerId") private var abmMDMServerId = ""
+    @AppStorage("abmLifecycleYears") private var abmLifecycleYears = 4
+
     @Environment(\.dismiss) var dismiss
-    
+
+    /// 0 = Jamf Pro, 1 = Apple Business Manager.
+    @State private var selectedSection = 0
+
+    // ABM connection test state
+    @State private var isTestingABM = false
+    @State private var abmTestResult: ABMTestOutcome?
+
+    struct ABMTestOutcome {
+        let isSuccess: Bool
+        let message: String
+    }
+
     // Alert State
     @State private var showAlert = false
     @State private var alertTitle = ""
@@ -43,14 +60,65 @@ struct ConfigurationView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 16) {
             // Header
             Text("API Configuration")
                 .font(.title2)
                 .fontWeight(.bold)
-            
-            Divider()
-            
+
+            // Two connections, two panes. A segmented picker rather than a TabView, matching
+            // ComputerInspectorView — TabView's tab bar collapses to an unreadable pill at this width.
+            Picker("Section", selection: $selectedSection) {
+                Text("Jamf Pro").tag(0)
+                Text("Apple Business Manager").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            Group {
+                switch selectedSection {
+                case 0: jamfTab
+                default: appleBusinessManagerTab
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+            // Footer Buttons
+            HStack {
+                // Clear All Button
+                if !instanceURL.isEmpty || credentials.hasCredentials || credentials.hasABMCredentials {
+                    Button(action: clearAllSettings) {
+                        Label("Clear All", systemImage: "trash")
+                            .foregroundColor(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove every stored credential, for both Jamf Pro and Apple Business Manager")
+                }
+
+                Spacer()
+
+                Button("Done") {
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+        .frame(width: 560, height: 660)
+        .appBackground()
+        .alert(alertTitle, isPresented: $showAlert) {
+            Button("OK") { }
+        } message: {
+            Text(alertMessage)
+        }
+    }
+
+    // MARK: - Jamf Pro tab
+
+    private var jamfTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
             // Import/Export Section
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -142,39 +210,178 @@ struct ConfigurationView: View {
             .padding()
             .background(Color(nsColor: .controlBackgroundColor))
             .cornerRadius(8)
-            
-            Spacer()
-            
-            // Footer Buttons
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - Apple Business Manager tab
+
+    private var appleBusinessManagerTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                abmCredentialsSection
+                abmScopeSection
+                abmTestSection
+            }
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var abmCredentialsSection: some View {
+        VStack(alignment: .leading, spacing: 15) {
             HStack {
-                // Clear All Button
-                if !instanceURL.isEmpty || !credentials.clientId.isEmpty || !credentials.clientSecret.isEmpty {
-                    Button(action: clearAllSettings) {
-                        Label("Clear All", systemImage: "trash")
-                            .foregroundColor(.red)
+                Image(systemName: "key.fill")
+                    .foregroundColor(.secondary)
+                Text("API Credentials")
+                    .font(.headline)
+            }
+
+            Text("Optional. Adds purchase date, warranty and lifecycle data to the Computers module. Create an API account in Apple Business Manager under Preferences → API, then enter its details here.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading) {
+                Text("Client ID")
+                    .font(.caption)
+                TextField("BUSINESSAPI.6d49c089-...", text: $credentials.abmClientId)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+            }
+
+            VStack(alignment: .leading) {
+                Text("Key ID")
+                    .font(.caption)
+                TextField("e.g. 6d49c089-7be5-...", text: $credentials.abmKeyId)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Private Key")
+                    .font(.caption)
+
+                HStack(spacing: 12) {
+                    if credentials.hasABMPrivateKey {
+                        Label("Private key imported", systemImage: "checkmark.seal.fill")
+                            .font(.caption)
+                            .foregroundColor(.green)
+                    } else {
+                        Label("No private key", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundColor(.orange)
                     }
-                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    Button(credentials.hasABMPrivateKey ? "Replace…" : "Import…") {
+                        importABMPrivateKey()
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Select the private key file downloaded from Apple Business Manager")
+
+                    if credentials.hasABMPrivateKey {
+                        Button("Remove") {
+                            credentials.removeABMPrivateKey()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.red)
+                    }
                 }
-                
-                Spacer()
-                
-                Button("Done") {
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
+
+                Text("Apple issues this key once. It is stored in your Keychain, is never shown, and is never written to an exported settings file. Keep your own secure backup, then delete the downloaded copy.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding()
-        .frame(width: 500, height: 600)
-        .appBackground()
-        .alert(alertTitle, isPresented: $showAlert) {
-            Button("OK") { }
-        } message: {
-            Text(alertMessage)
-        }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(8)
     }
-    
+
+    private var abmScopeSection: some View {
+        VStack(alignment: .leading, spacing: 15) {
+            HStack {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundColor(.secondary)
+                Text("Scope & Lifecycle")
+                    .font(.headline)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("MDM Server ID")
+                    .font(.caption)
+                TextField("e.g. C8F02BFBF40C4A53B99E72EA9076EDFE", text: $abmMDMServerId)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                Text("Only devices assigned to this MDM server are fetched, so iPhones and iPads are never downloaded. Run Test Connection with this field empty to list the servers in your organisation.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Stepper(value: $abmLifecycleYears, in: 1...10) {
+                    Text("Lifecycle: purchase date plus \(abmLifecycleYears) year\(abmLifecycleYears == 1 ? "" : "s")")
+                        .font(.caption)
+                }
+                Text("Apple Business Manager does not hold a lifecycle date, so it is calculated from the purchase date.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(8)
+    }
+
+    private var abmTestSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Button(action: testABMConnection) {
+                    if isTestingABM {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Testing…")
+                        }
+                    } else {
+                        Label("Test Connection", systemImage: "bolt.horizontal.circle")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isTestingABM || !credentials.hasABMCredentials)
+
+                Spacer()
+            }
+
+            if !credentials.hasABMCredentials {
+                Text("Enter a Client ID and Key ID and import a private key to enable the test.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            if let outcome = abmTestResult {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: outcome.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundColor(outcome.isSuccess ? .green : .orange)
+                    Text(outcome.message)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background((outcome.isSuccess ? Color.green : Color.orange).opacity(0.08))
+                .cornerRadius(8)
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(8)
+    }
+
     // MARK: - Actions
     
     func importSettings() {
@@ -251,8 +458,94 @@ struct ConfigurationView: View {
         }
     }
     
+    // MARK: - Apple Business Manager actions
+
+    /// Picks the `.pem`, validates it parses as a P-256 key, and stores it in the Keychain. Rejecting
+    /// a wrong file here is the whole point: Apple's token endpoint reports every key problem as a
+    /// bare `invalid_client`, long after the mistake was made.
+    private func importABMPrivateKey() {
+        switch SettingsService.importABMPrivateKeyFile() {
+        case .success(let pem):
+            do {
+                try credentials.importABMPrivateKey(pem: pem)
+                abmTestResult = nil
+
+                alertType = .success
+                alertTitle = "Private Key Imported"
+                alertMessage = """
+                The key has been stored in your Keychain.
+
+                Apple issues this key only once. Keep your own secure backup, then delete the downloaded file.
+                """
+                showAlert = true
+            } catch {
+                alertType = .error
+                alertTitle = "Import Failed"
+                alertMessage = error.localizedDescription
+                showAlert = true
+            }
+
+        case .failure(let error):
+            if case .userCancelled = error { return }
+
+            alertType = .error
+            alertTitle = "Import Failed"
+            alertMessage = error.localizedDescription
+            showAlert = true
+        }
+    }
+
+    private func testABMConnection() {
+        isTestingABM = true
+        abmTestResult = nil
+
+        Task {
+            do {
+                let report = try await ABMAPIService.shared.testConnection(mdmServerId: abmMDMServerId)
+                await MainActor.run {
+                    abmTestResult = ABMTestOutcome(isSuccess: true, message: abmSuccessMessage(for: report))
+                    isTestingABM = false
+                }
+            } catch {
+                await MainActor.run {
+                    abmTestResult = ABMTestOutcome(isSuccess: false, message: error.localizedDescription)
+                    isTestingABM = false
+                }
+            }
+        }
+    }
+
+    /// Reports what the connection actually found. With no MDM server set this lists the servers and
+    /// their identifiers, so the field above can be filled in without a trip to the ABM website.
+    private func abmSuccessMessage(for report: ABMConnectionReport) -> String {
+        if let count = report.assignedDeviceCount {
+            let devices = "\(count) device\(count == 1 ? "" : "s") assigned"
+            if let name = report.selectedServerName {
+                return "Connected to \(name). \(devices)."
+            }
+            return "Connected. \(devices) to the MDM server ID entered above."
+        }
+
+        guard !report.servers.isEmpty else {
+            return "Connected, but no MDM servers were found in this organisation."
+        }
+
+        let list = report.servers
+            .map { "•  \($0.displayName) — \($0.id)" }
+            .joined(separator: "\n")
+
+        return """
+        Connected. MDM servers in your organisation:
+
+        \(list)
+
+        Copy the identifier of the server Jamf Pro uses into the MDM Server ID field above.
+        """
+    }
+
     func clearAllSettings() {
         instanceURL = ""
+        abmTestResult = nil
         credentials.clearAll()
 
         alertType = .info
