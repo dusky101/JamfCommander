@@ -9,34 +9,62 @@ import SwiftUI
 
 struct ComputersDashboardView: View {
     @ObservedObject var api: JamfAPIService
+    /// Cached Apple Business Manager data. Read only — the table never triggers a request per row.
+    @ObservedObject private var fleet = ABMFleetStore.shared
+
+    @AppStorage("abmLifecycleYears") private var lifecycleYears = 4
 
     @State private var computers: [ComputerInventoryRecord] = []
     @State private var searchText = ""
     @State private var isLoading = true
     @State private var inspectorSelection: InspectorSelection?
 
-    // Filter State
-    @State private var showManagedOnly = false
+    /// The three chips are mutually exclusive, so one selection rather than a set of flags.
+    enum FleetFilter {
+        case all, managed, outOfWarranty
+    }
+
+    @State private var filter: FleetFilter = .all
 
     // Table State
     @State private var selectedIds: Set<String> = []
-    @State private var sortOrder: [KeyPathComparator<ComputerInventoryRecord>] = [
-        KeyPathComparator(\ComputerInventoryRecord.sortName, order: .forward)
+    @State private var columnCustomization = TableColumnCustomization<ComputerFleetRow>()
+    @State private var sortOrder: [KeyPathComparator<ComputerFleetRow>] = [
+        KeyPathComparator(\ComputerFleetRow.sortName, order: .forward)
     ]
 
-    // MARK: - Filtering & Sorting
+    /// Whether the Apple Business Manager columns have anything to show. When ABM is not configured
+    /// they are hidden entirely rather than filled with dashes.
+    private var showsABMColumns: Bool {
+        fleet.isConfigured
+    }
 
-    /// Apply text search and the managed-only filter chip. Both predicates live on the model, so
-    /// the scope picker and this table search on identical rules.
-    var filteredComputers: [ComputerInventoryRecord] {
-        computers.filter { computer in
-            computer.matches(searchText) && (!showManagedOnly || computer.isManaged)
+    // MARK: - Joining, filtering & sorting
+
+    /// Every Jamf computer, with its ABM record attached where one exists. The join runs outward from
+    /// Jamf: a Mac ABM has never seen still gets a row.
+    private var rows: [ComputerFleetRow] {
+        ComputerFleetRow.rows(for: computers, fleet: fleet, lifecycleYears: lifecycleYears)
+    }
+
+    private var filteredRows: [ComputerFleetRow] {
+        rows.filter { row in
+            guard row.computer.matches(searchText) else { return false }
+
+            switch filter {
+            case .all: return true
+            case .managed: return row.computer.isManaged
+            case .outOfWarranty: return row.isOutOfWarranty
+            }
         }
     }
 
-    /// Apply the current column sort to the filtered list.
-    var sortedComputers: [ComputerInventoryRecord] {
-        filteredComputers.sorted(using: sortOrder)
+    private var sortedRows: [ComputerFleetRow] {
+        filteredRows.sorted(using: sortOrder)
+    }
+
+    private var outOfWarrantyCount: Int {
+        rows.filter(\.isOutOfWarranty).count
     }
 
     // MARK: - Body
@@ -69,18 +97,29 @@ struct ComputersDashboardView: View {
                         icon: "desktopcomputer.and.macbook",
                         selectedIcon: "desktopcomputer.and.macbook",
                         color: .blue,
-                        isSelected: !showManagedOnly,
+                        isSelected: filter == .all,
                         count: computers.count
-                    ) { showManagedOnly = false }
+                    ) { filter = .all }
 
                     FilterChip(
                         title: "Managed Only",
                         icon: "checkmark.seal",
                         selectedIcon: "checkmark.seal.fill",
                         color: .green,
-                        isSelected: showManagedOnly,
+                        isSelected: filter == .managed,
                         count: computers.filter(\.isManaged).count
-                    ) { showManagedOnly = true }
+                    ) { filter = .managed }
+
+                    if showsABMColumns {
+                        FilterChip(
+                            title: "Out of Warranty",
+                            icon: "shield.slash",
+                            selectedIcon: "shield.slash.fill",
+                            color: .orange,
+                            isSelected: filter == .outOfWarranty,
+                            count: outOfWarrantyCount
+                        ) { filter = .outOfWarranty }
+                    }
 
                     Spacer()
 
@@ -113,7 +152,10 @@ struct ComputersDashboardView: View {
         }
         .background(Color.clear)
         .task {
-            await refreshData()
+            // The cached ABM fleet loads alongside the Jamf list; it is a file read, not a fetch.
+            async let jamf: Void = refreshData()
+            async let abm: Void = fleet.loadFromCache()
+            _ = await (jamf, abm)
         }
         .sheet(item: $inspectorSelection) { selection in
             ComputerInspectorView(computerId: selection.id, api: api)
@@ -123,58 +165,86 @@ struct ComputersDashboardView: View {
     // MARK: - Table
 
     private var computerTable: some View {
-        Table(sortedComputers, selection: $selectedIds, sortOrder: $sortOrder) {
-            TableColumn("Device", value: \ComputerInventoryRecord.sortName) { computer in
-                deviceCell(computer)
+        Table(
+            sortedRows,
+            selection: $selectedIds,
+            sortOrder: $sortOrder,
+            columnCustomization: $columnCustomization
+        ) {
+            TableColumn("Device", value: \ComputerFleetRow.sortName) { row in
+                ComputerDeviceLabel(computer: row.computer)
             }
             .width(min: 180, ideal: 240)
+            .customizationID("device")
 
-            TableColumn("ID", value: \ComputerInventoryRecord.sortIntId) { computer in
-                idCell(computer)
+            TableColumn("ID", value: \ComputerFleetRow.sortIntId) { row in
+                idCell(row.computer)
             }
             .width(min: 50, ideal: 60, max: 90)
+            .customizationID("id")
 
-            TableColumn("Model", value: \ComputerInventoryRecord.sortModel) { computer in
-                modelCell(computer)
+            TableColumn("Model", value: \ComputerFleetRow.sortModel) { row in
+                modelCell(row)
             }
             .width(min: 180, ideal: 240)
+            .customizationID("model")
 
-            TableColumn("Serial", value: \ComputerInventoryRecord.sortSerial) { computer in
-                serialCell(computer)
+            TableColumn("Serial", value: \ComputerFleetRow.sortSerial) { row in
+                serialCell(row.computer)
             }
             .width(min: 120, ideal: 140)
+            .customizationID("serial")
 
-            TableColumn("User", value: \ComputerInventoryRecord.sortRealName) { computer in
-                userCell(computer)
+            TableColumn("User", value: \ComputerFleetRow.sortRealName) { row in
+                ComputerUserLabel(computer: row.computer)
             }
             .width(min: 160, ideal: 220)
+            .customizationID("user")
 
-            TableColumn("Last Contact", value: \ComputerInventoryRecord.sortLastContact) { computer in
-                lastContactCell(computer)
+            TableColumn("Last Contact", value: \ComputerFleetRow.sortLastContact) { row in
+                lastContactCell(row.computer)
             }
             .width(min: 130, ideal: 160)
+            .customizationID("lastContact")
 
-            TableColumn("Status", value: \ComputerInventoryRecord.sortManagedRank) { computer in
-                statusBadge(isManaged: computer.isManaged)
+            TableColumn("Status", value: \ComputerFleetRow.sortManagedRank) { row in
+                statusBadge(isManaged: row.computer.isManaged)
             }
             .width(min: 90, ideal: 100, max: 120)
+            .customizationID("status")
+
+            TableColumn("Purchased", value: \ComputerFleetRow.sortPurchaseDate) { row in
+                purchaseCell(row)
+            }
+            .width(min: 110, ideal: 130)
+            .customizationID("purchased")
+            .defaultVisibility(showsABMColumns ? .visible : .hidden)
+
+            TableColumn("Warranty Ends", value: \ComputerFleetRow.sortWarrantyEnd) { row in
+                warrantyCell(row)
+            }
+            .width(min: 120, ideal: 140)
+            .customizationID("warranty")
+            .defaultVisibility(showsABMColumns ? .visible : .hidden)
+
+            TableColumn("Lifecycle", value: \ComputerFleetRow.sortLifecycleDate) { row in
+                lifecycleCell(row)
+            }
+            .width(min: 110, ideal: 130)
+            .customizationID("lifecycle")
+            .defaultVisibility(showsABMColumns ? .visible : .hidden)
         }
-        .contextMenu(forSelectionType: ComputerInventoryRecord.ID.self) { ids in
+        .contextMenu(forSelectionType: ComputerFleetRow.ID.self) { ids in
             contextMenuContent(for: ids)
         } primaryAction: { ids in
             // Triggered on double-click or Return key.
-            if let id = ids.first, let computer = sortedComputers.first(where: { $0.id == id }) {
-                open(computer: computer)
+            if let id = ids.first, let row = sortedRows.first(where: { $0.id == id }) {
+                open(computer: row.computer)
             }
         }
     }
 
     // MARK: - Cell builders
-
-    @ViewBuilder
-    private func deviceCell(_ computer: ComputerInventoryRecord) -> some View {
-        ComputerDeviceLabel(computer: computer)
-    }
 
     @ViewBuilder
     private func idCell(_ computer: ComputerInventoryRecord) -> some View {
@@ -200,16 +270,45 @@ struct ComputersDashboardView: View {
             .lineLimit(1)
     }
 
+    /// Prefers Apple Business Manager's marketing name ("MacBook Pro (16-inch, Nov 2024)") over
+    /// Jamf's, which is less consistently formatted. Falls back to Jamf when ABM has no record.
     @ViewBuilder
-    private func modelCell(_ computer: ComputerInventoryRecord) -> some View {
-        Text(computer.hardware?.model ?? "—")
+    private func modelCell(_ row: ComputerFleetRow) -> some View {
+        Text(row.abm?.attributes.deviceModel ?? row.computer.hardware?.model ?? "—")
             .lineLimit(1)
             .truncationMode(.tail)
     }
 
     @ViewBuilder
-    private func userCell(_ computer: ComputerInventoryRecord) -> some View {
-        ComputerUserLabel(computer: computer)
+    private func purchaseCell(_ row: ComputerFleetRow) -> some View {
+        HStack(spacing: 4) {
+            Text(row.purchaseDateText)
+                .font(.caption)
+            // An inferred date must never look like a known one.
+            if let source = row.purchaseDateSource, !source.isReliable, row.purchaseDate != nil {
+                Image(systemName: "questionmark.circle")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .help("Inferred: \(source.displayName)")
+            }
+        }
+        .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func warrantyCell(_ row: ComputerFleetRow) -> some View {
+        Text(row.warrantyText)
+            .font(.caption)
+            .foregroundColor(row.isOutOfWarranty ? .orange : .primary)
+            .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func lifecycleCell(_ row: ComputerFleetRow) -> some View {
+        Text(row.lifecycleText)
+            .font(.caption)
+            .foregroundColor(row.isPastLifecycle ? .orange : .primary)
+            .lineLimit(1)
     }
 
     @ViewBuilder
@@ -225,11 +324,11 @@ struct ComputersDashboardView: View {
     }
 
     @ViewBuilder
-    private func contextMenuContent(for ids: Set<ComputerInventoryRecord.ID>) -> some View {
-        if let id = ids.first, let computer = sortedComputers.first(where: { $0.id == id }) {
-            Button("Inspect") { open(computer: computer) }
+    private func contextMenuContent(for ids: Set<ComputerFleetRow.ID>) -> some View {
+        if let id = ids.first, let row = sortedRows.first(where: { $0.id == id }) {
+            Button("Inspect") { open(computer: row.computer) }
             Divider()
-            if let serial = computer.hardware?.serialNumber {
+            if let serial = row.computer.hardware?.serialNumber {
                 Button("Copy Serial: \(serial)") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(serial, forType: .string)

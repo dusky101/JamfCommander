@@ -101,6 +101,10 @@ Create an API account in Apple Business Manager under Preferences → API. It gi
 
 **Refresh Apple Business Manager Data** fetches the fleet and caches it for seven days. Apple has no bulk warranty endpoint, so every device costs its own requests — the refresh shows a progress bar and reports what it found, including how many devices are out of warranty and how many have a purchase date that had to be inferred. The cache survives quitting the app, and the Computers views read from it rather than the network.
 
+Once data has been fetched, the Computers module gains three sortable columns — **Purchased**, **Warranty Ends** and **Lifecycle** — and an **Out of Warranty** filter. Right-click the table header to hide or reorder columns. Opening a computer shows an **Apple Business Manager** section with the purchase date and where it came from, warranty end with days remaining, the lifecycle date, order number, purchase source, and Apple's own model, capacity and colour.
+
+A Mac that Jamf manages but Apple Business Manager has no record of still appears in the list, marked "Not in Apple Business Manager". That is deliberate: it is an asset management gap worth investigating, and it is a different thing from a Mac Apple simply holds no warranty record for.
+
 Purchase dates are not all equally trustworthy. For devices bought through Apple or a reseller the order date is used directly. For devices added by hand through Apple Configurator, the order date records when someone added the device rather than when it was bought, so the warranty start date is used instead and the source is shown alongside it.
 
 Two things to be aware of:

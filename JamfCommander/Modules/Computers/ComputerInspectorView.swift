@@ -10,6 +10,9 @@ import SwiftUI
 struct ComputerInspectorView: View {
     let computerId: Int
     @ObservedObject var api: JamfAPIService
+    /// Cached Apple Business Manager data, read by serial. Never fetches.
+    @ObservedObject private var fleet = ABMFleetStore.shared
+    @AppStorage("abmLifecycleYears") private var lifecycleYears = 4
     @Environment(\.dismiss) var dismiss
     
     // Data
@@ -137,6 +140,12 @@ struct ComputerInspectorView: View {
                     }
                 }
                 
+                // Apple Business Manager — purchase and warranty, which Jamf does not hold without
+                // a GSX connection. Hidden entirely when ABM is not configured.
+                if fleet.isConfigured {
+                    appleBusinessManagerSection
+                }
+
                 // Status
                 InfoSection(title: "Status", icon: "antenna.radiowaves.left.and.right") {
                     if let general = detail?.general {
@@ -153,6 +162,79 @@ struct ComputerInspectorView: View {
         }
     }
     
+    // MARK: - Apple Business Manager
+
+    /// The Jamf record joined to its ABM record, so the inspector, the table and the export all
+    /// derive their dates the same way.
+    private var abmRow: ComputerFleetRow? {
+        guard let detail else { return nil }
+        return ComputerFleetRow(
+            computer: detail,
+            abm: fleet.record(for: detail.hardware?.serialNumber),
+            lifecycleYears: lifecycleYears
+        )
+    }
+
+    @ViewBuilder
+    private var appleBusinessManagerSection: some View {
+        InfoSection(title: "Apple Business Manager", icon: "building.2") {
+            if let row = abmRow, let abm = row.abm {
+                InfoRow(label: "Purchase Date", value: row.purchaseDateText)
+
+                // An inferred date is never presented as a known one — this data informs finance
+                // and refresh planning.
+                if let source = row.purchaseDateSource {
+                    InfoRow(label: "Date Source", value: source.displayName)
+                }
+
+                InfoRow(label: "Warranty", value: row.warrantyDetailText)
+
+                if let coverage = abm.selectedCoverage, let description = coverage.coverageDescription {
+                    InfoRow(label: "Cover", value: description)
+                }
+
+                InfoRow(
+                    label: "Lifecycle",
+                    value: row.isPastLifecycle ? "\(row.lifecycleText) — passed" : row.lifecycleText
+                )
+
+                if let order = abm.attributes.orderNumber, !order.isEmpty {
+                    InfoRow(label: "Order Number", value: order)
+                }
+
+                InfoRow(label: "Purchase Source", value: abm.attributes.purchaseSource.displayName)
+
+                if let model = abm.attributes.deviceModel, !model.isEmpty {
+                    InfoRow(label: "Model", value: model)
+                }
+
+                if let capacity = abm.attributes.deviceCapacity, !capacity.isEmpty {
+                    InfoRow(label: "Capacity", value: capacity)
+                }
+
+                if let colour = abm.attributes.color, !colour.isEmpty {
+                    InfoRow(label: "Colour", value: colour.capitalized)
+                }
+
+                // A Mac that Jamf still manages but ABM says has left the organisation is a
+                // discrepancy worth seeing, not hiding.
+                if let released = abm.releasedFromOrgDate {
+                    InfoRow(label: "Released from ABM", value: ComputerFleetRow.dateText(released))
+                }
+            } else if fleet.refreshedAt == nil {
+                Text("No Apple Business Manager data has been fetched yet. Use Refresh in Settings.")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+            } else {
+                // Deliberately distinct from "no warranty record": this one is an asset management
+                // gap worth investigating.
+                Text("Not in Apple Business Manager.")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
     // MARK: - 2. Profiles Tab
     var profilesTab: some View {
         VStack(spacing: 0) {
