@@ -25,6 +25,7 @@ struct ComputersDashboardView: View {
     }
 
     @State private var filter: FleetFilter = .all
+    @State private var showingUnmatched = false
 
     // Table State
     @State private var selectedIds: Set<String> = []
@@ -65,6 +66,17 @@ struct ComputersDashboardView: View {
 
     private var outOfWarrantyCount: Int {
         rows.filter(\.isOutOfWarranty).count
+    }
+
+    /// Macs Apple Business Manager has assigned to this MDM server that Jamf has no record of.
+    ///
+    /// The table is built outward from Jamf, so these have nowhere to appear in it — but they are
+    /// hardware the organisation owns that nothing is managing, which is worth being able to see.
+    private var unmatchedABMDevices: [ABMDeviceRecord] {
+        let jamfSerials = Set(computers.compactMap { $0.hardware?.serialNumber })
+        return fleet.recordsBySerial.values
+            .filter { !jamfSerials.contains($0.serialNumber) }
+            .sorted { $0.serialNumber < $1.serialNumber }
     }
 
     // MARK: - Body
@@ -123,6 +135,16 @@ struct ComputersDashboardView: View {
 
                     Spacer()
 
+                    if showsABMColumns, !unmatchedABMDevices.isEmpty {
+                        Button(action: { showingUnmatched = true }) {
+                            Label("\(unmatchedABMDevices.count) not in Jamf", systemImage: "questionmark.folder")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                        .help("Macs assigned to this MDM server in Apple Business Manager with no record in Jamf")
+                    }
+
                     Button(action: { exportComputers() }) {
                         Image(systemName: "square.and.arrow.up")
                             .frame(height: 18)
@@ -159,6 +181,9 @@ struct ComputersDashboardView: View {
         }
         .sheet(item: $inspectorSelection) { selection in
             ComputerInspectorView(computerId: selection.id, api: api)
+        }
+        .sheet(isPresented: $showingUnmatched) {
+            ABMUnmatchedSheet(devices: unmatchedABMDevices, lifecycleYears: lifecycleYears)
         }
     }
 
