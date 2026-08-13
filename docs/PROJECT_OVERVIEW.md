@@ -143,8 +143,9 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
   exposes with a GSX connection, which Zellis does not have. Auth is an ES256 JWT signed with a P-256
   key (`ABMClientAssertion`), exchanged at `https://account.apple.com/auth/oauth2/token` for a
   one-hour bearer token, then used against `https://api-business.apple.com/v1/…`.
-  See `.claude/rules/services-and-networking.md` for the endpoints and the traps — each fails as a
-  bare `invalid_client` with no further detail:
+  Full detail in **`docs/ABM_API_REFERENCE.md`**; durable rules in
+  `.claude/rules/services-and-networking.md`. The traps, each of which fails as a bare
+  `invalid_client` with no further detail:
   - the `aud` claim contains `/v2/`, the POST URL does not;
   - the JWS signature must be `rawRepresentation`, never `derRepresentation`;
   - ABM issues **SEC1** keys, not PKCS#8 (`ABMPrivateKey` converts, so nobody runs `openssl`).
