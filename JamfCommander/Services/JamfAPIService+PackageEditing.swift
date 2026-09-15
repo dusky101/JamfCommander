@@ -225,7 +225,7 @@ extension JamfAPIService {
     ///
     /// Parameters 7–11 are always written for the edited entry, empty where unused, so removing a
     /// version pin actually clears it instead of leaving the old value in place.
-    nonisolated private static func scriptsXML(for scripts: [PolicyScript], applying edit: InstallomatorScriptEdit) -> String {
+    private static func scriptsXML(for scripts: [PolicyScript], applying edit: InstallomatorScriptEdit) -> String {
         let entries = scripts.map { script -> String in
             var parameters: [String?]
             if script.id == edit.scriptID {
@@ -271,7 +271,7 @@ extension JamfAPIService {
     ///
     /// Exclusions, limitations, buildings and departments are **not** written, so anything configured
     /// in Jamf beyond what this app models survives the edit.
-    nonisolated private static func replacementScopeXML(for scope: DeploymentScopeConfig) -> String {
+    private static func replacementScopeXML(for scope: DeploymentScopeConfig) -> String {
         switch scope.scopeType {
         case .allComputers:
             return """
