@@ -117,25 +117,6 @@ extension JamfAPIService {
         ).version
     }
 
-    /// Every package display name in the tenant, for the pre-flight uniqueness check.
-    ///
-    /// Worth one request: Jamf requires package names to be unique, and finding that out *after*
-    /// pushing a gigabyte would be an expensive way to learn it.
-    func fetchPackageNames() async throws -> [String] {
-        struct PackageListResponse: Codable {
-            let results: [PackageSummary]?
-        }
-        struct PackageSummary: Codable {
-            let packageName: String?
-        }
-
-        let response = try await genericFetch(
-            endpoint: "api/v1/packages?page-size=2000&sort=packageName:asc",
-            responseType: PackageListResponse.self
-        )
-        return (response.results ?? []).compactMap(\.packageName)
-    }
-
     // MARK: - Step 1: the package record
 
     /// Creates the package record and returns its id. No file is sent here — this is the row in
