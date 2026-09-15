@@ -68,7 +68,6 @@ struct PackageEditSheet: View {
     @State private var overrides: [InstallomatorOverride] = []
     @State private var isChangingScope = false
     @State private var scopeConfig = DeploymentScopeConfig()
-    @State private var scopeSearchText = ""
     @State private var applyToSiblings = false
 
     // Icon
@@ -389,40 +388,15 @@ struct PackageEditSheet: View {
         }
     }
 
-    @ViewBuilder
+    /// The shared scope control (`SharedUI/ScopeTargetPicker`). The note differs from the creation
+    /// flow's on purpose: here the scope is being *replaced*, not set for the first time.
     private var scopeEditor: some View {
-        Picker("Scope", selection: $scopeConfig.scopeType) {
-            ForEach(DeploymentScopeType.allCases) { type in
-                Label(type.rawValue, systemImage: type.icon).tag(type)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .onChange(of: scopeConfig.scopeType) {
-            scopeSearchText = ""
-            scopeConfig.selectedGroupIDs.removeAll()
-        }
-
-        switch scopeConfig.scopeType {
-        case .allComputers:
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.shield.fill")
-                    .foregroundColor(.green)
-                Text("The policy will be scoped to all managed computers.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.green.opacity(0.08))
-            .cornerRadius(8)
-
-        case .specificComputers:
-            scopeComputerPicker
-
-        case .smartComputerGroups, .staticComputerGroups:
-            scopeGroupPicker
-        }
+        ScopeTargetPicker(
+            scope: $scopeConfig,
+            computers: computers,
+            groups: computerGroups,
+            allComputersNote: "The policy will be scoped to all managed computers, replacing its current targets."
+        )
     }
 
     private var installomatorSection: some View {
@@ -622,136 +596,6 @@ struct PackageEditSheet: View {
         .accessibilityLabel(replacementIcon == nil ? "Current Self Service icon" : "New Self Service icon")
     }
 
-    private var scopeComputerPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                TextField("Search by name, serial, user or email...", text: $scopeSearchText)
-                    .textFieldStyle(.plain)
-                    .accessibilityLabel("Search computers")
-            }
-            .padding(6)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(6)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2), lineWidth: 1))
-
-            if !scopeConfig.selectedComputerIDs.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "laptopcomputer").foregroundColor(.blue)
-                    Text("\(scopeConfig.selectedComputerIDs.count) selected")
-                        .font(.caption).foregroundColor(.secondary)
-                    Spacer()
-                    Button("Clear") { scopeConfig.selectedComputerIDs.removeAll() }
-                        .font(.caption)
-                        .buttonStyle(.plain)
-                        .foregroundColor(.red)
-                }
-            }
-
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    if filteredComputers.isEmpty {
-                        Text(scopeSearchText.isEmpty ? "No computers found." : "No computers match “\(scopeSearchText)”.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                    }
-
-                    ForEach(filteredComputers) { computer in
-                        let isSelected = scopeConfig.selectedComputerIDs.contains(computer.id)
-                        HStack(spacing: 8) {
-                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(isSelected ? .blue : .gray.opacity(0.4))
-                            ComputerIdentityRow(computer: computer)
-                        }
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 6)
-                        .background(isSelected ? Color.blue.opacity(0.08) : Color.clear)
-                        .cornerRadius(4)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if isSelected {
-                                scopeConfig.selectedComputerIDs.remove(computer.id)
-                            } else {
-                                scopeConfig.selectedComputerIDs.insert(computer.id)
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-                        .accessibilityHint("Adds or removes this computer from the policy's scope")
-                    }
-                }
-            }
-            .frame(maxHeight: 150)
-            .liquidGlassRect(cornerRadius: 6)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.15), lineWidth: 1))
-        }
-    }
-
-    private var scopeGroupPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
-                TextField("Search \(scopeConfig.scopeType.rawValue.lowercased())...", text: $scopeSearchText)
-                    .textFieldStyle(.plain)
-                    .accessibilityLabel("Search groups")
-            }
-            .padding(6)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(6)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2), lineWidth: 1))
-
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    if filteredGroups.isEmpty {
-                        Text("No \(scopeConfig.scopeType.rawValue.lowercased()) found.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
-                    }
-
-                    ForEach(filteredGroups) { group in
-                        let isSelected = scopeConfig.selectedGroupIDs.contains(group.id)
-                        Button {
-                            if isSelected {
-                                scopeConfig.selectedGroupIDs.remove(group.id)
-                            } else {
-                                scopeConfig.selectedGroupIDs.insert(group.id)
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                                    .foregroundColor(isSelected ? .blue : .gray.opacity(0.4))
-                                Image(systemName: group.groupTypeIcon)
-                                    .foregroundColor(group.smartGroup == true ? .purple : .secondary)
-                                Text(group.name)
-                                    .font(.caption)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                Text(group.groupTypeLabel)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 6)
-                            .background(isSelected ? Color.blue.opacity(0.08) : Color.clear)
-                            .cornerRadius(4)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .frame(maxHeight: 150)
-            .liquidGlassRect(cornerRadius: 6)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.15), lineWidth: 1))
-        }
-    }
-
     // MARK: - Derived values
 
     private var trimmedLabel: String {
@@ -835,22 +679,6 @@ struct PackageEditSheet: View {
         case .specificComputers: return !scopeConfig.selectedComputerIDs.isEmpty
         case .smartComputerGroups, .staticComputerGroups: return !scopeConfig.selectedGroupIDs.isEmpty
         }
-    }
-
-    private var filteredComputers: [ComputerInventoryRecord] {
-        computers.filter { $0.matches(scopeSearchText) }
-    }
-
-    private var filteredGroups: [ComputerGroup] {
-        let groupsForScope = computerGroups.filter { group in
-            switch scopeConfig.scopeType {
-            case .smartComputerGroups: return group.smartGroup == true
-            case .staticComputerGroups: return group.smartGroup != true
-            case .allComputers, .specificComputers: return false
-            }
-        }
-        if scopeSearchText.isEmpty { return groupsForScope }
-        return groupsForScope.filter { $0.name.localizedCaseInsensitiveContains(scopeSearchText) }
     }
 
     /// Everything that differs from what Jamf held when the sheet opened, in the order it appears on

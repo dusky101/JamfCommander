@@ -107,6 +107,7 @@ struct HelpView: View {
             privilegeRow("Categories", "Read, Create, Update, Delete — category management on the Dashboard, and creating a category from the deployment sheet.")
             privilegeRow("macOS Configuration Profiles", "Read, Update, Create, Delete — profile actions: move category, change scope, clone, delete.")
             privilegeRow("Policies", "Read, Update, Create, Delete — policy actions and Installomator deployment.")
+            privilegeRow("Packages", "Read, Create, Update — required by Add PKG to upload a package and file it in Jamf.")
 
             note("Attaching a Self Service icon to a policy needs **Update Policies**, not just Create Policies. With Create alone, policies are created successfully and every icon attach fails — the results sheet says so per policy.")
         }
@@ -164,6 +165,9 @@ struct HelpView: View {
                       "The same pattern for macOS configuration profiles — inspect, move category, change scope, clone, delete, and export.")
             moduleRow("Computers", "desktopcomputer",
                       "The managed Mac fleet. Search by name, serial, assigned user or email; sort any column; filter to managed devices; inspect hardware, OS, profiles and User & Location; export to CSV. Read-only.")
+            moduleRow("Add PKG", "arrow.up.doc.fill",
+                      "For software Installomator has no label for. Drop a **.pkg**, **.mpkg**, **.dmg** or **.zip** onto the page, fill in the package details, and the app uploads it to Jamf and creates the Self Service install policy — the same category, scope, Self Service and icon choices the Packages module offers. The upload shows progress and can be cancelled. Needs the **Create**, **Read** and **Update Packages** privileges.")
+
             moduleRow("Packages", "shippingbox.fill",
                       "The Installomator manager. Compares policies already deployed against the upstream label list, then creates Self Service install policies for the labels you select — with a category, script, icon, scope, and optional version pinning. A deployed policy whose label has since been withdrawn upstream is flagged **Missing** in amber and has its own view; deployed policies can be edited in place — including the label they install — or removed. \"Explain This Label\" on any row describes what that label will do on a Mac.")
             moduleRow("Scripts", "applescript.fill",

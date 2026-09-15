@@ -13,6 +13,8 @@ enum AppModule: String, CaseIterable, Identifiable {
     case profiles = "Profiles"
     case computers = "Computers"
     case packages = "Packages" // Added Packages
+    /// Uploading a package the administrator supplies, for software Installomator has no label for.
+    case addPackage = "Add PKG"
     case scripts = "Scripts"
 
     var id: String { rawValue }
@@ -25,6 +27,7 @@ enum AppModule: String, CaseIterable, Identifiable {
         case .scripts: return "applescript.fill"
         case .policies: return "scroll.fill"
         case .packages: return "shippingbox.fill" // Icon for Packages
+        case .addPackage: return "arrow.up.doc.fill"
         }
     }
 }

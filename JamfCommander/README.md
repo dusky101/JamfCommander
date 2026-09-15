@@ -14,6 +14,7 @@ The app uses both the Jamf Pro API and the Jamf Classic API because Jamf exposes
 - Browse scripts by category, inspect script metadata, parameters, and script source, and export script data.
 - Compare deployed Installomator policies against the upstream Installomator label list.
 - Create Jamf Self Service policies for selected Installomator labels.
+- Upload a custom .pkg or .dmg to Jamf and create its Self Service install policy.
 - Export computers, policies, profiles, scripts, or all supported data to CSV/ZIP files.
 - Import and export Jamf Commander connection settings with `.jamfconfig` files.
 
@@ -56,6 +57,7 @@ Recommended privilege areas:
 - Categories: read, create, update, and delete if using category management.
 - macOS Configuration Profiles: read, update, create, and delete if using profile actions.
 - Policies: read, update, create, and delete if using policy actions or Installomator deployment.
+- Packages: read, create, and update if uploading custom packages from **Add PKG**.
 - Scripts: read scripts and script metadata.
 
 Use the least-privileged Jamf API role that supports your workflow.
@@ -310,6 +312,40 @@ Important limits, by design:
 
 Version pinning is entirely optional. Leaving it on "Let Installomator decide" produces exactly the
 policies the app has always created.
+
+### Add PKG (custom packages)
+
+Some software has no Installomator label — a label may never have existed, or it may have been
+withdrawn upstream, which is what the **Missing** state in the Packages module reports. **Add PKG**
+covers that case: drop a `.pkg`, `.mpkg`, `.dmg` or `.zip` onto the page (or choose it), fill in the
+details, and the app uploads it to Jamf and creates the install policy.
+
+It runs three steps and reports each one separately:
+
+1. Creates the **package record** in Jamf — display name, file name, category, priority, restart
+   requirement, and optional info and notes. Everything else is created switched off and can be
+   changed on the package in Jamf.
+2. **Uploads the file** to that record, with a progress bar and a Cancel button.
+3. Creates the **install policy** — name, category, Self Service options, icon and scope, exactly as
+   the Installomator flow does, created enabled and offered in Self Service. Turn the policy off if
+   you only want the package filed in Jamf.
+
+Before uploading, the display name is checked against the packages already in Jamf: package names must
+be unique, and a clash is caught before the file is sent rather than after. The policy name is checked
+too, but only warns — a rejected policy still leaves the package safely uploaded.
+
+Practical notes:
+
+- The upload is prepared on disk first, so while it runs the Mac needs roughly as much free space
+  again as the package is big.
+- Nothing is rolled back behind your back. If the upload fails, the results say the record exists with
+  no file attached and give its ID; if the policy fails, they say the package uploaded and only the
+  policy needs creating. Cancelling is the one exception — the empty record the app just created is
+  removed, and the results say whether that succeeded.
+- Your API client needs **Create Packages**, **Read Packages** and **Update Packages** on top of the
+  policy privileges.
+- The upload uses the Jamf Pro API's package upload endpoint. On a Jamf Pro too old to offer it, the
+  app says so plainly instead of failing obscurely.
 
 ## Exporting Data
 

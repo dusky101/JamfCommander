@@ -103,6 +103,10 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
   `deleteInstallomatorPolicies(_:)` with per-policy results. A deployed row can also be edited in place
   (`PackageEditSheet` + `JamfAPIService+PackageEditing`): name, enabled state, category, Self Service,
   scope, and the Installomator label/overrides, writing only the sections that changed.
+- **Add PKG** — `AddPackageView` + `JamfAPIService+PackageUpload`: creates a package record
+  (`POST api/v1/packages`), streams the file to `api/v1/packages/{id}/upload` from a temporary
+  multipart envelope on disk, then creates a Classic install policy carrying `<package_configuration>`.
+  For software Installomator has no label for.
 - **Cloning** — `CloneConfigSheet` + `JamfAPIService+Cloning` (regex XML surgery).
 - **Export** — `ExportProgressSheet` + `ExportService`/`Services/Exports/*`. Per-domain CSV plus an
   "Export All" that bundles every CSV into a single timestamped **ZIP** (`exportAllDataToZip`).
