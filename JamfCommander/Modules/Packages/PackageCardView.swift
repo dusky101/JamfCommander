@@ -64,6 +64,15 @@ struct PackageCardView: View {
                         .accessibilityLabel("Pinned to version \(pinnedVersion)")
                     }
 
+                    // A deployed policy whose label has been withdrawn upstream. Said in words as
+                    // well as in amber, because the pill alone doesn't explain what to do about it.
+                    if item.isMissingLabel {
+                        Label("Not in the Installomator label list", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .lineLimit(1)
+                    }
+
                     // Something in Jamf already looks like this app, but it isn't a recognised
                     // Installomator policy — surface the name so the cause is obvious.
                     if let existingPolicyName = item.existingPolicyName {
@@ -107,6 +116,8 @@ struct PackageCardView: View {
                 .background(item.statusColor.opacity(0.15))
                 .foregroundColor(item.statusColor)
                 .cornerRadius(6)
+                .help(item.statusExplanation)
+                .accessibilityLabel("\(item.statusText). \(item.statusExplanation)")
             
             // Selection indicator (only for available items)
             if !item.isDeployed {

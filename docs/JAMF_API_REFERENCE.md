@@ -105,7 +105,10 @@ Write bodies are `Content-Type: application/xml`.
 - `GET https://raw.githubusercontent.com/Installomator/Installomator/main/Labels.txt`
   — parse non-empty, non-`#`, single-token lines as labels. **De-duplicate case-insensitively**: the
   file is not guaranteed unique (`omnissahorizonclient` currently appears twice), and a repeat would
-  be offered twice and 409 on the second POST.
+  be offered twice and 409 on the second POST. Fetched with
+  `cachePolicy = .reloadIgnoringLocalCacheData`: this list also decides whether a *deployed* policy's
+  label still exists upstream (the **Missing** state), so a cached copy could report a withdrawn label
+  as healthy. An empty/failed read marks nothing as missing.
 - `GET …/Installomator/main/fragments/labels/{label}.sh` — one label's own source, fetched on demand to
   *explain* it (arch-aware, version resolved at run time, `type`, `expectedTeamID`,
   `blockingProcesses`). Cached per label for the session. Informational only: it must never block a

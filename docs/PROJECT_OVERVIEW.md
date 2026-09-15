@@ -97,7 +97,8 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
 - **Scripts** — `api/v1/scripts` (Pro). List + inspector (contents/category) + delete.
 - **Packages** — Installomator-centric: discovers deployed Installomator policies and the available
   label set from GitHub, then creates Self Service install policies (`DeploymentConfigSheet`,
-  `PackageModels.InstallomatorLabelFormatter`).
+  `PackageModels.InstallomatorLabelFormatter`). A deployed policy whose label has since been withdrawn
+  upstream is flagged **Missing** (`InstallomatorItem.isMissingLabel`) and has its own view filter.
 - **Cloning** — `CloneConfigSheet` + `JamfAPIService+Cloning` (regex XML surgery).
 - **Export** — `ExportProgressSheet` + `ExportService`/`Services/Exports/*`. Per-domain CSV plus an
   "Export All" that bundles every CSV into a single timestamped **ZIP** (`exportAllDataToZip`).

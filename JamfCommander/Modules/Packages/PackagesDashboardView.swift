@@ -49,6 +49,8 @@ struct PackagesDashboardView: View {
         switch viewMode {
         case .deployed:
             modeFiltered = allItems.filter { $0.isDeployed }
+        case .missing:
+            modeFiltered = allItems.filter { $0.isMissingLabel }
         case .available:
             modeFiltered = allItems.filter { !$0.isDeployed }
         case .all:
@@ -85,6 +87,9 @@ struct PackagesDashboardView: View {
     
     var deployedCount: Int { allItems.filter { $0.isDeployed }.count }
     var availableCount: Int { allItems.filter { !$0.isDeployed }.count }
+
+    /// Deployed policies whose Installomator label no longer exists upstream.
+    var missingCount: Int { allItems.filter { $0.isMissingLabel }.count }
     
     // MARK: - Body
     
@@ -198,12 +203,14 @@ struct PackagesDashboardView: View {
                 // View mode picker
                 Picker("View", selection: $viewMode) {
                     Text("Deployed (\(deployedCount))").tag(PackageViewMode.deployed)
+                    Text("Missing (\(missingCount))").tag(PackageViewMode.missing)
                     Text("Available (\(availableCount))").tag(PackageViewMode.available)
                     Text("All (\(allItems.count))").tag(PackageViewMode.all)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(minWidth: 320)
+                .frame(minWidth: 420)
+                .help("Missing lists deployed policies whose Installomator label is no longer published upstream.")
                 .onChange(of: viewMode) {
                     selection.removeAll()
                     lastSelectedID = nil
@@ -356,6 +363,12 @@ struct PackagesDashboardView: View {
             let deployed = scan.deployed
             let deployedLabels = Set(deployed.map { $0.label.lowercased() })
 
+            // What upstream still publishes. An empty list can only mean the fetch came back with
+            // nothing usable, so every deployed row is treated as current rather than marking the
+            // whole estate missing on the strength of a bad read.
+            let upstreamLabels = Set(allLabels.map { $0.lowercased() })
+            let upstreamListIsUsable = !upstreamLabels.isEmpty
+
             // Loose index of every policy name in the tenant, so an app already installed by a
             // policy we can't identify as Installomator is flagged rather than offered blindly.
             var policyNamesByAppKey: [String: String] = [:]
@@ -375,7 +388,8 @@ struct PackagesDashboardView: View {
                     categoryName: info.categoryName,
                     enabled: info.enabled,
                     pinnedVersion: info.pinnedVersion,
-                    existingPolicyName: nil
+                    existingPolicyName: nil,
+                    labelExistsUpstream: !upstreamListIsUsable || upstreamLabels.contains(info.label.lowercased())
                 ))
             }
 
@@ -394,7 +408,9 @@ struct PackagesDashboardView: View {
                         categoryName: nil,
                         enabled: false,
                         pinnedVersion: nil,
-                        existingPolicyName: existingPolicyName
+                        existingPolicyName: existingPolicyName,
+                        // Available rows come from the upstream list, so the label exists by definition.
+                        labelExistsUpstream: true
                     ))
                 }
             }
@@ -402,7 +418,8 @@ struct PackagesDashboardView: View {
             items.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
 
             let possiblyDeployedCount = items.filter(\.isPossiblyDeployed).count
-            print("[Installomator] Loaded \(items.count) items (\(deployed.count) deployed, \(items.count - deployed.count) available, \(possiblyDeployedCount) possibly deployed)")
+            let missingLabelCount = items.filter(\.isMissingLabel).count
+            print("[Installomator] Loaded \(items.count) items (\(deployed.count) deployed, \(items.count - deployed.count) available, \(possiblyDeployedCount) possibly deployed, \(missingLabelCount) missing upstream)")
 
             await MainActor.run {
                 allItems = items

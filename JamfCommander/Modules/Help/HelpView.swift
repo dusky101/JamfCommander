@@ -165,7 +165,7 @@ struct HelpView: View {
             moduleRow("Computers", "desktopcomputer",
                       "The managed Mac fleet. Search by name, serial, assigned user or email; sort any column; filter to managed devices; inspect hardware, OS, profiles and User & Location; export to CSV. Read-only.")
             moduleRow("Packages", "shippingbox.fill",
-                      "The Installomator manager. Compares policies already deployed against the upstream label list, then creates Self Service install policies for the labels you select — with a category, script, icon, scope, and optional version pinning. \"Explain This Label\" on any row describes what that label will do on a Mac.")
+                      "The Installomator manager. Compares policies already deployed against the upstream label list, then creates Self Service install policies for the labels you select — with a category, script, icon, scope, and optional version pinning. A deployed policy whose label has since been withdrawn upstream is flagged **Missing** in amber and has its own view. \"Explain This Label\" on any row describes what that label will do on a Mac.")
             moduleRow("Scripts", "applescript.fill",
                       "Browse the scripts in your tenant and read their contents and parameters. Read-only.")
         }

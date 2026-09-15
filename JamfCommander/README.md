@@ -178,7 +178,7 @@ The Packages module is an Installomator policy manager. It does not manage uploa
 
 You can:
 
-- View deployed labels, available labels, or all labels.
+- View deployed labels, labels that have gone missing upstream, available labels, or all labels.
 - Search by app display name or raw Installomator label.
 - Group by alphabet or Jamf category.
 - Inspect deployed Installomator policies.
@@ -190,6 +190,14 @@ parameter 4. The script is matched by name or by ID, so a script that has been r
 recognised once you have deployed with it at least once. A label whose app already appears to be
 installed by some other policy is shown as **Possibly Deployed**, naming the policy it matched — it
 stays selectable, because the match is a hint rather than a certainty.
+
+A deployed policy whose label is **no longer published** by Installomator is shown as **Missing**, in
+amber, with "Not in the Installomator label list" on the row. Labels are withdrawn upstream from time
+to time, and the Jamf policy created against one outlives it: the policy still runs, but Installomator
+no longer recognises the label, so it fails on every Mac it reaches. The **Missing** view lists exactly
+these policies. The label list is re-read from GitHub on every refresh, ignoring any cached copy, so
+this reflects what Installomator publishes now rather than what it published when the app last ran.
+If GitHub cannot be reached the module says so and marks nothing as missing.
 
 When adding selected labels to Jamf, the deployment sheet lets you choose:
 

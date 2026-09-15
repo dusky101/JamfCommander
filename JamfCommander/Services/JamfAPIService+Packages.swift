@@ -221,11 +221,20 @@ extension JamfAPIService {
 
     /// Fetches the Installomator Labels.txt from GitHub and parses individual labels.
     /// Each non-empty, non-comment line that matches the label pattern is extracted.
+    ///
+    /// The request deliberately ignores the local URL cache. This list is not only what the module
+    /// offers to deploy — it is also what decides whether a deployed policy's label still exists
+    /// upstream, so a cached copy from an earlier run could report a withdrawn label as healthy.
+    /// It is a single small file per refresh, fetched unauthenticated: the Jamf token is never sent
+    /// to GitHub.
     func fetchInstallomatorLabelsFromGitHub() async throws -> [String] {
         let urlString = "https://raw.githubusercontent.com/Installomator/Installomator/main/Labels.txt"
         guard let url = URL(string: urlString) else { throw URLError(.badURL) }
-        
-        let (data, response) = try await URLSession.shared.data(from: url)
+
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {

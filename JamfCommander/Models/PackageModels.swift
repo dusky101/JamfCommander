@@ -29,6 +29,18 @@ struct InstallomatorItem: Identifiable, Hashable {
     /// recognise. A hint only: the item stays selectable, but creating it may collide on the name.
     let existingPolicyName: String?
 
+    /// Whether this row's label still appears in the upstream Installomator label list.
+    ///
+    /// Available rows are built *from* that list, so they are always `true`. A deployed row is built
+    /// from a Jamf policy, and a policy outlives the label it was created against: a label that is
+    /// later withdrawn upstream leaves a policy that still runs but that Installomator no longer
+    /// recognises, so it fails on every Mac it reaches. Marking the row is the only warning an
+    /// administrator gets.
+    ///
+    /// Callers must pass `true` when the upstream list could not be read, so an unreachable GitHub
+    /// never reports a healthy estate as missing.
+    let labelExistsUpstream: Bool
+
     /// Unique per row, not per label. Version pinning makes several policies share one label — three
     /// pinned Go versions are three deployed rows all labelled `golang` — so identifying a row by its
     /// label alone gave `ForEach` duplicate ids. Available rows keep the bare label, which is what
@@ -47,19 +59,45 @@ struct InstallomatorItem: Identifiable, Hashable {
         !isDeployed && existingPolicyName != nil
     }
 
+    /// Deployed against a label Installomator no longer publishes. The policy is still in Jamf and
+    /// still runs — it just cannot succeed — so this is the state that needs an administrator.
+    var isMissingLabel: Bool {
+        isDeployed && !labelExistsUpstream
+    }
+
     var statusText: String {
+        if isMissingLabel { return "Missing" }
         if isDeployed { return "Deployed" }
         return isPossiblyDeployed ? "Possibly Deployed" : "Available"
     }
 
     var statusColor: Color {
+        if isMissingLabel { return .orange }
         if isDeployed { return .green }
         return isPossiblyDeployed ? .orange : .blue
     }
 
     var statusIcon: String {
+        // Deliberately the inverse of the deployed seal, so a missing row reads as a failed
+        // deployment rather than as the "might already exist" hint, which keeps the same amber.
+        if isMissingLabel { return "xmark.seal.fill" }
         if isDeployed { return "checkmark.seal.fill" }
         return isPossiblyDeployed ? "exclamationmark.triangle.fill" : "plus.circle"
+    }
+
+    /// One sentence explaining the status, for the card's tooltip and its accessibility label —
+    /// status is never carried by colour alone.
+    var statusExplanation: String {
+        if isMissingLabel {
+            return "'\(label)' is no longer in the Installomator label list, so this policy will fail when it next runs. Point it at a current label, or remove it."
+        }
+        if isDeployed {
+            return "A Jamf policy already installs this label."
+        }
+        if let existingPolicyName {
+            return "Not deployed by Installomator, but '\(existingPolicyName)' in Jamf looks like the same application."
+        }
+        return "Available to deploy as a new Self Service policy."
     }
 }
 
@@ -96,6 +134,8 @@ enum PolicyNameMatching {
 
 enum PackageViewMode: String, CaseIterable, Identifiable {
     case deployed = "Deployed"
+    /// Deployed policies whose label has since been withdrawn upstream — the ones needing attention.
+    case missing = "Missing"
     case available = "Available"
     case all = "All Labels"
     

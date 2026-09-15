@@ -95,8 +95,12 @@ extension JamfAPIService {
         guard let url = URL(string: urlString) else { throw URLError(.badURL) }
 
         // No Authorization header: this is a public GitHub file, and the Jamf token must never be
-        // sent to a third-party host.
-        let (data, response) = try await URLSession.shared.data(from: url)
+        // sent to a third-party host. The local URL cache is bypassed for the same reason the label
+        // list bypasses it — a label's source is read to describe what will happen on a Mac today.
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             throw URLError(.badServerResponse)
         }
