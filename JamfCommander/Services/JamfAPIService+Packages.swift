@@ -416,7 +416,11 @@ extension JamfAPIService {
     ///
     /// The body is inspected in memory for the few markers Jamf actually uses, reduced to a
     /// `JamfRejectionHint`, and then dropped — nothing from it reaches the error, the UI or a log.
-    private static func creationFailure(
+    ///
+    /// Internal rather than private because both policy-creation paths classify failures with it:
+    /// the Installomator flow here and the custom-package flow in `+PackageUpload`. One classifier
+    /// means one set of messages an administrator has to learn.
+    static func creationFailure(
         status: Int,
         body: Data,
         policyName: String,

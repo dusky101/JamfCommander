@@ -113,6 +113,40 @@ Write bodies are `Content-Type: application/xml`.
 - List: `GET api/v1/scripts?page-size=2000&sort=name:asc` → `results[]`.
 - Delete: `DELETE api/v1/scripts/{id}`.
 
+### Packages (Pro) — custom package upload
+
+Used by the **Add PKG** flow (`JamfAPIService+PackageUpload`). Confirmed against Jamf's API reference,
+not inferred. Three steps, in order:
+
+1. `POST api/v1/packages` (JSON) — creates the package **record**, returns `{ id, href }` (the id has
+   been seen as both string and number; decode either). Required body fields: `packageName`,
+   `fileName`, `categoryId` (**a string**), `priority`, `fillUserTemplate`, `rebootRequired`,
+   `osInstall`, `suppressUpdates`, `suppressFromDock`, `suppressEula`, `suppressRegistration`.
+   Optional: `info`, `notes`, `osRequirements`, hash fields. Privilege: **Create Packages**.
+   HTTP 409 means the display name is already taken — package names must be unique.
+2. `POST api/v1/packages/{id}/upload` — `multipart/form-data`, part name **`file`**. 201 on success,
+   404 when the record (or, on an older Jamf Pro, the endpoint) is absent — the app reports 404/405
+   as "this Jamf Pro does not offer the upload endpoint". Privileges: **Read Packages** +
+   **Update Packages**.
+   The body is assembled as a **temporary file on disk** and sent with `upload(for:fromFile:)`: a
+   package is routinely a gigabyte or more, so the in-memory multipart used for icons is not an
+   option. A dedicated `URLSession` carries a 5-minute *inactivity* timeout and a 6-hour resource
+   timeout; progress comes from `URLSessionTaskDelegate.didSendBodyData`. The temporary file is
+   removed on every exit path.
+3. `POST JSSResource/policies/id/0` (Classic XML) — the install policy, identical in shape to the
+   Installomator create except that `<scripts>` is replaced by
+   `<package_configuration><packages><package><id>…</id><name>…</name><action>Install</action>`.
+   Failures use the same `PolicyCreationError` classifier as the Installomator path.
+
+Supporting reads: `GET api/v1/packages?page-size=2000&sort=packageName:asc` (pre-flight duplicate-name
+check, privilege **Read Packages**) and `GET api/v1/jamf-pro-version` (to explain a missing endpoint).
+`DELETE api/v1/packages/{id}` exists and is used **only** to clear up a record this app just created
+and could not upload to — never as a general package-removal feature.
+
+**Nothing is rolled back automatically.** If the upload or the policy fails after the record exists,
+the outcome is reported as far as it got ("package created, upload failed"), so the cheap half can be
+retried without pushing the file again.
+
 ### Computers (Pro — v3)
 - Dashboard list: `GET api/v3/computers-inventory?section=GENERAL&section=USER_AND_LOCATION&page-size=2000`.
 - Full list: `GET api/v3/computers-inventory?section=GENERAL&section=HARDWARE&section=USER_AND_LOCATION&page-size=2000`.
@@ -172,7 +206,8 @@ Canonical implementations: `fetchPolicies`, `fetchProfiles` (`fetchProfiles` use
 ## Required Jamf privileges (operational note)
 
 The API role/client used must have read **and** the relevant write/delete privileges for the objects
-above (profiles, policies, categories, scripts, computer inventory, computer groups). Missing privileges
+above (profiles, policies, categories, scripts, computer inventory, computer groups, and — for the
+custom package upload — **Create Packages**, **Read Packages** and **Update Packages**). Missing privileges
 surface as `requestFailed` (non-2xx) — handle as a clear error, never as silent success.
 
 Worth calling out for the Installomator flow: creating a policy needs **Create Policies**, and attaching
