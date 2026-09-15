@@ -37,10 +37,18 @@ struct PackagesDashboardView: View {
 
     /// The label whose own source is being explained (see `LabelVariantPanel`).
     @State private var explainingItem: InstallomatorItem?
+
+    /// The deployed row whose policy is being edited (see `PackageEditSheet`).
+    @State private var editingItem: InstallomatorItem?
+
+    /// The labels Installomator currently publishes, kept from the last load so the editor can say
+    /// when a label has been withdrawn. Empty when the list could not be read.
+    @State private var upstreamLabels: Set<String> = []
     
-    // Deployment & removal
+    // Deployment, removal & editing
     @State private var isCreatingPolicies = false
     @State private var isRemovingPolicies = false
+    @State private var isUpdatingPolicies = false
     @State private var statusMessage = ""
     @State private var showConfigSheet = false
     @State private var showResultsSheet = false
@@ -98,8 +106,8 @@ struct PackagesDashboardView: View {
         allItems.filter { selection.contains($0.id) && $0.isDeployed }
     }
 
-    /// Either flow is writing to Jamf, so both buttons stay disabled until it finishes.
-    var isBusy: Bool { isCreatingPolicies || isRemovingPolicies }
+    /// Any flow is writing to Jamf, so every action stays disabled until it finishes.
+    var isBusy: Bool { isCreatingPolicies || isRemovingPolicies || isUpdatingPolicies }
 
     /// What the footer's two buttons will act on. One selection feeds both actions, so the counts are
     /// spelled out rather than left to be inferred from a single number.
@@ -158,6 +166,9 @@ struct PackagesDashboardView: View {
                                     },
                                     onRemove: { item in
                                         requestRemoval(of: [item])
+                                    },
+                                    onEdit: { item in
+                                        editingItem = item
                                     }
                                 )
                             }
@@ -216,6 +227,19 @@ struct PackagesDashboardView: View {
         }
         .sheet(item: $explainingItem) { item in
             LabelVariantPanel(api: api, item: item, onDismiss: { explainingItem = nil })
+        }
+        .sheet(item: $editingItem) { item in
+            PackageEditSheet(
+                api: api,
+                item: item,
+                siblings: siblingPolicies(of: item),
+                upstreamLabels: upstreamLabels,
+                onApply: { jobs in
+                    editingItem = nil
+                    applyEdits(jobs)
+                },
+                onCancel: { editingItem = nil }
+            )
         }
         .commanderConfirmation(data: $confirmation)
     }
@@ -416,9 +440,22 @@ struct PackagesDashboardView: View {
                         .foregroundColor(statusMessage.contains("Error") || statusMessage.contains("failed") ? .red : .green)
                 }
 
-                // Only offered once a deployed row is selected: this deletes real policies, so it
-                // shouldn't sit there inviting a click while nothing is at stake.
+                // Both actions appear only once a deployed row is selected — they change or delete
+                // real policies, so neither should sit there inviting a click while nothing is at
+                // stake. Editing is one policy at a time: the sheet prefills from that policy's own
+                // payload and writes only what changed, which has no meaning for a mixed selection.
                 if !selectedDeployedItems.isEmpty {
+                    Button {
+                        editingItem = selectedDeployedItems.first
+                    } label: {
+                        Label("Edit…", systemImage: "slider.horizontal.3")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isBusy || selectedDeployedItems.count != 1)
+                    .help(selectedDeployedItems.count == 1
+                          ? "Edit this policy's name, category, Self Service options, scope, label and overrides."
+                          : "Select a single deployed policy to edit it.")
+
                     Button(role: .destructive) {
                         requestRemoval(of: selectedDeployedItems)
                     } label: {
@@ -477,8 +514,8 @@ struct PackagesDashboardView: View {
             // What upstream still publishes. An empty list can only mean the fetch came back with
             // nothing usable, so every deployed row is treated as current rather than marking the
             // whole estate missing on the strength of a bad read.
-            let upstreamLabels = Set(allLabels.map { $0.lowercased() })
-            let upstreamListIsUsable = !upstreamLabels.isEmpty
+            let publishedLabels = Set(allLabels.map { $0.lowercased() })
+            let upstreamListIsUsable = !publishedLabels.isEmpty
 
             // Loose index of every policy name in the tenant, so an app already installed by a
             // policy we can't identify as Installomator is flagged rather than offered blindly.
@@ -500,7 +537,7 @@ struct PackagesDashboardView: View {
                     enabled: info.enabled,
                     pinnedVersion: info.pinnedVersion,
                     existingPolicyName: nil,
-                    labelExistsUpstream: !upstreamListIsUsable || upstreamLabels.contains(info.label.lowercased())
+                    labelExistsUpstream: !upstreamListIsUsable || publishedLabels.contains(info.label.lowercased())
                 ))
             }
 
@@ -534,6 +571,7 @@ struct PackagesDashboardView: View {
 
             await MainActor.run {
                 allItems = items
+                upstreamLabels = publishedLabels
                 isLoading = false
             }
         } catch {
@@ -746,6 +784,52 @@ struct PackagesDashboardView: View {
         }
     }
 
+    // MARK: - Editing
+
+    /// The other deployed policies that run the same label — what "apply to the other policies using
+    /// this label" acts on. Matched case-insensitively, because a label typed into Jamf by hand can
+    /// differ in case from the upstream one.
+    private func siblingPolicies(of item: InstallomatorItem) -> [InstallomatorItem] {
+        allItems.filter {
+            $0.isDeployed
+                && $0.id != item.id
+                && $0.label.caseInsensitiveCompare(item.label) == .orderedSame
+        }
+    }
+
+    /// Writes the edits the sheet confirmed, then reloads so the rows show what Jamf now holds.
+    /// Results are per policy — a sibling that Jamf refused is never hidden behind the primary
+    /// policy's success.
+    private func applyEdits(_ jobs: [JamfAPIService.InstallomatorPolicyEditJob]) {
+        guard !jobs.isEmpty else { return }
+
+        isUpdatingPolicies = true
+        statusMessage = "Updating \(jobs.count) \(jobs.count == 1 ? "policy" : "policies")..."
+        operationResults = []
+
+        Task {
+            let results = await api.applyInstallomatorPolicyEdits(jobs)
+
+            await MainActor.run {
+                isUpdatingPolicies = false
+                resultsTitle = "Update Results"
+                operationResults = results
+
+                let successCount = results.filter(\.success).count
+                let failCount = results.count - successCount
+
+                statusMessage = failCount == 0
+                    ? "Completed: \(successCount) updated"
+                    : "Completed: \(successCount) updated, \(failCount) failed"
+
+                showResultsSheet = true
+                clearStatusMessageShortly()
+            }
+
+            await loadData()
+        }
+    }
+
     // MARK: - Shared helpers
 
     /// Clears the footer's status line once it has been read, unless another write has started.
@@ -818,6 +902,7 @@ struct CollapsiblePackageSection: View {
     var onInspect: (Int) -> Void
     var onExplain: (InstallomatorItem) -> Void
     var onRemove: (InstallomatorItem) -> Void
+    var onEdit: (InstallomatorItem) -> Void
     
     @State private var isExpanded = true
     
@@ -898,6 +983,11 @@ struct CollapsiblePackageSection: View {
                                     onInspect(policyID)
                                 } label: {
                                     Label("Inspect Policy", systemImage: "magnifyingglass")
+                                }
+                                Button {
+                                    onEdit(item)
+                                } label: {
+                                    Label("Edit Package…", systemImage: "slider.horizontal.3")
                                 }
                                 Divider()
                             }

@@ -183,6 +183,7 @@ You can:
 - Group by alphabet or Jamf category.
 - Inspect deployed Installomator policies.
 - Select available labels and create Jamf policies for them.
+- Edit a deployed policy in place, including the label it installs.
 - Select deployed policies and remove them from Jamf.
 - Read what a label will actually do, via **Explain This Label** on any card's context menu.
 
@@ -222,6 +223,37 @@ Before anything is written, the sheet:
 
 Created policies use the selected Installomator script and pass the label in script parameter 4, with
 `DEBUG=0` in parameter 5 and `NOTIFY=silent` in parameter 6.
+
+#### Editing a deployed policy
+
+Select a single deployed row and use **Edit**, or **Edit Package** on the row's context menu. The sheet
+reads the policy from Jamf and prefills from it, so what you see is what Jamf currently holds. You can
+change:
+
+- The policy name. Renaming also updates the Self Service display name, matching how the app creates
+  these policies. A name already used by another policy is flagged before you save, because Jamf
+  requires policy names to be unique.
+- Whether the policy is enabled.
+- The category. The Jamf category and the Self Service category are written together. A policy can be
+  moved between categories but not removed from one.
+- Self Service options: feature on main page, display in the category, and the icon. An icon can be
+  replaced but not cleared.
+- The scope — **opt-in**. The current scope is shown read-only until you turn on **Replace the scope**,
+  because replacing it overwrites the computers and groups the policy targets. Exclusions and
+  limitations are never written, so anything set up in Jamf beyond targets survives the edit.
+- The Installomator label (parameter 4) and its overrides (parameters 7 to 11). Changing the label is
+  the repair for a **Missing** row: point the policy at a current label instead of deleting and
+  recreating it. A label that is not in the upstream list is flagged, and clearing all overrides hands
+  the version choice back to the label.
+
+**Only what you change is written.** Each section of the policy is sent only if you edited it, so an
+edit to a category cannot disturb a scope somebody built by hand in Jamf. The sheet lists exactly what
+will be written, and the same list appears in the confirmation.
+
+Where several policies share one label — one per pinned version — the sheet offers to apply the
+**shared** settings to the others as well: category, Self Service options, icon, scope and enabled
+state. The policy name and the label and overrides are never applied to them, because those are what
+tell the policies apart. Each policy is reported individually afterwards.
 
 #### Removing deployed policies
 

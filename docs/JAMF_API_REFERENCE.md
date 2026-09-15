@@ -69,6 +69,20 @@ Write bodies are `Content-Type: application/xml`.
   Values are validated (allow-listed variable, `https://` for `downloadURL`, no whitespace) and
   XML-escaped before interpolation — a pinned URL can legitimately contain `&`.
   See `Models/InstallomatorOverrides.swift`; the app never resolves a download URL itself.
+- **Edit a deployed Installomator policy** (`updateInstallomatorPolicy(id:edit:)`): one
+  `PUT …/id/{id}` carrying only the sections being changed — `<general>` (name / enabled / category),
+  `<self_service>` (display name on rename, `feature_on_main_page`, `self_service_categories`,
+  `self_service_icon`), `<scope>` and `<scripts>`. Classic **merges** the sections supplied, so an
+  omitted section is genuinely untouched. Two consequences worth keeping:
+  - `<scripts>` is **not** merged — supplying it replaces the whole list. The policy is therefore
+    re-read immediately before the write and **every** script is sent back, with only the Installomator
+    entry's parameters rewritten. parameter7–11 are always written (empty where unused) so clearing a
+    version pin actually clears it.
+  - Scope on an *edit* must be a full replacement, so both `<computers/>` and `<computer_groups/>` are
+    always written — `DeploymentScopeConfig.toScopeXML()` (built for creation) would leave the old
+    targets in place. Exclusions/limitations are deliberately not written.
+  Clearing a policy's category is **not** supported: no shape for it has been verified, so the editor
+  refuses it rather than guessing. Needs **Update Policies**.
 - Attach a Self Service icon: `PUT JSSResource/policies/id/{id}` with **only**
   `<policy><self_service><self_service_icon><id>…</id></self_service_icon></self_service></policy>`
   (`assignPolicyIcon`). Classic merges the sections supplied, so the policy's other Self Service
