@@ -15,6 +15,9 @@ struct PackagesDashboardView: View {
     /// as an Installomator deployment even when the script isn't named "Installomator".
     @AppStorage("installomatorScriptID") private var lastUsedScriptID = ""
 
+    /// Named in the removal confirmation, so it is never ambiguous which tenant is being written to.
+    @AppStorage("jamfInstanceURL") private var instanceURL = ""
+
     // Data
     @State private var allItems: [InstallomatorItem] = []
     @State private var isLoading = false
@@ -35,12 +38,17 @@ struct PackagesDashboardView: View {
     /// The label whose own source is being explained (see `LabelVariantPanel`).
     @State private var explainingItem: InstallomatorItem?
     
-    // Deployment
+    // Deployment & removal
     @State private var isCreatingPolicies = false
-    @State private var creationStatus = ""
+    @State private var isRemovingPolicies = false
+    @State private var statusMessage = ""
     @State private var showConfigSheet = false
     @State private var showResultsSheet = false
-    @State private var deploymentResults: [OperationResult] = []
+    @State private var operationResults: [OperationResult] = []
+    /// The results sheet serves both flows, so it is told which one it is reporting.
+    @State private var resultsTitle = "Deployment Results"
+    /// Confirmation for removal — deletes are permanent and hit the live tenant.
+    @State private var confirmation: ConfirmationData?
     
     // MARK: - Computed Properties
     
@@ -84,6 +92,30 @@ struct PackagesDashboardView: View {
     var selectedAvailableItems: [InstallomatorItem] {
         allItems.filter { selection.contains($0.id) && !$0.isDeployed }
     }
+
+    /// Selected rows that are backed by a real Jamf policy — what "Remove from Jamf" acts on.
+    var selectedDeployedItems: [InstallomatorItem] {
+        allItems.filter { selection.contains($0.id) && $0.isDeployed }
+    }
+
+    /// Either flow is writing to Jamf, so both buttons stay disabled until it finishes.
+    var isBusy: Bool { isCreatingPolicies || isRemovingPolicies }
+
+    /// What the footer's two buttons will act on. One selection feeds both actions, so the counts are
+    /// spelled out rather than left to be inferred from a single number.
+    private var selectionSummary: String {
+        var parts: [String] = []
+        let available = selectedAvailableItems.count
+        let deployed = selectedDeployedItems.count
+        if available > 0 {
+            parts.append("\(available) available \(available == 1 ? "label" : "labels")")
+        }
+        if deployed > 0 {
+            parts.append("\(deployed) deployed \(deployed == 1 ? "policy" : "policies")")
+        }
+        guard !parts.isEmpty else { return "Nothing selected" }
+        return parts.formatted(.list(type: .and)) + " selected"
+    }
     
     var deployedCount: Int { allItems.filter { $0.isDeployed }.count }
     var availableCount: Int { allItems.filter { !$0.isDeployed }.count }
@@ -106,26 +138,33 @@ struct PackagesDashboardView: View {
                 emptyStateView
             } else {
                 searchBar
-                ScrollView {
-                    LazyVStack(spacing: 20) {
-                        ForEach(groupedItems, id: \.key) { group in
-                            CollapsiblePackageSection(
-                                sectionTitle: group.key,
-                                groupMode: groupMode,
-                                items: group.value,
-                                selectedIDs: $selection,
-                                onToggle: toggleSelection,
-                                onInspect: { policyID in
-                                    inspectingPolicyID = policyID
-                                },
-                                onExplain: { item in
-                                    explainingItem = item
-                                }
-                            )
+                if filteredItems.isEmpty {
+                    noMatchesView
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 20) {
+                            ForEach(groupedItems, id: \.key) { group in
+                                CollapsiblePackageSection(
+                                    sectionTitle: group.key,
+                                    groupMode: groupMode,
+                                    items: group.value,
+                                    selectedIDs: $selection,
+                                    onToggle: toggleSelection,
+                                    onInspect: { policyID in
+                                        inspectingPolicyID = policyID
+                                    },
+                                    onExplain: { item in
+                                        explainingItem = item
+                                    },
+                                    onRemove: { item in
+                                        requestRemoval(of: [item])
+                                    }
+                                )
+                            }
                         }
+                        .padding()
+                        .padding(.bottom, 60)
                     }
-                    .padding()
-                    .padding(.bottom, 60)
                 }
             }
             
@@ -137,10 +176,11 @@ struct PackagesDashboardView: View {
             await loadData()
         }
         .onChange(of: refreshCoordinator.token) {
-            // Each icon attach is a Classic write, so a batch bumps the refresh token too. Skip the
-            // bump while we're mid-deployment or already reloading — `deployPolicies` reloads itself
-            // afterwards, and a duplicate full scan would compete for Jamf's rate limit.
-            guard !isCreatingPolicies, !isLoading else { return }
+            // Each icon attach is a Classic write, so a batch bumps the refresh token too, and so
+            // does every delete. Skip the bump while we're mid-write or already reloading — both
+            // flows reload themselves afterwards, and a duplicate full scan would compete for Jamf's
+            // rate limit.
+            guard !isBusy, !isLoading else { return }
             Task { await loadData() }
         }
         .sheet(isPresented: $showConfigSheet) {
@@ -158,11 +198,11 @@ struct PackagesDashboardView: View {
         }
         .sheet(isPresented: $showResultsSheet) {
             OperationResultView(
-                title: "Deployment Results",
-                results: deploymentResults,
+                title: resultsTitle,
+                results: operationResults,
                 onDismiss: {
                     showResultsSheet = false
-                    deploymentResults = []
+                    operationResults = []
                 }
             )
         }
@@ -177,6 +217,7 @@ struct PackagesDashboardView: View {
         .sheet(item: $explainingItem) { item in
             LabelVariantPanel(api: api, item: item, onDismiss: { explainingItem = nil })
         }
+        .commanderConfirmation(data: $confirmation)
     }
     
     // MARK: - Header
@@ -285,6 +326,58 @@ struct PackagesDashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
+    /// The module has data, but nothing passes the current view mode and search. Most often this is
+    /// the Missing view with nothing missing — which is good news, and should say so rather than
+    /// leaving a blank panel.
+    var noMatchesView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: searchText.isEmpty && viewMode == .missing ? "checkmark.seal" : "magnifyingglass")
+                .font(.system(size: 40))
+                .foregroundColor(searchText.isEmpty && viewMode == .missing ? .green : .secondary)
+            Text(noMatchesTitle)
+                .font(.title3)
+                .fontWeight(.medium)
+            Text(noMatchesDetail)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !searchText.isEmpty {
+                Button("Clear Search") { searchText = "" }
+                    .buttonStyle(.bordered)
+            }
+        }
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var noMatchesTitle: String {
+        if !searchText.isEmpty { return "No matches" }
+        switch viewMode {
+        case .missing: return "Nothing missing"
+        case .deployed: return "No deployed policies"
+        case .available: return "No available labels"
+        case .all: return "No labels"
+        }
+    }
+
+    private var noMatchesDetail: String {
+        if !searchText.isEmpty {
+            return "No application name or Installomator label matches “\(searchText)”."
+        }
+        switch viewMode {
+        case .missing:
+            return "Every deployed policy uses a label that Installomator still publishes."
+        case .deployed:
+            return "No policy in Jamf runs an Installomator script with a label in parameter 4."
+        case .available:
+            return "Every upstream label already has a policy in Jamf."
+        case .all:
+            return "No labels were loaded."
+        }
+    }
+
     func errorView(_ message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
@@ -311,16 +404,34 @@ struct PackagesDashboardView: View {
     var actionFooter: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack {
-                Text("\(selectedAvailableItems.count) available items selected")
+            HStack(spacing: 12) {
+                Text(selectionSummary)
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
                 
-                if !creationStatus.isEmpty {
-                    Text(creationStatus)
+                if !statusMessage.isEmpty {
+                    Text(statusMessage)
                         .font(.caption)
-                        .foregroundColor(creationStatus.contains("Error") || creationStatus.contains("failed") ? .red : .green)
+                        .foregroundColor(statusMessage.contains("Error") || statusMessage.contains("failed") ? .red : .green)
+                }
+
+                // Only offered once a deployed row is selected: this deletes real policies, so it
+                // shouldn't sit there inviting a click while nothing is at stake.
+                if !selectedDeployedItems.isEmpty {
+                    Button(role: .destructive) {
+                        requestRemoval(of: selectedDeployedItems)
+                    } label: {
+                        if isRemovingPolicies {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Remove from Jamf…", systemImage: "trash")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .disabled(isBusy)
+                    .help("Deletes the selected install policies from Jamf and Self Service. Applications already installed on a Mac are left alone.")
                 }
                 
                 Button(action: { showConfigSheet = true }) {
@@ -331,7 +442,7 @@ struct PackagesDashboardView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(isCreatingPolicies || selectedAvailableItems.isEmpty)
+                .disabled(isBusy || selectedAvailableItems.isEmpty)
             }
             .padding()
             .background(Color(nsColor: .windowBackgroundColor))
@@ -436,8 +547,11 @@ struct PackagesDashboardView: View {
     
     // MARK: - Selection Logic
     
+    /// Every row is selectable: available rows feed "Add to Jamf", deployed rows feed
+    /// "Remove from Jamf". Each action reads only the subset it applies to, so a mixed selection is
+    /// safe — selecting a deployed row can never deploy it, and vice versa.
     func toggleSelection(id: String) {
-        guard let item = allItems.first(where: { $0.id == id }), !item.isDeployed else { return }
+        guard allItems.contains(where: { $0.id == id }) else { return }
         
         let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
         
@@ -450,11 +564,7 @@ struct PackagesDashboardView: View {
                 let start = min(lastIndex, currentIndex)
                 let end = max(lastIndex, currentIndex)
                 
-                let idsToSelect = allVisibleItems[start...end]
-                    .filter { !$0.isDeployed }
-                    .map { $0.id }
-                
-                selection.formUnion(idsToSelect)
+                selection.formUnion(allVisibleItems[start...end].map(\.id))
             }
         } else {
             if selection.contains(id) {
@@ -477,8 +587,8 @@ struct PackagesDashboardView: View {
         lastUsedScriptID = plan.scriptID
 
         isCreatingPolicies = true
-        creationStatus = "Initialising..."
-        deploymentResults = []
+        statusMessage = "Initialising..."
+        operationResults = []
 
         Task {
             var results: [OperationResult] = []
@@ -498,7 +608,7 @@ struct PackagesDashboardView: View {
                 )
 
                 await MainActor.run {
-                    creationStatus = "Deploying \(index + 1) of \(work.count)..."
+                    statusMessage = "Deploying \(index + 1) of \(work.count)..."
                 }
 
                 do {
@@ -533,30 +643,122 @@ struct PackagesDashboardView: View {
             
             await MainActor.run {
                 isCreatingPolicies = false
-                deploymentResults = results
+                resultsTitle = "Deployment Results"
+                operationResults = results
                 
                 let successCount = results.filter(\.success).count
                 let failCount = results.count - successCount
                 
                 if failCount == 0 {
-                    creationStatus = "Completed: \(successCount) created"
+                    statusMessage = "Completed: \(successCount) created"
                     selection.removeAll()
                     lastSelectedID = nil
                 } else {
-                    creationStatus = "Completed: \(successCount) created, \(failCount) failed"
+                    statusMessage = "Completed: \(successCount) created, \(failCount) failed"
                 }
                 
                 showResultsSheet = true
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                    if !isCreatingPolicies {
-                        creationStatus = ""
-                    }
-                }
+                clearStatusMessageShortly()
             }
             
             await loadData()
         }
+    }
+
+    // MARK: - Removal
+
+    /// Asks before deleting, stating exactly which policies go, from which tenant, and — just as
+    /// importantly — what deleting them does *not* do. Deletion is permanent and reaches production
+    /// (root `CLAUDE.md`, invariant 1).
+    private func requestRemoval(of items: [InstallomatorItem]) {
+        let targets = removalTargets(for: items)
+        guard !targets.isEmpty else { return }
+
+        let count = targets.count
+        let noun = count == 1 ? "policy" : "policies"
+        let instance = instanceURL.isEmpty ? "your Jamf instance" : instanceURL
+
+        let message = """
+        \(count) Installomator install \(noun) will be deleted from \(instance):
+
+        \(summarise(targets.map(\.policyName)))
+
+        This removes the \(noun) from Jamf and from Self Service. It does not uninstall the application from any Mac. Deleted policies cannot be restored.
+        """
+
+        confirmation = ConfirmationData(
+            title: "Delete \(count) \(noun)?",
+            message: message,
+            actionTitle: "Delete \(count) \(noun.capitalized)",
+            role: .destructive,
+            action: { performRemoval(of: targets) }
+        )
+    }
+
+    /// The Jamf policies behind the given rows. A row with no policy id cannot be deleted, so it is
+    /// dropped here rather than turned into a request with nothing to target.
+    private func removalTargets(for items: [InstallomatorItem]) -> [JamfAPIService.InstallomatorPolicyTarget] {
+        items.compactMap { item in
+            guard item.isDeployed, let policyID = item.policyID else { return nil }
+            return JamfAPIService.InstallomatorPolicyTarget(
+                policyID: policyID,
+                policyName: item.policyName ?? item.displayName,
+                label: item.label
+            )
+        }
+    }
+
+    /// Runs the confirmed deletion through the throttled service method and reports what actually
+    /// happened, per policy. The selection survives a partial failure so the failed rows can be
+    /// retried without hunting for them again.
+    private func performRemoval(of targets: [JamfAPIService.InstallomatorPolicyTarget]) {
+        guard !targets.isEmpty else { return }
+
+        isRemovingPolicies = true
+        statusMessage = "Removing \(targets.count) \(targets.count == 1 ? "policy" : "policies")..."
+        operationResults = []
+
+        Task {
+            let results = await api.deleteInstallomatorPolicies(targets)
+
+            await MainActor.run {
+                isRemovingPolicies = false
+                resultsTitle = "Removal Results"
+                operationResults = results
+
+                let successCount = results.filter(\.success).count
+                let failCount = results.count - successCount
+
+                if failCount == 0 {
+                    statusMessage = "Completed: \(successCount) removed"
+                    selection.removeAll()
+                    lastSelectedID = nil
+                } else {
+                    statusMessage = "Completed: \(successCount) removed, \(failCount) failed"
+                }
+
+                showResultsSheet = true
+                clearStatusMessageShortly()
+            }
+
+            await loadData()
+        }
+    }
+
+    // MARK: - Shared helpers
+
+    /// Clears the footer's status line once it has been read, unless another write has started.
+    private func clearStatusMessageShortly() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            if !isBusy { statusMessage = "" }
+        }
+    }
+
+    /// "A, B and 3 more" — keeps a long list readable inside a confirmation dialog.
+    private func summarise(_ names: [String], showing limit: Int = 5) -> String {
+        guard names.count > limit else { return names.formatted(.list(type: .and)) }
+        return "\(names.prefix(limit).formatted(.list(type: .and))) and \(names.count - limit) more"
     }
 
     /// Attaches the run's chosen icon to a policy that has just been created, and turns the outcome
@@ -615,22 +817,21 @@ struct CollapsiblePackageSection: View {
     var onToggle: (String) -> Void
     var onInspect: (Int) -> Void
     var onExplain: (InstallomatorItem) -> Void
+    var onRemove: (InstallomatorItem) -> Void
     
     @State private var isExpanded = true
     
-    var selectableItems: [InstallomatorItem] {
-        items.filter { !$0.isDeployed }
-    }
-    
-    var allSelectableSelected: Bool {
-        !selectableItems.isEmpty && selectableItems.allSatisfy { selectedIDs.contains($0.id) }
+    /// Every row in the section counts — available rows for deployment, deployed rows for removal —
+    /// so "Select All" in the Missing view selects exactly the policies that need clearing out.
+    var allSelected: Bool {
+        !items.isEmpty && items.allSatisfy { selectedIDs.contains($0.id) }
     }
     
     func toggleGroup() {
-        if allSelectableSelected {
-            for item in selectableItems { selectedIDs.remove(item.id) }
+        if allSelected {
+            for item in items { selectedIDs.remove(item.id) }
         } else {
-            for item in selectableItems { selectedIDs.insert(item.id) }
+            for item in items { selectedIDs.insert(item.id) }
         }
     }
     
@@ -668,9 +869,9 @@ struct CollapsiblePackageSection: View {
                 
                 Spacer()
                 
-                if !selectableItems.isEmpty {
+                if !items.isEmpty {
                     Button(action: toggleGroup) {
-                        Text(allSelectableSelected ? "Deselect All" : "Select All")
+                        Text(allSelected ? "Deselect All" : "Select All")
                             .font(.caption)
                             .foregroundColor(.blue)
                     }
@@ -705,11 +906,23 @@ struct CollapsiblePackageSection: View {
                             } label: {
                                 Label("Explain This Label…", systemImage: "questionmark.circle")
                             }
+                            if item.isDeployed {
+                                Divider()
+                                Button(role: .destructive) {
+                                    onRemove(item)
+                                } label: {
+                                    Label("Remove from Jamf…", systemImage: "trash")
+                                }
+                            }
                         }
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
                                 .stroke(selectedIDs.contains(item.id) ? Color.accentColor : Color.clear, lineWidth: 2)
                         )
+                        // The whole card is the selection control, so expose it as one element
+                        // rather than as a row of unlabelled badges beside a tick.
+                        .accessibilityElement(children: .combine)
+                        .accessibilityAddTraits(selectedIDs.contains(item.id) ? [.isButton, .isSelected] : .isButton)
                     }
                 }
                 .padding(.top, 8)

@@ -119,12 +119,13 @@ struct PackageCardView: View {
                 .help(item.statusExplanation)
                 .accessibilityLabel("\(item.statusText). \(item.statusExplanation)")
             
-            // Selection indicator (only for available items)
-            if !item.isDeployed {
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundColor(isSelected ? .accentColor : .secondary.opacity(0.4))
-            }
+            // Selection indicator. Deployed rows are selectable too — that is how a policy is
+            // chosen for removal — so every row shows its state. The card as a whole carries the
+            // selected trait for VoiceOver, so the tick itself is decorative.
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundColor(isSelected ? .accentColor : .secondary.opacity(0.4))
+                .accessibilityHidden(true)
         }
         .padding(12)
         .liquidGlass(cornerRadius: 12)

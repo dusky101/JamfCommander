@@ -43,7 +43,10 @@ Write bodies are `Content-Type: application/xml`.
 - List: `GET JSSResource/policies` → `policies[]` (id, name).
 - Detail: `GET JSSResource/policies/id/{id}` → general (id/name/category/enabled), scope, scripts.
 - Raw JSON: `GET JSSResource/policies/id/{id}` with `Accept: application/json`.
-- Delete: `DELETE JSSResource/policies/id/{id}`.
+- Delete: `DELETE JSSResource/policies/id/{id}`. The Packages module's bulk removal
+  (`deleteInstallomatorPolicies(_:)`) runs these in **batches of 5 with a 0.5s gap**, returning one
+  `OperationResult` per policy; a refusal is reported with an actionable reason and never carries the
+  response body. Needs **Delete Policies**.
 - Move category: `PUT …/id/{id}` with a `<policy>` body that sets **both**
   `<general><category><id>…</id></category></general>` **and**
   `<self_service><self_service_categories><category><id>…</id><name>…</name>…</category></self_service_categories></self_service>`

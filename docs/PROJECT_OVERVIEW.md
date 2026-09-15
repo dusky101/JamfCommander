@@ -99,6 +99,8 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
   label set from GitHub, then creates Self Service install policies (`DeploymentConfigSheet`,
   `PackageModels.InstallomatorLabelFormatter`). A deployed policy whose label has since been withdrawn
   upstream is flagged **Missing** (`InstallomatorItem.isMissingLabel`) and has its own view filter.
+  Deployed rows are selectable for removal — confirmed, then deleted in throttled batches by
+  `deleteInstallomatorPolicies(_:)` with per-policy results.
 - **Cloning** — `CloneConfigSheet` + `JamfAPIService+Cloning` (regex XML surgery).
 - **Export** — `ExportProgressSheet` + `ExportService`/`Services/Exports/*`. Per-domain CSV plus an
   "Export All" that bundles every CSV into a single timestamped **ZIP** (`exportAllDataToZip`).

@@ -183,6 +183,7 @@ You can:
 - Group by alphabet or Jamf category.
 - Inspect deployed Installomator policies.
 - Select available labels and create Jamf policies for them.
+- Select deployed policies and remove them from Jamf.
 - Read what a label will actually do, via **Explain This Label** on any card's context menu.
 
 A label is shown as **Deployed** when a policy runs an Installomator script with that label in
@@ -221,6 +222,25 @@ Before anything is written, the sheet:
 
 Created policies use the selected Installomator script and pass the label in script parameter 4, with
 `DEBUG=0` in parameter 5 and `NOTIFY=silent` in parameter 6.
+
+#### Removing deployed policies
+
+Deployed rows are selectable, so a policy can be removed without leaving the module. Select one or
+more deployed rows and use **Remove from Jamf**, or use **Remove from Jamf** on a single row's
+context menu. The **Missing** view plus **Select All** is the quickest way to clear out policies whose
+label no longer exists.
+
+Before anything is deleted you are shown how many policies will go, their names, and which instance
+they will be deleted from. Deletion:
+
+- Removes the policy from Jamf and from Self Service.
+- **Does not** uninstall the application from any Mac.
+- Cannot be undone.
+
+Deletions are paced in small batches like every other bulk operation, so a large clean-up will not trip
+Jamf's rate limiting. Each policy is reported individually afterwards — a policy that Jamf refused
+(already deleted, or a client without the **Delete Policies** privilege) is listed as a failure with the
+reason, never counted as a success, and the list stays selected so it can be retried.
 
 #### Version pinning
 

@@ -453,6 +453,77 @@ extension JamfAPIService {
         }
     }
 
+    // MARK: - Policy Removal
+
+    /// One deployed Installomator policy a bulk action will act on.
+    ///
+    /// It carries the policy's own name rather than the app's, because several policies can share one
+    /// label — one per pinned version — so only the policy name identifies which of them a
+    /// confirmation or a result row is talking about.
+    struct InstallomatorPolicyTarget: Sendable, Identifiable {
+        let policyID: Int
+        let policyName: String
+        let label: String
+
+        var id: Int { policyID }
+    }
+
+    /// Deletes the Jamf policies behind the given deployed rows.
+    ///
+    /// Permanent, and it reaches the live tenant, so the caller must confirm first and must show the
+    /// returned results rather than assuming success. Paced like every other bulk operation here —
+    /// batches of five with a 0.5s gap — so a large clean-up cannot trip Jamf's rate limiting, and one
+    /// refusal never stops the rest of the run.
+    ///
+    /// Deleting an install policy removes it from Jamf and from Self Service. It does not uninstall
+    /// anything already installed on a Mac; the confirmation copy says so.
+    func deleteInstallomatorPolicies(_ targets: [InstallomatorPolicyTarget]) async -> [OperationResult] {
+        var results: [OperationResult] = []
+        let batchSize = 5
+        let batches = stride(from: 0, to: targets.count, by: batchSize).map {
+            Array(targets[$0..<min($0 + batchSize, targets.count)])
+        }
+
+        for (batchIndex, batch) in batches.enumerated() {
+            await withTaskGroup(of: OperationResult.self) { group in
+                for target in batch {
+                    group.addTask {
+                        do {
+                            try await self.deletePolicy(id: target.policyID)
+                            return OperationResult(itemName: target.policyName, success: true, error: nil)
+                        } catch {
+                            return OperationResult(
+                                itemName: target.policyName,
+                                success: false,
+                                error: Self.removalFailureReason(for: error)
+                            )
+                        }
+                    }
+                }
+                for await result in group {
+                    results.append(result)
+                }
+            }
+
+            if batchIndex < batches.count - 1 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+        return results
+    }
+
+    /// A reason the administrator can act on. Carries nothing from the response — `genericRequest`
+    /// reports a non-2xx without a body, and the two realistic causes are named here instead
+    /// (root `CLAUDE.md`, invariant 4).
+    /// `nonisolated` because the removal batch calls it from inside a `TaskGroup`; it reads only its
+    /// argument, so there is no actor state to protect (as with `pinnedVersion(in:)` above).
+    nonisolated private static func removalFailureReason(for error: Error) -> String {
+        if let urlError = error as? URLError {
+            return "Could not reach Jamf: \(urlError.localizedDescription)"
+        }
+        return "Jamf refused to delete this policy. It may already have been deleted, or this API client may not have the 'Delete Policies' privilege — check the policy in Jamf before retrying."
+    }
+
     /// Reduces a Jamf error body to a hint, without retaining any of its text.
     private static func rejectionHint(from body: Data) -> JamfRejectionHint {
         guard let raw = String(data: body, encoding: .utf8) else { return .none }
