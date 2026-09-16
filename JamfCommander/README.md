@@ -15,6 +15,7 @@ The app uses both the Jamf Pro API and the Jamf Classic API because Jamf exposes
 - Compare deployed Installomator policies against the upstream Installomator label list.
 - Create Jamf Self Service policies for selected Installomator labels.
 - Upload a custom .pkg or .dmg to Jamf and create its Self Service install policy.
+- Browse the packages already in Jamf, and see which of them a policy actually installs.
 - Export computers, policies, profiles, scripts, or all supported data to CSV/ZIP files.
 - Import and export Jamf Commander connection settings with `.jamfconfig` files.
 
@@ -314,6 +315,20 @@ Version pinning is entirely optional. Leaving it on "Let Installomator decide" p
 policies the app has always created.
 
 ### Add PKG (custom packages)
+
+The module has three tabs, laid out like the Installomator manager:
+
+- **New** — the upload flow described below.
+- **Uploaded** — every package in this Jamf instance, searchable and grouped A–Z or by category, the
+  same way the Installomator list is.
+- **Deployed** — only the packages a policy actually installs, with the policy named on the row.
+
+Jamf offers no way to ask "which policies use this package", so the deployed state is worked out by
+reading every policy — the same throttled scan the Installomator module performs. It runs once, the
+first time you open **Uploaded** or **Deployed**, and never for the New tab alone, so opening the
+module to upload something stays instant. While it runs, rows read **Checking…** rather than
+pretending a package is unused, and the Deployed count shows an ellipsis until the answer is real.
+**Refresh** re-reads both the library and the scan.
 
 Some software has no Installomator label — a label may never have existed, or it may have been
 withdrawn upstream, which is what the **Missing** state in the Packages module reports. **Add PKG**

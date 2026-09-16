@@ -138,8 +138,14 @@ not inferred. Three steps, in order:
    `<package_configuration><packages><package><id>…</id><name>…</name><action>Install</action>`.
    Failures use the same `PolicyCreationError` classifier as the Installomator path.
 
-Supporting reads: `GET api/v1/packages?page-size=2000&sort=packageName:asc` (pre-flight duplicate-name
-check, privilege **Read Packages**) and `GET api/v1/jamf-pro-version` (to explain a missing endpoint).
+Supporting reads: `GET api/v1/packages?page-size=2000&sort=packageName:asc` — one decoder
+(`JamfPackage` in `+PackageLibrary`) serves both the pre-flight duplicate-name check and the
+**Uploaded** tab; only documented fields are modelled (`id`, `packageName`, `fileName`, `categoryId`,
+`info`, `notes`, `manifestFileName`, `cloudTransferStatus` — the endpoint returns no size). Privilege
+**Read Packages**. There is **no** package → policy lookup in Jamf, so the **Deployed** tab's
+`fetchPackagePolicyUsage()` lists policies and hydrates each one to read
+`package_configuration.packages[].id`, using the standard throttle (batches of 10, 0.5s gaps, 3
+attempts); it is run lazily, once per library load and `GET api/v1/jamf-pro-version` (to explain a missing endpoint).
 `DELETE api/v1/packages/{id}` exists and is used **only** to clear up a record this app just created
 and could not upload to — never as a general package-removal feature.
 
