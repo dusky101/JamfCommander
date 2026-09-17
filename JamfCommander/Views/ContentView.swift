@@ -119,7 +119,7 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showConfigSheet) {
-            ConfigurationView()
+            ConfigurationView(api: api)
         }
         // Help is reachable from the sidebar footer and the macOS Help menu, so the presenter is
         // shared rather than local state.

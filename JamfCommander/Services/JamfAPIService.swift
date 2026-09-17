@@ -12,6 +12,13 @@ class JamfAPIService: ObservableObject {
     // UPDATED: Changed from 'private' to internal (default) so extensions can access them
     var baseURL: String = ""
     var token: String?
+
+    /// Session for the Jamf **Platform API Gateway** (blueprints, platform device groups).
+    ///
+    /// Separate from `baseURL`/`token` above, which belong to the Jamf Pro instance. The gateway
+    /// is a different host with its own Jamf Account integration credentials, held in Settings
+    /// and applied per call — see `PlatformAPISession` and `JamfAPIService+Blueprints`.
+    let platform = PlatformAPISession()
     
     enum APIError: Error {
         case invalidURL

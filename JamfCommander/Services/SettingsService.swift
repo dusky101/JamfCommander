@@ -22,15 +22,37 @@ struct SettingsService {
         let exportDate: Date
         let appVersion: String
         let signature: String
+
+        // Platform API Gateway settings (blueprints). Optional so a file written by an
+        // earlier build still imports, and so an earlier build can still read a file
+        // written by this one — the signature stays "JamfCommander-v1" for that reason.
+        let platformRegion: String?
+        let platformEnvironmentId: String?
+        let platformClientId: String?
+        let platformClientSecret: String?
         
         // Custom initializer for creating new configurations
-        init(instanceURL: String, clientId: String, clientSecret: String, exportDate: Date, appVersion: String) {
+        init(
+            instanceURL: String,
+            clientId: String,
+            clientSecret: String,
+            exportDate: Date,
+            appVersion: String,
+            platformRegion: String? = nil,
+            platformEnvironmentId: String? = nil,
+            platformClientId: String? = nil,
+            platformClientSecret: String? = nil
+        ) {
             self.instanceURL = instanceURL
             self.clientId = clientId
             self.clientSecret = clientSecret
             self.exportDate = exportDate
             self.appVersion = appVersion
             self.signature = "JamfCommander-v1"
+            self.platformRegion = platformRegion
+            self.platformEnvironmentId = platformEnvironmentId
+            self.platformClientId = platformClientId
+            self.platformClientSecret = platformClientSecret
         }
     }
     
@@ -42,14 +64,26 @@ struct SettingsService {
     ///   - clientId: API Client ID
     ///   - clientSecret: API Client Secret
     /// - Returns: Success or failure
-    static func exportSettings(instanceURL: String, clientId: String, clientSecret: String) -> Result<URL, SettingsError> {
+    static func exportSettings(
+        instanceURL: String,
+        clientId: String,
+        clientSecret: String,
+        platformRegion: String? = nil,
+        platformEnvironmentId: String? = nil,
+        platformClientId: String? = nil,
+        platformClientSecret: String? = nil
+    ) -> Result<URL, SettingsError> {
         // Create configuration object
         let config = JamfConfiguration(
             instanceURL: instanceURL,
             clientId: clientId,
             clientSecret: clientSecret,
             exportDate: Date(),
-            appVersion: "1.0.0" // You can make this dynamic later
+            appVersion: "1.0.0", // You can make this dynamic later
+            platformRegion: platformRegion,
+            platformEnvironmentId: platformEnvironmentId,
+            platformClientId: platformClientId,
+            platformClientSecret: platformClientSecret
         )
         
         // Encode to JSON
