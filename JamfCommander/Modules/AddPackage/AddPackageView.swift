@@ -262,6 +262,10 @@ struct AddPackageView: View {
                 .font(.callout)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
+                // Bounded for the same reason as the library's empty state: this sits outside a
+                // ScrollView, so an unbounded fixedSize can push the module past the window.
+                .frame(maxWidth: 420)
+                .lineLimit(4)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Try Again", action: retry)
                 .buttonStyle(.borderedProminent)

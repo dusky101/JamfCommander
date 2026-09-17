@@ -175,6 +175,13 @@ struct JamfPackageLibraryView: View {
             Text(searchText.isEmpty ? emptyDetail : "No package matches “\(searchText)”.")
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
+                // Width-bounded and line-bounded on purpose. fixedSize alone wraps to whatever
+                // width it is offered, and this view sits outside a ScrollView, so when it was
+                // measured before its width resolved it reported a huge height and pushed the
+                // whole split view past the window. A centred paragraph should not span the full
+                // window in any case.
+                .frame(maxWidth: 420)
+                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
 
             if !searchText.isEmpty {
