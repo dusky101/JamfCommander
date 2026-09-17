@@ -13,6 +13,32 @@
 
 import Foundation
 
+// MARK: - Declarations
+
+/// Which DDM status channel a declaration applies on.
+///
+/// Values are the wire form seen in a real deployed blueprint from the tenant, not inferred.
+nonisolated enum DeclarationChannel: String, CaseIterable, Identifiable, Sendable {
+    case system = "SYSTEM"
+    case user = "USER"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .user: return "User"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .system: return "Applies to the device, whoever is logged in."
+        case .user: return "Applies to specific user accounts."
+        }
+    }
+}
+
 // MARK: - Scope selection
 
 /// What the create/edit sheet should do with `scope.deviceGroups`.
@@ -49,6 +75,9 @@ enum BlueprintPayloadError: LocalizedError, Sendable {
     case componentsEmpty(Int)
     case tooManyComponents(Int, Int)
     case serialisationFailed
+    case noDeclarationsFound
+    case declarationTypeRequired
+    case declarationTypeNotApple(String)
 
     var errorDescription: String? {
         switch self {
@@ -70,7 +99,7 @@ enum BlueprintPayloadError: LocalizedError, Sendable {
             return "\"scope.deviceGroups\" must be an array of device group UUID strings."
         case .looksLikeAppleDeclaration(let type):
             let named = type.map { " (\($0))" } ?? ""
-            return "That looks like an Apple declaration\(named), not a blueprint. A blueprint is an envelope with a name, a scope and steps, and each step holds components — a raw declaration goes inside one, through the Custom Declarations component. Build one in Jamf Pro's blueprint builder, then copy its JSON from this app's inspector to use as a template."
+            return "That looks like an Apple declaration\(named), not a blueprint. Use \"Wrap as Blueprint\" in the Definition panel to convert it."
         case .missingSteps:
             return "The JSON has no \"steps\". Jamf requires the key, though an empty array is accepted."
         case .stepsNotAnArray:
@@ -87,6 +116,12 @@ enum BlueprintPayloadError: LocalizedError, Sendable {
             return "Step \(index + 1) has \(count) components. Jamf allows at most 100."
         case .serialisationFailed:
             return "The blueprint could not be prepared for sending."
+        case .declarationTypeRequired:
+            return "Enter the declaration type this payload belongs to, for example com.apple.configuration.extensible-sso. The payload itself does not say which one it is."
+        case .declarationTypeNotApple(let type):
+            return "“\(type)” is not an Apple declaration type. These begin com.apple.configuration. for settings, or com.apple.asset. for supporting data."
+        case .noDeclarationsFound:
+            return "No Apple declarations were found in that JSON. A declaration needs a \"Type\" starting with com.apple. and a \"Payload\"."
         }
     }
 }
@@ -102,6 +137,18 @@ enum BlueprintPayload {
     /// `divisionId` is included because Jamf rejects a PATCH carrying it with a 400 and
     /// `DIVISION_ASSIGNMENT_NOT_ALLOWED`, whether it holds a value or null.
     static let serverManagedKeys = ["id", "created", "updated", "deploymentState", "divisionId"]
+
+    /// The component that carries raw Apple declarations.
+    ///
+    /// Taken from a real deployed blueprint in the tenant — it is **not** in the identifier enum
+    /// published in the API reference, so it could not have been derived from the documentation.
+    /// Exposed here rather than buried, because the catalogue is tenant- and version-dependent:
+    /// if a future environment uses a different identifier, this is the one line to change, and the
+    /// wrapped JSON shows it plainly in the editor so it can be corrected by hand.
+    static let declarationComponentIdentifier = "com.jamf.ddm-strict"
+
+    /// Default step name, matching what Jamf's own blueprint builder writes.
+    static let defaultStepName = "Components in this blueprint"
 
     static let maxNameLength = 200
     static let maxSteps = 10
@@ -155,6 +202,149 @@ enum BlueprintPayload {
         try validateSteps(in: object, required: false)
 
         return try serialise(object)
+    }
+
+    // MARK: Declarations
+
+    /// The Apple declaration types in a document, if it holds any.
+    ///
+    /// Returns empty for anything that is already a blueprint (it has `steps`), so a normal
+    /// definition is never mistaken for DDM output. A declaration is recognised by having both a
+    /// `Type` beginning `com.apple.` and a payload — both are required, so an arbitrary object
+    /// carrying one or the other does not match.
+    static func declarationTypes(in json: String) -> [String] {
+        guard let parsed = parseLoosely(json) else { return [] }
+
+        if let object = parsed as? [String: Any] {
+            guard object["steps"] == nil else { return [] }
+
+            if let type = declarationType(of: object) { return [type] }
+
+            // Already in the wrapped form: { "declarations": [ ... ] }
+            if let nested = object["declarations"] as? [[String: Any]] {
+                return nested.compactMap(declarationType(of:))
+            }
+            return []
+        }
+
+        if let array = parsed as? [[String: Any]] {
+            return array.compactMap(declarationType(of:))
+        }
+
+        return []
+    }
+
+    /// True when the document is already a blueprint, so it needs no wrapping.
+    static func looksLikeBlueprint(_ json: String) -> Bool {
+        guard let object = parseLoosely(json) as? [String: Any] else { return false }
+        return object["steps"] != nil
+    }
+
+    /// Wraps Apple declarations — or a bare payload — into a complete blueprint document.
+    ///
+    /// Two shapes come out of the Jamf DDM app and both are handled:
+    ///
+    /// - A **full declaration**, carrying `Type` (`com.apple.…`) and `Payload`. `Identifier` and
+    ///   `ServerToken` are dropped, because Jamf generates both and a real deployed blueprint
+    ///   carries neither inside its declarations.
+    /// - A **bare payload**, which is only the settings. Nothing in it identifies which declaration
+    ///   it belongs to — note that extensible-sso's payload has its own `Type` key holding
+    ///   "Redirect" — so `declarationType` must be supplied by the caller.
+    static func wrapDeclarations(
+        json: String,
+        channel: DeclarationChannel,
+        declarationType suppliedType: String? = nil,
+        name: String? = nil,
+        stepName: String = defaultStepName
+    ) throws -> String {
+        guard let parsed = parseLoosely(json) else { throw BlueprintPayloadError.noDeclarationsFound }
+
+        var sources: [[String: Any]] = []
+        if let object = parsed as? [String: Any] {
+            if let nested = object["declarations"] as? [[String: Any]] {
+                sources = nested
+            } else {
+                sources = [object]
+            }
+        } else if let array = parsed as? [[String: Any]] {
+            sources = array
+        }
+
+        var declarations = sources.compactMap { source -> [String: Any]? in
+            guard let type = declarationType(of: source) else { return nil }
+            let payload = (source["Payload"] as? [String: Any])
+                ?? (source["payload"] as? [String: Any])
+                ?? [:]
+
+            return [
+                // Apple's own split: com.apple.asset.* are assets, com.apple.configuration.* are
+                // configurations. Documented in Jamf's Blueprints guide with one example of each.
+                "kind": type.hasPrefix("com.apple.asset.") ? "ASSET" : "CONFIGURATION",
+                "channelType": channel.rawValue,
+                "type": type,
+                "payload": payload
+            ]
+        }
+
+        // Nothing recognisable as a declaration: treat the whole document as one payload, which is
+        // what the DDM app exports when it gives you settings rather than a wrapped declaration.
+        if declarations.isEmpty, let payload = parsed as? [String: Any] {
+            let trimmedType = (suppliedType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedType.isEmpty else {
+                throw BlueprintPayloadError.declarationTypeRequired
+            }
+            guard trimmedType.hasPrefix("com.apple.") else {
+                throw BlueprintPayloadError.declarationTypeNotApple(trimmedType)
+            }
+
+            declarations = [[
+                "kind": trimmedType.hasPrefix("com.apple.asset.") ? "ASSET" : "CONFIGURATION",
+                "channelType": channel.rawValue,
+                "type": trimmedType,
+                "payload": payload
+            ]]
+        }
+
+        guard !declarations.isEmpty else { throw BlueprintPayloadError.noDeclarationsFound }
+
+        var blueprint: [String: Any] = [
+            // A placeholder the scope picker replaces on save; present so the document is a
+            // structurally complete blueprint the moment it is wrapped.
+            "scope": ["deviceGroups": [String]()],
+            "steps": [
+                [
+                    "name": stepName,
+                    "activationPredicate": NSNull(),
+                    "components": [
+                        [
+                            "identifier": declarationComponentIdentifier,
+                            "configuration": ["declarations": declarations]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+
+        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            blueprint["name"] = name
+        }
+
+        let data = try serialise(blueprint)
+        return prettyPrinted(data)
+    }
+
+    private static func parseLoosely(_ json: String) -> Any? {
+        let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+    }
+
+    /// The declaration type of an object, or nil when it is not a declaration.
+    private static func declarationType(of object: [String: Any]) -> String? {
+        guard let type = (object["Type"] as? String) ?? (object["type"] as? String),
+              type.hasPrefix("com.apple.") else { return nil }
+        guard object["Payload"] != nil || object["payload"] != nil else { return nil }
+        return type
     }
 
     // MARK: Inspection helpers

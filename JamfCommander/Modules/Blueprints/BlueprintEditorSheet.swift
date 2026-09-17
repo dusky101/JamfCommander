@@ -47,6 +47,8 @@ struct BlueprintEditorSheet: View {
     @State private var json = ""
     @State private var nameField = ""
     @State private var descriptionField = ""
+    @State private var declarationType = ""
+    @State private var declarationChannel: DeclarationChannel = .system
     @State private var scopeChoice: ScopeChoice = .keepExisting
     @State private var selectedGroupIDs: Set<String> = []
 
@@ -88,6 +90,10 @@ struct BlueprintEditorSheet: View {
         var name: String?
         var stepCount: Int?
         var groupIDsInJSON: [String] = []
+        /// Apple declaration types found in the document, when it holds DDM output.
+        var declarationTypes: [String] = []
+        /// True once the document is a blueprint envelope, so it needs no wrapping.
+        var isBlueprint = false
     }
 
     private var isEditing: Bool { mode.existing != nil }
@@ -279,6 +285,9 @@ struct BlueprintEditorSheet: View {
             VStack(alignment: .leading, spacing: 20) {
                 identitySection
                 sourceSection
+                if needsWrapping {
+                    declarationSection
+                }
                 scopeSection
             }
             .padding()
@@ -359,6 +368,79 @@ struct BlueprintEditorSheet: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    /// Shown only while the document is not yet a blueprint — that is, when it is DDM output that
+    /// still needs wrapping.
+    private var needsWrapping: Bool {
+        !json.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !summary.isBlueprint
+    }
+
+    private var declarationSection: some View {
+        InfoSection(title: "DDM Declaration", icon: "wand.and.stars") {
+            if summary.declarationTypes.isEmpty {
+                Text("This looks like a bare payload from the Jamf DDM app. Nothing in it says which declaration it belongs to, so give it a type and it will be wrapped into a blueprint.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Label(
+                    summary.declarationTypes.count == 1
+                        ? "One declaration found, ready to wrap."
+                        : "\(summary.declarationTypes.count) declarations found, ready to wrap.",
+                    systemImage: "checkmark.circle"
+                )
+                .font(.caption)
+                .foregroundStyle(.green)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Declaration type")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("com.apple.configuration...", text: $declarationType)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isSaving || !summary.declarationTypes.isEmpty)
+                    .accessibilityLabel("Apple declaration type")
+
+                Text("com.apple.configuration.* for settings, com.apple.asset.* for supporting data. Kind is set from this automatically.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Channel")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Picker("Channel", selection: $declarationChannel) {
+                    ForEach(DeclarationChannel.allCases) { channel in
+                        Text(channel.label).tag(channel)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.radioGroup)
+                .disabled(isSaving)
+                .accessibilityLabel("Declaration channel")
+
+                Text(declarationChannel.explanation)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button(action: wrapDeclaration) {
+                Label("Wrap as Blueprint", systemImage: "shippingbox")
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isSaving)
+            .help("Rewrite the editor contents as a complete blueprint, so you can review it before sending")
         }
     }
 
@@ -493,8 +575,15 @@ struct BlueprintEditorSheet: View {
         summary = DraftSummary(
             name: BlueprintPayload.name(in: text),
             stepCount: BlueprintPayload.stepCount(in: text),
-            groupIDsInJSON: BlueprintPayload.deviceGroupIDs(in: text)
+            groupIDsInJSON: BlueprintPayload.deviceGroupIDs(in: text),
+            declarationTypes: BlueprintPayload.declarationTypes(in: text),
+            isBlueprint: BlueprintPayload.looksLikeBlueprint(text)
         )
+
+        // A full declaration names its own type; show it rather than asking for it again.
+        if let detected = summary.declarationTypes.first, declarationType != detected {
+            declarationType = detected
+        }
 
         // Seed the fields from the document so an existing name is visible and editable, without
         // overwriting anything already typed.
@@ -534,6 +623,23 @@ struct BlueprintEditorSheet: View {
         }
         json = text
         saveError = nil
+    }
+
+    /// Rewrites the editor contents as a complete blueprint. Deliberately visible rather than done
+    /// silently at save time, so exactly what will be sent can be reviewed and edited first.
+    private func wrapDeclaration() {
+        saveError = nil
+
+        do {
+            json = try BlueprintPayload.wrapDeclarations(
+                json: json,
+                channel: declarationChannel,
+                declarationType: declarationType,
+                name: nameField
+            )
+        } catch {
+            saveError = error.localizedDescription
+        }
     }
 
     private func formatJSON() {

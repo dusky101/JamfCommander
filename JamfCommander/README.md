@@ -190,8 +190,19 @@ offers a button straight to Settings.
 Blueprints are created **undeployed**. Creating one does not apply anything to a device; use
 **Deploy** when you are satisfied with it.
 
-There is currently no graphical DDM builder — blueprints are authored as JSON here. Jamf's own
-blueprint builder in Jamf Pro remains the place to construct one visually.
+- **Wrap DDM output.** Paste the JSON the Jamf DDM app produces and a **DDM Declaration** panel
+  appears. Give it a declaration type (for example `com.apple.configuration.extensible-sso`) and a
+  channel, press **Wrap as Blueprint**, and the editor rewrites itself as a complete blueprint with
+  the declaration inside the right component. It rewrites the editor rather than doing it silently
+  at save, so you can read exactly what will be sent and adjust it first. If the JSON is already a
+  full declaration it names its own type and the panel fills it in for you.
+
+Blueprints built this way can carry component types that Jamf's own blueprint builder does not list
+in its Components library — an Extensible SSO declaration created this way appears in Jamf Pro as a
+proper "Extensible Sso / Configuration" component.
+
+There is currently no graphical DDM builder in this app — settings are authored in the Jamf DDM app
+or by hand, and brought here as JSON.
 
 ### Policies
 

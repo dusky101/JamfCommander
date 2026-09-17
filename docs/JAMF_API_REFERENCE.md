@@ -249,8 +249,44 @@ Request body for create:
 
 `steps` holds 0–10 entries; each step's `components` holds 1–100.
 
-**Verified live (17 Sep 2026, Production (EU), region `eu`):** token, list and get.
-**Not yet exercised against the tenant:** create, update, delete, deploy, undeploy, device groups.
+### Wrapping raw DDM output into a blueprint
+
+A raw Apple declaration is carried by component **`com.jamf.ddm-strict`**. This identifier is **not
+in the enum published in the API reference** — it was recovered from a real deployed blueprint in the
+tenant, and confirmed by creating one through this app. Do not change it on a guess.
+
+```json
+"components": [{
+  "identifier": "com.jamf.ddm-strict",
+  "configuration": {
+    "declarations": [
+      {
+        "kind": "CONFIGURATION",
+        "channelType": "SYSTEM",
+        "type": "com.apple.configuration.extensible-sso",
+        "payload": { }
+      }
+    ]
+  }
+}]
+```
+
+- `kind` — `ASSET` for a `com.apple.asset.*` type, `CONFIGURATION` otherwise.
+- `channelType` — `SYSTEM` (device-wide) or `USER`.
+- `Identifier` and `ServerToken` from an Apple declaration are **dropped**; Jamf generates both and a
+  real deployed blueprint carries neither.
+- Jamf renders the result as its own native component — an extensible-sso declaration showed as
+  "Extensible Sso / Configuration" — **even when that component is absent from the blueprint
+  builder's library**. This route therefore reaches component types the UI does not offer.
+
+The Jamf DDM app exports two different shapes and both are handled in `BlueprintPayload`:
+a **full declaration** (self-describing, carrying `Type` and `Payload`), and a **bare payload**
+(settings only, where the declaration type must be supplied — note extensible-sso's payload has its
+own `Type` key holding `"Redirect"`, which is a payload key, not a declaration type).
+
+**Verified live (17 Sep 2026, Production (EU), region `eu`):** token, list, get, device groups, and
+**create** — including a blueprint built by wrapping raw DDM output.
+**Not yet exercised against the tenant:** update, delete, deploy, undeploy, blueprint-components.
 
 Code: `Services/PlatformAPISession.swift` (token + request building),
 `Services/JamfAPIService+Blueprints.swift` (operations), `Models/BlueprintPayload.swift`
