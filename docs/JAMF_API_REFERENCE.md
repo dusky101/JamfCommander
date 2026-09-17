@@ -181,6 +181,81 @@ retried without pushing the file again.
 - In the Installomator create flow the image is uploaded **once per run** and the resulting id is reused
   for every policy in the batch.
 
+### Blueprints (Platform API Gateway) — a THIRD API, separate credentials
+
+Blueprints are **not** served by the Jamf Pro instance. They sit behind the Platform API Gateway,
+which is a different host, a different credential and a different permission model. A Jamf Pro API
+client cannot call it, and Jamf Pro privileges do not grant its capabilities.
+
+- **Credential:** an integration created in **Jamf Account** (not Jamf Pro), scope level
+  **platform environment**. Capabilities are `{capability}:{action}` — this app needs
+  `blueprints:read`, `blueprints:create`, `blueprints:update`, `blueprints:delete`,
+  `blueprints:deploy` and `device-groups:read`.
+- **Host:** `https://{region}.api.jamfcloud.com`, where region is `us`, `eu` or `apac`.
+  **Tokens are region-locked** — request the token from the same host you call.
+- **Token:** `POST {host}/auth/token`, `application/x-www-form-urlencoded`, body
+  `grant_type=client_credentials&client_id=…&client_secret=…`. Returns `access_token` with
+  `expires_in` of **900 seconds**; `refresh_expires_in` is 0, so re-request rather than refresh.
+- **Every request** carries `Authorization: Bearer …` and `X-Environment-Id: {environment UUID}`.
+  (`X-Tenant-Id` is for tenant-scoped product APIs and is *not* used here.)
+- **403 means one of three things** — missing capability, wrong scope level, or an unrecognised
+  version segment in the path. A typo in `v1` returns 403, not 404.
+
+| Operation | Call |
+| --- | --- |
+| List | `GET blueprints/v1/blueprints?page=&page-size=&sort=&search=` → `{ results, totalCount }` |
+| Create | `POST blueprints/v1/blueprints` → 201 |
+| Get | `GET blueprints/v1/blueprints/{id}` → 200 / 404 |
+| Update | `PATCH blueprints/v1/blueprints/{id}` → 204 |
+| Delete | `DELETE blueprints/v1/blueprints/{id}` → 204 / 404 |
+| Deploy | `POST blueprints/v1/blueprints/{id}/deploy` → 202 / 404 / 409 |
+| Undeploy | `POST blueprints/v1/blueprints/{id}/undeploy` → 202 / 404 |
+| Device groups | `GET device-groups/v1/device-groups?page=&page-size=&sort=&filter=` |
+
+**Traps, all load-bearing:**
+
+- **PATCH requires `Content-Type: application/merge-patch+json`.** Plain `application/json` is
+  answered with 415. Merge-patch semantics mean any key you omit is left unchanged on the server.
+- **PATCH rejects `divisionId`** with 400 `DIVISION_ASSIGNMENT_NOT_ALLOWED`, whether it holds a
+  value or null. A blueprint already assigned to a division cannot be updated at all — 409
+  `DIVISION_PATCH_NOT_ALLOWED`. `BlueprintPayload` strips `divisionId` for this reason.
+- **No `sort` parameter is sent for blueprints.** The reference does not state which fields that
+  endpoint accepts, and an unrecognised one risks rejection, so results are sorted by name locally.
+- **Deploy and undeploy answer 202** — the server starts the work and completes it afterwards.
+  Never report these as finished; re-read `deploymentState` instead.
+- **`scope.deviceGroups` is documented as required with at least one entry**, and holds **platform
+  device group UUIDs** — not the numeric Jamf Pro computer group IDs used everywhere else in this
+  app. The two are not interchangeable.
+- **Component `configuration` objects are free-form** — any Apple payload key is legal. Never
+  round-trip a blueprint through a strict Swift model; `BlueprintPayload` validates and passes
+  through.
+
+Request body for create:
+
+```json
+{
+  "name": "string, required, 1-200 chars",
+  "description": "string or null",
+  "scope": { "deviceGroups": ["<group uuid>"] },
+  "steps": [
+    {
+      "name": "string or null",
+      "components": [ { "identifier": "com.jamf.ddm...", "configuration": { } } ],
+      "activationPredicate": "string or null"
+    }
+  ]
+}
+```
+
+`steps` holds 0–10 entries; each step's `components` holds 1–100.
+
+**Verified live (17 Sep 2026, Production (EU), region `eu`):** token, list and get.
+**Not yet exercised against the tenant:** create, update, delete, deploy, undeploy, device groups.
+
+Code: `Services/PlatformAPISession.swift` (token + request building),
+`Services/JamfAPIService+Blueprints.swift` (operations), `Models/BlueprintPayload.swift`
+(validation), `Models/BlueprintModels.swift` (shapes).
+
 ## Throttling strategy (preserve this)
 
 Bulk "hydration" (fetching detail for every item in a list) must pace itself or Jamf throttles/fails:

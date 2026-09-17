@@ -12,6 +12,7 @@ struct BlueprintCardView: View {
 
     /// Per-item actions, shown in the row's menu. The dashboard confirms them before running.
     var onInspect: () -> Void
+    var onEdit: () -> Void
     var onDeploy: () -> Void
     var onUndeploy: () -> Void
     var onDelete: () -> Void
@@ -82,6 +83,7 @@ struct BlueprintCardView: View {
     private var actionMenu: some View {
         Menu {
             Button("Inspect", systemImage: "magnifyingglass", action: onInspect)
+            Button("Edit", systemImage: "square.and.pencil", action: onEdit)
 
             Divider()
 

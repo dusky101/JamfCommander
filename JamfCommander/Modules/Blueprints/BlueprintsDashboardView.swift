@@ -21,6 +21,7 @@ struct BlueprintsDashboardView: View {
     @State private var searchText = ""
     @State private var loadState: LoadState = .loading
     @State private var inspected: Blueprint?
+    @State private var editor: BlueprintEditorMode?
     @State private var confirmation: ConfirmationData?
     @State private var outcome: OperationOutcome?
     @State private var isWorking = false
@@ -121,6 +122,11 @@ struct BlueprintsDashboardView: View {
         .sheet(item: $inspected) { blueprint in
             BlueprintInspectorView(blueprint: blueprint, api: api)
         }
+        .sheet(item: $editor) { mode in
+            BlueprintEditorSheet(mode: mode, api: api) {
+                Task { await load() }
+            }
+        }
         .sheet(item: $outcome) { outcome in
             OperationResultView(title: outcome.title, results: outcome.results) {
                 self.outcome = nil
@@ -165,6 +171,15 @@ struct BlueprintsDashboardView: View {
             .disabled(isWorking)
             .help("Refresh blueprints")
             .accessibilityLabel("Refresh blueprints")
+
+            Button(action: { editor = .create }) {
+                Image(systemName: "plus")
+                    .frame(height: 18)
+            }
+            .buttonStyle(.plain)
+            .disabled(!api.isPlatformConfigured || isWorking)
+            .help("Create a blueprint from JSON")
+            .accessibilityLabel("New blueprint")
         }
         .padding(12)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
@@ -204,12 +219,14 @@ struct BlueprintsDashboardView: View {
                     BlueprintCardView(
                         blueprint: blueprint,
                         onInspect: { inspected = blueprint },
+                        onEdit: { editor = .edit(blueprint) },
                         onDeploy: { confirm(.deploy, on: blueprint) },
                         onUndeploy: { confirm(.undeploy, on: blueprint) },
                         onDelete: { confirm(.delete, on: blueprint) }
                     )
                     .contextMenu {
                         Button("Inspect", systemImage: "magnifyingglass") { inspected = blueprint }
+                        Button("Edit", systemImage: "square.and.pencil") { editor = .edit(blueprint) }
                         Divider()
                         Button("Deploy", systemImage: "arrow.up.circle") { confirm(.deploy, on: blueprint) }
                         Button("Undeploy", systemImage: "arrow.down.circle") { confirm(.undeploy, on: blueprint) }
@@ -252,6 +269,9 @@ struct BlueprintsDashboardView: View {
             Label("No Blueprints", systemImage: "square.stack.3d.up")
         } description: {
             Text("This platform environment has no blueprints yet.")
+        } actions: {
+            Button("New Blueprint") { editor = .create }
+                .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

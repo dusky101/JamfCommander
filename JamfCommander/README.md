@@ -63,6 +63,30 @@ Recommended privilege areas:
 
 Use the least-privileged Jamf API role that supports your workflow.
 
+### Platform API access (Blueprints only)
+
+The **Blueprints** module does not use the Jamf Pro API client above. Blueprints live behind Jamf's
+Platform API Gateway, which needs its own integration:
+
+1. Sign in to **Jamf Account** (not Jamf Pro) and choose **Integrations**.
+2. **Create integration**, set the scope level to **Platform environment**, and select the
+   environment you want to manage.
+3. Grant **Blueprints** (Read, Create, Update, Delete, Deploy) and **Device groups → Read**.
+4. Click **Create integration** and copy the **client secret immediately** — it is shown once, and
+   regenerating it is the only way to replace it. Integrations expire after six months.
+5. Open the integration and click the **environment pill** to copy the **environment ID**.
+
+Enter the region, environment ID, client ID and secret under **Settings → Platform API —
+Blueprints**, then use **Test Connection**.
+
+Three different UUIDs are involved and they are easy to confuse: the **environment ID** (the
+platform environment), the **client ID** (the integration), and the **tenant ID** (the Jamf Pro
+instance, offered by a "Copy ID" button in Jamf Account). Blueprints uses the first two; the tenant
+ID is not used by this app.
+
+The region must match where your instances are hosted — access tokens are region-locked, and a
+token from the wrong region is rejected with a 401.
+
 ## Configuration
 
 Open the app and choose **Settings**. Enter:
@@ -136,6 +160,38 @@ You can:
 - Export detailed profile data to CSV.
 
 Profile clones are named `Copy of [Original Name]`. Clone options include stripping scope so the cloned profile is not deployed immediately.
+
+### Blueprints
+
+Declarative device management blueprints, listed from the platform environment configured under
+**Settings → Platform API — Blueprints**. Until those credentials are set the module says so and
+offers a button straight to Settings.
+
+- **List** every blueprint with its name, description, last-updated date and the deployment state
+  the server reports (for example `Deployed` or `Not Deployed`).
+- **Search** across name and description.
+- **Inspect** a blueprint to see its overview beside its complete definition as JSON. The definition
+  is shown verbatim rather than parsed into fields, because a component's `configuration` may carry
+  any Apple payload key. Copy it with the button in the definition pane.
+- **Create** with the **+** button. Type or paste the JSON, or load it from a `.json` file — the
+  file's contents appear in the editor where you can adjust them before sending. Server-managed
+  fields (`id`, `created`, `updated`, `deploymentState`) are stripped, so a definition copied from
+  an existing blueprint can be pasted straight in as a starting point.
+- **Scope** the blueprint one of three ways: leave the `scope` in your JSON untouched, pick device
+  groups from the environment, or send it unscoped. Note that Jamf documents at least one device
+  group as required, so an unscoped blueprint may be refused — whatever the server answers is
+  reported in full.
+- **Edit** an existing blueprint. Its current definition is loaded into the editor, and only the
+  keys you leave in the JSON are changed; anything you remove stays as it is on the server.
+- **Deploy / Undeploy / Delete** from the row menu, each behind a confirmation. Deploy and undeploy
+  are *started* by the server and finish afterwards, so the result is reported as requested rather
+  than completed — the deployment state in the list is what confirms the outcome.
+
+Blueprints are created **undeployed**. Creating one does not apply anything to a device; use
+**Deploy** when you are satisfied with it.
+
+There is currently no graphical DDM builder — blueprints are authored as JSON here. Jamf's own
+blueprint builder in Jamf Pro remains the place to construct one visually.
 
 ### Policies
 
