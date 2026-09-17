@@ -153,6 +153,9 @@ struct ContentView: View {
                 refreshAction: refreshAllData
             )
 
+        case .blueprints:
+            BlueprintsDashboardView(api: api, showConfigSheet: $showConfigSheet)
+
         case .computers:
             ComputersDashboardView(api: api)
 

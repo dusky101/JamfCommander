@@ -11,6 +11,9 @@ enum AppModule: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case policies = "Policies"
     case profiles = "Profiles"
+    /// Declarative device management blueprints. Served by the Platform API Gateway, which uses
+    /// its own credentials — see PlatformAPISession.
+    case blueprints = "Blueprints"
     case computers = "Computers"
     case packages = "Packages" // Added Packages
     /// Uploading a package the administrator supplies, for software Installomator has no label for.
@@ -23,6 +26,7 @@ enum AppModule: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "square.grid.2x2.fill"
         case .profiles: return "doc.text.fill"
+        case .blueprints: return "square.stack.3d.up.fill"
         case .computers: return "desktopcomputer"
         case .scripts: return "applescript.fill"
         case .policies: return "scroll.fill"
