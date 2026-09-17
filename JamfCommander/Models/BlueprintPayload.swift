@@ -42,7 +42,7 @@ nonisolated enum DeclarationChannel: String, CaseIterable, Identifiable, Sendabl
 // MARK: - Scope selection
 
 /// What the create/edit sheet should do with `scope.deviceGroups`.
-enum BlueprintScopeSelection: Equatable, Sendable {
+nonisolated enum BlueprintScopeSelection: Equatable, Sendable {
     /// Leave whatever the supplied JSON already contains.
     case keepExisting
     /// Replace the scope with these platform device group UUIDs.
@@ -57,7 +57,7 @@ enum BlueprintScopeSelection: Equatable, Sendable {
 
 // MARK: - Errors
 
-enum BlueprintPayloadError: LocalizedError, Sendable {
+nonisolated enum BlueprintPayloadError: LocalizedError, Sendable {
     case empty
     case notJSON(String)
     case notAnObject
@@ -128,7 +128,7 @@ enum BlueprintPayloadError: LocalizedError, Sendable {
 
 // MARK: - Payload building
 
-enum BlueprintPayload {
+nonisolated enum BlueprintPayload {
 
     /// Fields the server owns. Sending them back is either rejected or meaningless, so they are
     /// removed — which is what makes "copy a blueprint's JSON from the inspector and paste it
