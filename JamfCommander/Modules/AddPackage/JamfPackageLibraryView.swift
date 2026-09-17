@@ -29,23 +29,15 @@ struct JamfPackageLibraryView: View {
     let emptyDetail: String
 
     var body: some View {
-        VStack(spacing: 0) {
-            searchBar
-
-            if scanFailed {
-                banner(
-                    icon: "exclamationmark.triangle.fill",
-                    tint: .orange,
-                    text: "Could not work out which packages are attached to a policy. The list below is complete, but the deployed state is unknown."
-                )
-            } else if isScanning {
-                banner(
-                    icon: "clock.arrow.circlepath",
-                    tint: .secondary,
-                    text: "Checking which packages are attached to a policy. Every policy has to be read for this, so it takes a moment."
-                )
-            }
-
+        // The search field and the scan banner are attached as a top safe-area inset rather than
+        // stacked above the list in a VStack.
+        //
+        // As VStack siblings they counted towards this view's minimum height. When the banner
+        // appeared mid-scan the module's content exceeded the window, and the overflow was split
+        // evenly top and bottom: the "Package Manager" header and search field vanished off the
+        // top, and the sidebar was sliced under the traffic lights. An inset is laid out around
+        // the content instead of adding to it, so it cannot push the module past the window.
+        Group {
             if filteredPackages.isEmpty {
                 emptyState
             } else {
@@ -64,6 +56,26 @@ struct JamfPackageLibraryView: View {
                     }
                     .padding()
                     .padding(.bottom, 40)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                searchBar
+
+                if scanFailed {
+                    banner(
+                        icon: "exclamationmark.triangle.fill",
+                        tint: .orange,
+                        text: "Could not work out which packages are attached to a policy. The list below is complete, but the deployed state is unknown."
+                    )
+                } else if isScanning {
+                    banner(
+                        icon: "clock.arrow.circlepath",
+                        tint: .secondary,
+                        text: "Checking which packages are attached to a policy. Every policy has to be read for this, so it takes a moment."
+                    )
                 }
             }
         }
@@ -130,7 +142,6 @@ struct JamfPackageLibraryView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(Color(nsColor: .windowBackgroundColor))
-        .zIndex(1)
     }
 
     private func banner(icon: String, tint: Color, text: String) -> some View {
@@ -139,6 +150,11 @@ struct JamfPackageLibraryView: View {
                 .foregroundColor(tint)
             Text(text)
                 .font(.caption)
+                // Bounded deliberately. With fixedSize alone this wraps to whatever width it is
+                // offered, and when that measurement happens before the width is known it grows to
+                // dozens of lines — which is what pushed the whole split view past the window
+                // height and clipped the header and sidebar during a scan.
+                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }

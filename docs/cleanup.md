@@ -101,6 +101,39 @@ corrected and can be copied from.
 fine today because its content is narrow — confirm visually before changing it, and if it is fine,
 still convert it to min/ideal/max so it cannot regress when someone adds a wider control.
 
+## Confirmed defect 3 — unbounded text height clips the whole window
+
+**`.fixedSize(horizontal: false, vertical: true)` on a `Text` with no `lineLimit` can grow without
+bound.** If the text is measured before its width is resolved, it wraps at a tiny width and reports
+an enormous height. That height propagates up: the module's content exceeds the window, and the
+overflow is **split evenly top and bottom**, so the header scrolls off the top and the sidebar is
+sliced under the traffic lights.
+
+Seen in `Modules/AddPackage/JamfPackageLibraryView.swift`: a one-sentence scan banner made the
+`NavigationSplitView` report a **1320pt minimum height inside a 950pt window**, laid out at y = −99.
+
+**How to spot it.** The giveaway is that the window toolbar stays correct while *both* the sidebar
+and the detail shift up together — the toolbar is AppKit chrome, the panes are the SwiftUI content
+view, so that pattern means the content view is taller than the window rather than anything being
+individually misplaced.
+
+**How to measure it** rather than guess (this took several wrong theories to reach):
+
+```
+osascript -e 'tell application "System Events" to tell process "JamfCommander"
+  set sg to splitter group 1 of group 1 of window 1
+  set s to size of sg
+  set p to position of sg
+  return ((item 2 of p) as text) & " " & ((item 2 of s) as text)
+end tell'
+```
+
+A negative y, or a height larger than the window, confirms it. Compare the same reading in a state
+that renders correctly to isolate what grows.
+
+**The rule:** any `Text` using `.fixedSize(horizontal: false, vertical: true)` needs a `lineLimit`
+unless it is genuinely meant to grow without limit. Audit every occurrence.
+
 ## Areas to audit
 
 Work through these. This list is where to look, **not** a list of known-broken screens — each needs

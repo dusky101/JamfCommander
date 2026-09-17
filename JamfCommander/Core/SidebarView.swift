@@ -41,6 +41,24 @@ struct SidebarView: View {
     @Binding var showConfigSheet: Bool
     
     var body: some View {
+        // The module list scrolls and the footer stays pinned. As one plain VStack the whole
+        // sidebar overflowed a short window and was clipped at BOTH ends — items disappeared under
+        // the traffic lights while Settings and Help fell off the bottom.
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView {
+                moduleList
+            }
+            .scrollBounceBehavior(.basedOnSize)
+
+            Divider()
+
+            footer
+        }
+        .padding(.horizontal)
+        .padding(.bottom, 12)
+    }
+
+    private var moduleList: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Main Navigation
             ForEach(AppModule.allCases) { module in
@@ -62,12 +80,17 @@ struct SidebarView: View {
                     .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+                // The label is an Image plus a Text inside an HStack, which exposes no
+                // accessibility name on its own — VoiceOver read nothing for any of these.
+                .accessibilityLabel(module.rawValue)
+                .accessibilityAddTraits(currentModule == module ? [.isButton, .isSelected] : .isButton)
             }
-            
-            Spacer()
-            
-            Divider()
-            
+        }
+        .padding(.vertical)
+    }
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 0) {
             // Settings & Help
             Button(action: { showConfigSheet = true }) {
                 HStack {
@@ -90,6 +113,6 @@ struct SidebarView: View {
             .buttonStyle(.plain)
             .help("Jamf API setup, the Installomator prerequisite, and what each section does")
         }
-        .padding()
+        .padding(.top, 4)
     }
 }

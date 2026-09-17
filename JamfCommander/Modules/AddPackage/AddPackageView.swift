@@ -66,6 +66,47 @@ struct AddPackageView: View {
             Divider()
             content
         }
+        .toolbar {
+            // These were fixed-width Pickers in the header row, which could not compress: below
+            // roughly 1100pt the row's minimum exceeded its pane, the title wrapped onto three
+            // lines and the content overflowed the right edge. Toolbar items collapse into an
+            // overflow menu instead of overflowing.
+            if tab.isLibrary {
+                ToolbarItem(placement: .primaryAction) {
+                    Picker("Group", selection: $libraryGroupMode) {
+                        ForEach(PackageGroupMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .help("Group the list alphabetically or by category")
+                }
+            }
+
+            ToolbarItem(placement: .principal) {
+                Picker("View", selection: $tab) {
+                    Text(AddPackageTab.new.rawValue).tag(AddPackageTab.new)
+                    Text(uploadedTabLabel).tag(AddPackageTab.uploaded)
+                    Text(deployedTabLabel).tag(AddPackageTab.deployed)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .help("New uploads a package; Uploaded lists Jamf's package library; Deployed lists only the packages a policy installs.")
+            }
+
+            if tab.isLibrary {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Task { await reloadLibrary() }
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .help("Reload the package library")
+                    .disabled(isLoadingPackages || isScanningUsage)
+                }
+            }
+        }
         .task { await loadReferenceData() }
         .onChange(of: tab) {
             // The library — and especially the policy scan behind it — is only worth fetching once
@@ -82,51 +123,24 @@ struct AddPackageView: View {
                 Text("Package Manager")
                     .font(.title2)
                     .fontWeight(.bold)
+                    .lineLimit(1)
                 Text(subtitle)
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .lineLimit(2)
             }
 
-            Spacer()
-
-            if tab.isLibrary {
-                Picker("Group", selection: $libraryGroupMode) {
-                    ForEach(PackageGroupMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 140)
-            }
-
-            Picker("View", selection: $tab) {
-                Text(AddPackageTab.new.rawValue).tag(AddPackageTab.new)
-                Text(uploadedTabLabel).tag(AddPackageTab.uploaded)
-                Text(deployedTabLabel).tag(AddPackageTab.deployed)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(minWidth: 320)
-            .help("New uploads a package; Uploaded lists Jamf's package library; Deployed lists only the packages a policy installs.")
-
-            if tab.isLibrary {
-                Button {
-                    Task { await reloadLibrary() }
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                .disabled(isLoadingPackages || isScanningUsage)
-            }
+            Spacer(minLength: 12)
 
             if let jamfProVersion, tab == .new {
                 Text("Jamf Pro \(jamfProVersion)")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .liquidGlassCapsule()
+                    .fixedSize()
             }
         }
         .padding()

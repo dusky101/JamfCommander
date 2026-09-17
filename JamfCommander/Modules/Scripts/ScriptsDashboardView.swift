@@ -27,39 +27,10 @@ struct ScriptsDashboardView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Search Bar
-            HStack {
-                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                TextField("Search scripts...", text: $searchText)
-                    .textFieldStyle(.plain)
-                if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
-                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
-                    }.buttonStyle(.plain)
-                }
-                
-                Spacer()
-                
-                // Export Button
-                Button(action: { exportScripts() }) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(height: 18)
-                }
-                .buttonStyle(.plain)
-                .help("Export to CSV")
-                
-                // Refresh Button
-                Button(action: { Task { await refreshData() } }) {
-                    Image(systemName: "arrow.clockwise")
-                        .frame(height: 18)
-                }
-                .buttonStyle(.plain)
-                .help("Refresh Data")
-            }
-            .padding(12)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
-            .overlay(Divider(), alignment: .bottom)
-            
+            // Search and the actions live in the window toolbar rather than a control row inside
+            // the content, so the title bar earns its space and every module's controls sit in the
+            // same place. See docs/cleanup.md.
+            //
             // Content
             if isLoading {
                 ProgressView("Loading Scripts...")
@@ -79,6 +50,28 @@ struct ScriptsDashboardView: View {
                     }
                     .padding()
                 }
+            }
+        }
+        .searchable(text: $searchText, prompt: "Search scripts")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    exportScripts()
+                } label: {
+                    Label("Export CSV", systemImage: "square.and.arrow.up")
+                }
+                .help("Export to CSV")
+                .disabled(scripts.isEmpty)
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await refreshData() }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .help("Refresh scripts")
+                .disabled(isLoading)
             }
         }
         .task {
