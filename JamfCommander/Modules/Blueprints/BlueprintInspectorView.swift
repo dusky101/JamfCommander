@@ -34,7 +34,7 @@ struct BlueprintInspectorView: View {
 
             content
         }
-        .frame(width: 920, height: 680)
+        .frame(minWidth: 780, idealWidth: 960, minHeight: 540, idealHeight: 700)
         .liquidGlass(cornerRadius: 16)
         .task {
             await loadDefinition()
@@ -98,11 +98,11 @@ struct BlueprintInspectorView: View {
         } else {
             HSplitView {
                 overviewPane
-                    .frame(width: 300)
+                    .frame(minWidth: 280, idealWidth: 330, maxWidth: 420)
                     .frame(maxHeight: .infinity)
 
                 JSONEditorView(title: "Definition", text: .constant(definition))
-                    .frame(minWidth: 460, maxWidth: .infinity)
+                    .frame(minWidth: 400, maxWidth: .infinity)
             }
         }
     }

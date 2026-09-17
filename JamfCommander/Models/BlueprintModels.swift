@@ -177,3 +177,79 @@ nonisolated extension String {
     /// Nil for an empty string, so `??` can fall through to a placeholder.
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
+
+// MARK: - Components
+
+/// One component from `GET blueprints/v1/blueprint-components`.
+///
+/// Decoded defensively. The published reference does not show this endpoint's response body, and
+/// the component catalogue is tenant- and version-dependent — Jamf ships new components (for
+/// example a native Extensible SSO component for macOS 27) ahead of the API reference listing them.
+/// So the identifier is accepted under `identifier` or `id`, and the label under `name`,
+/// `displayName` or `title`, rather than assuming one spelling. The raw JSON is always available
+/// alongside this, so nothing is hidden if the decode misses a field.
+nonisolated struct BlueprintComponent: Identifiable, Decodable, Sendable, Hashable {
+    let identifier: String
+    let name: String?
+    let description: String?
+
+    var id: String { identifier }
+
+    /// Label for the list, falling back to the identifier when no friendly name comes back.
+    var displayTitle: String {
+        name?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? identifier
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case identifier, id, name, displayName, title, description, summary
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        if let value = try? container.decode(String.self, forKey: .identifier) {
+            identifier = value
+        } else if let value = try? container.decode(String.self, forKey: .id) {
+            identifier = value
+        } else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .identifier,
+                in: container,
+                debugDescription: "No component identifier found under 'identifier' or 'id'."
+            )
+        }
+
+        name = (try? container.decode(String.self, forKey: .name))
+            ?? (try? container.decode(String.self, forKey: .displayName))
+            ?? (try? container.decode(String.self, forKey: .title))
+
+        description = (try? container.decode(String.self, forKey: .description))
+            ?? (try? container.decode(String.self, forKey: .summary))
+    }
+}
+
+/// Envelope for the component list. Tolerates a bare array as well as `results` or `components`,
+/// since the reference does not publish this response's shape.
+nonisolated struct BlueprintComponentListResponse: Decodable, Sendable {
+    let results: [BlueprintComponent]
+    let totalCount: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case results, components, totalCount
+    }
+
+    init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(),
+           let array = try? single.decode([BlueprintComponent].self) {
+            results = array
+            totalCount = array.count
+            return
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        results = (try? container.decode([BlueprintComponent].self, forKey: .results))
+            ?? (try? container.decode([BlueprintComponent].self, forKey: .components))
+            ?? []
+        totalCount = try? container.decode(Int.self, forKey: .totalCount)
+    }
+}

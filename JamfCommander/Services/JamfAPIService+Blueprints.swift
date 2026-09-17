@@ -221,3 +221,73 @@ extension JamfAPIService {
         }
     }
 }
+
+// MARK: - Blueprint components
+
+extension JamfAPIService {
+
+    /// Note the path segment is `blueprint-components`, not `components`.
+    private static let componentsPath = "blueprints/v1/blueprint-components"
+
+    /// The component catalogue for this environment.
+    ///
+    /// This is what a blueprint's `steps[].components[].identifier` must be one of, and it is
+    /// tenant- and version-dependent rather than fixed — which is why the app reads it rather than
+    /// hard-coding the list published in the API reference.
+    func fetchBlueprintComponents() async throws -> [BlueprintComponent] {
+        let session = try await preparedPlatformSession()
+
+        var collected: [BlueprintComponent] = []
+        var page = 0
+
+        while page < Self.platformMaxPages {
+            let response = try await session.sendDecoding(
+                BlueprintComponentListResponse.self,
+                method: "GET",
+                path: Self.componentsPath,
+                query: [
+                    URLQueryItem(name: "page", value: String(page)),
+                    URLQueryItem(name: "page-size", value: String(Self.platformPageSize))
+                ]
+            )
+
+            collected.append(contentsOf: response.results)
+
+            if response.results.count < Self.platformPageSize { break }
+            if let total = response.totalCount, collected.count >= total { break }
+
+            page += 1
+            try await Task.sleep(nanoseconds: Self.platformPageDelay)
+        }
+
+        return collected.sorted {
+            $0.displayTitle.localizedCaseInsensitiveCompare($1.displayTitle) == .orderedAscending
+        }
+    }
+
+    /// The whole component-list response as text, so anything the decoder did not model is still
+    /// visible rather than silently dropped.
+    func fetchBlueprintComponentsRawJSON() async throws -> String {
+        let session = try await preparedPlatformSession()
+        let data = try await session.send(
+            method: "GET",
+            path: Self.componentsPath,
+            query: [
+                URLQueryItem(name: "page", value: "0"),
+                URLQueryItem(name: "page-size", value: String(Self.platformPageSize))
+            ]
+        )
+        return BlueprintPayload.prettyPrinted(data)
+    }
+
+    /// One component's full definition, including whatever schema it publishes for its
+    /// `configuration` object.
+    func fetchBlueprintComponentJSON(identifier: String) async throws -> String {
+        let session = try await preparedPlatformSession()
+        let data = try await session.send(
+            method: "GET",
+            path: "\(Self.componentsPath)/\(identifier)"
+        )
+        return BlueprintPayload.prettyPrinted(data)
+    }
+}

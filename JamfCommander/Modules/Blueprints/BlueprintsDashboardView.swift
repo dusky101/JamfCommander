@@ -22,6 +22,7 @@ struct BlueprintsDashboardView: View {
     @State private var loadState: LoadState = .loading
     @State private var inspected: Blueprint?
     @State private var editor: BlueprintEditorMode?
+    @State private var isShowingComponents = false
     @State private var confirmation: ConfirmationData?
     @State private var outcome: OperationOutcome?
     @State private var isWorking = false
@@ -122,6 +123,9 @@ struct BlueprintsDashboardView: View {
         .sheet(item: $inspected) { blueprint in
             BlueprintInspectorView(blueprint: blueprint, api: api)
         }
+        .sheet(isPresented: $isShowingComponents) {
+            BlueprintComponentsSheet(api: api)
+        }
         .sheet(item: $editor) { mode in
             BlueprintEditorSheet(mode: mode, api: api) {
                 Task { await load() }
@@ -171,6 +175,15 @@ struct BlueprintsDashboardView: View {
             .disabled(isWorking)
             .help("Refresh blueprints")
             .accessibilityLabel("Refresh blueprints")
+
+            Button(action: { isShowingComponents = true }) {
+                Image(systemName: "puzzlepiece.extension")
+                    .frame(height: 18)
+            }
+            .buttonStyle(.plain)
+            .disabled(!api.isPlatformConfigured || isWorking)
+            .help("Browse the blueprint components this environment offers")
+            .accessibilityLabel("Blueprint components")
 
             Button(action: { editor = .create }) {
                 Image(systemName: "plus")

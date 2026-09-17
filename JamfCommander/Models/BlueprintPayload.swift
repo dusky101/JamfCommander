@@ -40,6 +40,7 @@ enum BlueprintPayloadError: LocalizedError, Sendable {
     case missingScope
     case scopeNotAnObject
     case deviceGroupsNotStrings
+    case looksLikeAppleDeclaration(String?)
     case missingSteps
     case stepsNotAnArray
     case tooManySteps(Int)
@@ -67,6 +68,9 @@ enum BlueprintPayloadError: LocalizedError, Sendable {
             return "\"scope\" must be an object containing a \"deviceGroups\" array."
         case .deviceGroupsNotStrings:
             return "\"scope.deviceGroups\" must be an array of device group UUID strings."
+        case .looksLikeAppleDeclaration(let type):
+            let named = type.map { " (\($0))" } ?? ""
+            return "That looks like an Apple declaration\(named), not a blueprint. A blueprint is an envelope with a name, a scope and steps, and each step holds components — a raw declaration goes inside one, through the Custom Declarations component. Build one in Jamf Pro's blueprint builder, then copy its JSON from this app's inspector to use as a template."
         case .missingSteps:
             return "The JSON has no \"steps\". Jamf requires the key, though an empty array is accepted."
         case .stepsNotAnArray:
@@ -109,9 +113,16 @@ enum BlueprintPayload {
     ///
     /// Every field Jamf documents as required is checked here so an obvious mistake is caught
     /// before it reaches production, rather than after a round trip.
-    static func makeCreateBody(json: String, scope: BlueprintScopeSelection) throws -> Data {
+    static func makeCreateBody(
+        json: String,
+        scope: BlueprintScopeSelection,
+        name: String? = nil,
+        description: String? = nil
+    ) throws -> Data {
         var object = try parseObject(json)
+        try rejectAppleDeclaration(object)
         stripServerManagedKeys(&object)
+        applyIdentity(name: name, description: description, to: &object)
         applyScope(scope, to: &object)
 
         try validateName(in: object, required: true)
@@ -127,9 +138,16 @@ enum BlueprintPayload {
     ///
     /// The endpoint takes `application/merge-patch+json`, so anything the JSON leaves out is
     /// left untouched on the server. Only the keys actually present are validated.
-    static func makeUpdateBody(json: String, scope: BlueprintScopeSelection) throws -> Data {
+    static func makeUpdateBody(
+        json: String,
+        scope: BlueprintScopeSelection,
+        name: String? = nil,
+        description: String? = nil
+    ) throws -> Data {
         var object = try parseObject(json)
+        try rejectAppleDeclaration(object)
         stripServerManagedKeys(&object)
+        applyIdentity(name: name, description: description, to: &object)
         applyScope(scope, to: &object)
 
         try validateName(in: object, required: false)
@@ -162,6 +180,14 @@ enum BlueprintPayload {
         guard let object = try? parseObject(json) else { return nil }
         guard let name = object["name"] as? String else { return nil }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The blueprint description in a JSON document, if it has one.
+    static func description(in json: String) -> String? {
+        guard let object = try? parseObject(json) else { return nil }
+        guard let value = object["description"] as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
 
@@ -207,6 +233,34 @@ enum BlueprintPayload {
     private static func stripServerManagedKeys(_ object: inout [String: Any]) {
         for key in serverManagedKeys {
             object.removeValue(forKey: key)
+        }
+    }
+
+    /// Writes the name and description supplied in the sheet's fields over whatever the JSON holds.
+    /// A blank field is left alone, so the JSON's own value survives.
+    private static func applyIdentity(name: String?, description: String?, to object: inout [String: Any]) {
+        if let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            object["name"] = name
+        }
+        if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !description.isEmpty {
+            object["description"] = description
+        }
+    }
+
+    /// Catches a raw Apple declaration pasted in place of a blueprint.
+    ///
+    /// The two are easy to confuse: both are DDM JSON, but a declaration is what goes *inside* a
+    /// blueprint's Custom Declarations component. Without this the failure surfaces as "needs a
+    /// name", which sends the administrator looking for the wrong problem.
+    private static func rejectAppleDeclaration(_ object: [String: Any]) throws {
+        guard object["steps"] == nil, object["name"] == nil else { return }
+
+        if let type = object["Type"] as? String, type.hasPrefix("com.apple.") {
+            throw BlueprintPayloadError.looksLikeAppleDeclaration(type)
+        }
+        if object["Payload"] != nil && object["Identifier"] != nil {
+            throw BlueprintPayloadError.looksLikeAppleDeclaration(object["Type"] as? String)
         }
     }
 

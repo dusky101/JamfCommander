@@ -70,6 +70,37 @@ uses that header shape and can be copied from.
 Changing `InspectorShell` touches every inspector, so **check each one visually afterwards** —
 Profiles, Policies, Computers, Packages — and do not let the fix regress the ones that look fine now.
 
+## Confirmed defect 2 — panes clipped at both edges
+
+**A hard `.frame(width:)` on an `HSplitView` child does not constrain its content.** If the content
+inside demands more width than that, the pane overflows and is **clipped at both edges** — the left
+edge of the content disappears off the side of the pane, and the right edge is cut at the divider.
+
+Seen in the Blueprints editor sheet: a 330pt side pane whose content needed more, so "Definition"
+rendered as "efinition", the file button lost its left edge, and "Scope" rendered as "cope".
+
+**The usual culprit is a segmented `Picker`.** Its intrinsic width is the sum of its segment labels
+and it cannot compress below that, so a three-option segmented picker with wordy labels will force
+any narrow pane wider than its slot.
+
+**The rule:**
+
+- Size `HSplitView` children with `.frame(minWidth:idealWidth:maxWidth:)`, never a fixed
+  `.frame(width:)`.
+- In a pane narrower than ~400pt, prefer `.pickerStyle(.radioGroup)` (vertical, compresses) or a
+  `Menu` over `.segmented`.
+- Give sheets `.frame(minWidth:idealWidth:minHeight:idealHeight:)` rather than a fixed
+  `width`/`height`, so the user can resize out of a clash instead of being stuck in one.
+- Add `.lineLimit(1)` to button labels in narrow panes.
+
+`Modules/Blueprints/BlueprintEditorSheet.swift` and `BlueprintInspectorView.swift` have been
+corrected and can be copied from.
+
+**Check the same pattern elsewhere.** `Modules/Scripts/ScriptInspectorView.swift` applies
+`.frame(width: 320)` to its left `HSplitView` child, which is the same shape of code. It may be
+fine today because its content is narrow — confirm visually before changing it, and if it is fine,
+still convert it to min/ideal/max so it cannot regress when someone adds a wider control.
+
 ## Areas to audit
 
 Work through these. This list is where to look, **not** a list of known-broken screens — each needs

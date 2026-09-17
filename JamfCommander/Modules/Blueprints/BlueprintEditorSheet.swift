@@ -45,6 +45,8 @@ struct BlueprintEditorSheet: View {
     // MARK: State
 
     @State private var json = ""
+    @State private var nameField = ""
+    @State private var descriptionField = ""
     @State private var scopeChoice: ScopeChoice = .keepExisting
     @State private var selectedGroupIDs: Set<String> = []
 
@@ -90,6 +92,12 @@ struct BlueprintEditorSheet: View {
 
     private var isEditing: Bool { mode.existing != nil }
 
+    /// The name that will actually be sent: the field wins, falling back to the JSON's own value.
+    private var effectiveName: String? {
+        let typed = nameField.trimmingCharacters(in: .whitespacesAndNewlines)
+        return typed.isEmpty ? summary.name : typed
+    }
+
     private var title: String {
         if let existing = mode.existing {
             return "Edit “\(existing.name)”"
@@ -127,11 +135,11 @@ struct BlueprintEditorSheet: View {
             } else {
                 HSplitView {
                     sidePane
-                        .frame(width: 330)
+                        .frame(minWidth: 320, idealWidth: 380, maxWidth: 460)
                         .frame(maxHeight: .infinity)
 
                     editorPane
-                        .frame(minWidth: 460, maxWidth: .infinity)
+                        .frame(minWidth: 420, maxWidth: .infinity)
                 }
             }
 
@@ -139,7 +147,7 @@ struct BlueprintEditorSheet: View {
 
             footer
         }
-        .frame(width: 980, height: 720)
+        .frame(minWidth: 860, idealWidth: 1040, minHeight: 560, idealHeight: 740)
         .liquidGlass(cornerRadius: 16)
         .commanderConfirmation(data: $confirmation)
         .task {
@@ -225,11 +233,13 @@ struct BlueprintEditorSheet: View {
                 .foregroundStyle(.secondary)
         } else {
             HStack(spacing: 10) {
-                if let name = summary.name {
+                if let name = effectiveName {
                     Label(name, systemImage: "tag")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(-1)
                 }
                 if let stepCount = summary.stepCount {
                     Label(
@@ -267,10 +277,40 @@ struct BlueprintEditorSheet: View {
     private var sidePane: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                identitySection
                 sourceSection
                 scopeSection
             }
             .padding()
+        }
+    }
+
+    private var identitySection: some View {
+        InfoSection(title: "Blueprint", icon: "tag") {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Name")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("Required", text: $nameField)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isSaving)
+                    .accessibilityLabel("Blueprint name")
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Description")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("Optional", text: $descriptionField)
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(isSaving)
+                    .accessibilityLabel("Blueprint description")
+            }
+
+            Text("Written into the JSON when you save. Leave blank to keep whatever the JSON already has.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -282,15 +322,18 @@ struct BlueprintEditorSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Button(action: chooseFile) {
-                Label("Choose JSON File...", systemImage: "folder")
+                Label("Choose File...", systemImage: "folder")
+                    .lineLimit(1)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .disabled(isSaving)
+            .help("Load a .json file into the editor")
 
             HStack(spacing: 8) {
                 Button(action: pasteFromClipboard) {
                     Label("Paste", systemImage: "doc.on.clipboard")
+                        .lineLimit(1)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -298,6 +341,7 @@ struct BlueprintEditorSheet: View {
 
                 Button(action: { json = "" }) {
                     Label("Clear", systemImage: "trash")
+                        .lineLimit(1)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -326,7 +370,7 @@ struct BlueprintEditorSheet: View {
                 }
             }
             .labelsHidden()
-            .pickerStyle(.segmented)
+            .pickerStyle(.radioGroup)
             .disabled(isSaving)
             .accessibilityLabel("How to scope this blueprint")
 
@@ -451,6 +495,15 @@ struct BlueprintEditorSheet: View {
             stepCount: BlueprintPayload.stepCount(in: text),
             groupIDsInJSON: BlueprintPayload.deviceGroupIDs(in: text)
         )
+
+        // Seed the fields from the document so an existing name is visible and editable, without
+        // overwriting anything already typed.
+        if nameField.isEmpty, let name = summary.name {
+            nameField = name
+        }
+        if descriptionField.isEmpty, let existing = BlueprintPayload.description(in: text) {
+            descriptionField = existing
+        }
     }
 
     private func chooseFile() {
@@ -529,14 +582,24 @@ struct BlueprintEditorSheet: View {
         let body: Data
         do {
             body = isEditing
-                ? try BlueprintPayload.makeUpdateBody(json: json, scope: scopeSelection)
-                : try BlueprintPayload.makeCreateBody(json: json, scope: scopeSelection)
+                ? try BlueprintPayload.makeUpdateBody(
+                    json: json,
+                    scope: scopeSelection,
+                    name: nameField,
+                    description: descriptionField
+                  )
+                : try BlueprintPayload.makeCreateBody(
+                    json: json,
+                    scope: scopeSelection,
+                    name: nameField,
+                    description: descriptionField
+                  )
         } catch {
             saveError = error.localizedDescription
             return
         }
 
-        let name = summary.name ?? mode.existing?.name ?? "this blueprint"
+        let name = effectiveName ?? mode.existing?.name ?? "this blueprint"
 
         confirmation = ConfirmationData(
             title: isEditing ? "Save Changes?" : "Create Blueprint?",
