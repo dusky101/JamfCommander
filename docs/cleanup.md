@@ -46,6 +46,33 @@ The ones that bite this work hardest, as a reminder only:
 - **Do not restyle wholesale.** This is a clash-and-overflow fix, not a redesign. If a screen looks
   dated but nothing collides, leave it alone and note it instead.
 
+## Status at 17 September 2026
+
+Work has started. Do not re-investigate the items marked fixed.
+
+**Fixed and verified on screen:**
+
+- Sidebar clipped at both ends in a short window — it was one `VStack` with no `ScrollView`.
+  Module list now scrolls, footer pinned. (`Core/SidebarView.swift`)
+- Sidebar buttons exposed no accessibility name at all; VoiceOver read nothing. Labels added.
+- Add PKG content overflowing the window during a package scan and on the Deployed tab's first
+  load — defect 3 below. Three `Text` views bounded in `Modules/AddPackage/`.
+- Add PKG header controls moved to a native toolbar; its `Picker`s had fixed widths that stopped
+  the row compressing below ~1100pt.
+- Scripts moved to a native toolbar as the pilot (`.searchable` plus `ToolbarItem`s).
+
+**Outstanding:**
+
+- Five modules still have in-content control rows: Blueprints, Computers, Packages, Profiles,
+  Policies. Follow the Scripts and Add PKG pattern; keep `FilterBar` chips inline on the last two.
+- Dashboard stat cards wrap 3 + 1 at ~1440pt, stranding a card, and "Export All" is styled as a
+  stat tile although it is an action — it belongs in the toolbar.
+- `InspectorShell` `ZStack` header — defect 1 below, untouched.
+- One unexplained observation: after Add PKG overflowed, Scripts reported the same wrong pane
+  height even though it is clean in isolation, as though the pane did not recover on module
+  switch. Not reproducible from a clean launch. If a module looks broken immediately after an
+  Add PKG scan, this is why.
+
 ## Confirmed defect — fix this first
 
 **`SharedUI/InspectorShell.swift` lays its header out as a `ZStack`.** Three things are overlaid

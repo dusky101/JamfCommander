@@ -44,6 +44,12 @@ struct PackageDropZone: View {
                 Label(rejection, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundColor(.orange)
+                    // Bounded like the other content-area text in this module: an unbounded
+                    // fixedSize wraps to whatever width it is offered, and if that is measured
+                    // before the width resolves it reports a height large enough to push the
+                    // module past the window. See docs/cleanup.md.
+                    .frame(maxWidth: 420)
+                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
