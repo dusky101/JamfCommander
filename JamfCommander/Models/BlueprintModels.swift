@@ -42,7 +42,7 @@ nonisolated enum PlatformRegion: String, CaseIterable, Identifiable, Sendable {
 /// The list endpoint returns only the summary fields below — scope and steps come back
 /// from `GET /blueprints/v1/blueprints/{id}` and are shown in the inspector as raw JSON
 /// rather than being modelled, so an unfamiliar component payload is never silently dropped.
-nonisolated struct Blueprint: Identifiable, Codable, Sendable, Hashable {
+nonisolated struct Blueprint: Identifiable, Decodable, Sendable, Hashable {
     let id: String
     let name: String
     let description: String?
@@ -51,6 +51,46 @@ nonisolated struct Blueprint: Identifiable, Codable, Sendable, Hashable {
     let created: String?
     let updated: String?
     let deploymentState: BlueprintDeploymentState?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, identifier, blueprintId
+        case name, description, created, updated, deploymentState
+    }
+
+    /// Decoded tolerantly on purpose.
+    ///
+    /// The synthesised decoder treats every non-optional property as mandatory and throws on any
+    /// type it did not expect, so one unusual record makes the whole list unreadable and the
+    /// failure gives no clue which record caused it. A blueprint with no usable identifier is
+    /// genuinely unusable and is dropped by the envelope below; anything else is shown, with a
+    /// placeholder name if the server sent none, so nothing is silently hidden.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        if let value = try? container.decode(String.self, forKey: .id) {
+            id = value
+        } else if let value = try? container.decode(String.self, forKey: .identifier) {
+            id = value
+        } else if let value = try? container.decode(String.self, forKey: .blueprintId) {
+            id = value
+        } else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .id,
+                in: container,
+                debugDescription: "No blueprint identifier found."
+            )
+        }
+
+        name = (try? container.decode(String.self, forKey: .name))?
+            .nilIfEmpty ?? "Untitled blueprint"
+        description = try? container.decode(String.self, forKey: .description)
+        created = try? container.decode(String.self, forKey: .created)
+        updated = try? container.decode(String.self, forKey: .updated)
+        deploymentState = try? container.decode(
+            BlueprintDeploymentState.self,
+            forKey: .deploymentState
+        )
+    }
 
     /// Deployment state word reported by the server, e.g. "DEPLOYED". Only the server's own
     /// vocabulary is shown — the app does not map it onto an invented set of states.
@@ -77,9 +117,50 @@ nonisolated struct BlueprintLastDeployment: Codable, Sendable, Hashable {
 
 /// Envelope for `GET /blueprints/v1/blueprints`. Unlike the device-groups API this one
 /// returns the short envelope — `results` and `totalCount` only.
-nonisolated struct BlueprintListResponse: Codable, Sendable {
+nonisolated struct BlueprintListResponse: Decodable, Sendable {
     let results: [Blueprint]
     let totalCount: Int?
+
+    /// Number of records the server sent that could not be read at all. Surfaced rather than
+    /// swallowed, so a partial list is never mistaken for a complete one.
+    let unreadableCount: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case results, blueprints, totalCount
+    }
+
+    /// Wrapper that turns a single unreadable record into `nil` instead of failing the array.
+    private struct Failable: Decodable {
+        let value: Blueprint?
+
+        init(from decoder: Decoder) throws {
+            value = try? Blueprint(from: decoder)
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        func unpack(_ raw: [Failable]) -> ([Blueprint], Int) {
+            let decoded = raw.compactMap(\.value)
+            return (decoded, raw.count - decoded.count)
+        }
+
+        // Some Jamf endpoints return a bare array rather than an envelope.
+        if let single = try? decoder.singleValueContainer(),
+           let raw = try? single.decode([Failable].self) {
+            (results, unreadableCount) = unpack(raw)
+            totalCount = results.count
+            return
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = (try? container.decode([Failable].self, forKey: .results))
+            ?? (try? container.decode([Failable].self, forKey: .blueprints))
+            ?? []
+        (results, unreadableCount) = unpack(raw)
+        // `try?` rather than the synthesised decodeIfPresent, which throws on an unexpected type
+        // and would fail the whole response over a count.
+        totalCount = try? container.decode(Int.self, forKey: .totalCount)
+    }
 }
 
 // MARK: - Device groups

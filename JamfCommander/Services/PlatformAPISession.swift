@@ -85,7 +85,7 @@ nonisolated enum PlatformAPIError: LocalizedError, Sendable {
     case conflict(String?)
     case unsupportedMediaType
     case httpError(Int, String?)
-    case decodingFailed
+    case decodingFailed(String?)
 
     var errorDescription: String? {
         switch self {
@@ -116,7 +116,10 @@ nonisolated enum PlatformAPIError: LocalizedError, Sendable {
                 return "The Platform API returned HTTP \(code): \(detail)"
             }
             return "The Platform API returned HTTP \(code)."
-        case .decodingFailed:
+        case .decodingFailed(let detail):
+            if let detail, !detail.isEmpty {
+                return "The Platform API returned a response the app could not read — \(detail)."
+            }
             return "The Platform API returned a response the app could not read."
         }
     }
@@ -256,7 +259,35 @@ actor PlatformAPISession {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            throw PlatformAPIError.decodingFailed
+            // The reason is included because without it a decode failure is undiagnosable: the
+            // request succeeded, so there is no status code to go on. This describes structure
+            // (which key, which type, where) and never response values.
+            throw PlatformAPIError.decodingFailed(Self.decodingDetail(from: error))
+        }
+    }
+
+    /// A short, structural description of a decode failure, for display.
+    private static func decodingDetail(from error: Error) -> String? {
+        guard let decodingError = error as? DecodingError else { return nil }
+
+        func location(_ context: DecodingError.Context) -> String {
+            let path = context.codingPath
+                .map { $0.intValue.map(String.init) ?? $0.stringValue }
+                .joined(separator: ".")
+            return path.isEmpty ? "the top level" : "\u{201C}\(path)\u{201D}"
+        }
+
+        switch decodingError {
+        case .keyNotFound(let key, let context):
+            return "expected key \u{201C}\(key.stringValue)\u{201D} at \(location(context))"
+        case .typeMismatch(let type, let context):
+            return "wrong type at \(location(context)), expected \(type)"
+        case .valueNotFound(let type, let context):
+            return "null at \(location(context)) where \(type) was expected"
+        case .dataCorrupted(let context):
+            return "malformed data at \(location(context))"
+        @unknown default:
+            return nil
         }
     }
 
