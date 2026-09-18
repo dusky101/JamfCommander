@@ -258,7 +258,7 @@ struct BlueprintsDashboardView: View {
         } description: {
             Text("Blueprints are served by Jamf's Platform API, which uses its own integration created in Jamf Account — separate from the Jamf Pro API client. Add its region, environment ID, client ID and secret in Settings.")
         } actions: {
-            Button("Open Settings") { showConfigSheet = true }
+            Button("Open Settings") { SettingsPresenter.shared.present(.jamfConnections) }
                 .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -272,7 +272,7 @@ struct BlueprintsDashboardView: View {
         } actions: {
             Button("Try Again") { Task { await load() } }
                 .buttonStyle(.borderedProminent)
-            Button("Open Settings") { showConfigSheet = true }
+            Button("Open Settings") { SettingsPresenter.shared.present(.jamfConnections) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

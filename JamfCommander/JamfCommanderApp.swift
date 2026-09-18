@@ -33,7 +33,7 @@ struct JamfCommanderApp: App {
             // footer is the same sheet, not a second way of configuring the app.
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {
-                    SettingsPresenter.shared.isPresented = true
+                    SettingsPresenter.shared.present(.general)
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }

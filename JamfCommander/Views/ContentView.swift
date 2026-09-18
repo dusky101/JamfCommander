@@ -79,7 +79,7 @@ struct ContentView: View {
                 .padding(.top, 10)
                 
                 if isLoggedIn {
-                    SidebarView(currentModule: currentModule, showConfigSheet: $settingsPresenter.isPresented)
+                    SidebarView(currentModule: currentModule)
                 } else {
                     Spacer()
                     if isBusy {
@@ -133,7 +133,6 @@ struct ContentView: View {
                         isLoggedIn: $isLoggedIn,
                         statusMessage: $statusMessage,
                         isBusy: $isBusy,
-                        showConfigSheet: $settingsPresenter.isPresented,
                         onLoginSuccess: refreshAllData
                     )
                     .frame(maxWidth: 400)

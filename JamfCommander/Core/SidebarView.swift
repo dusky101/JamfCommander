@@ -15,22 +15,27 @@ enum AppModule: String, CaseIterable, Identifiable {
     /// its own credentials — see PlatformAPISession.
     case blueprints = "Blueprints"
     case computers = "Computers"
-    /// Install policies driven by the Installomator script — discovery, deployment and editing.
-    case installomator = "Installomator"
     /// Jamf's own package library: the packages already held, and uploading one the administrator
     /// supplies for software Installomator has no label for.
     case packages = "Packages"
     case scripts = "Scripts"
-    /// Housekeeping: policies, profiles and packages that look like they do nothing. Deliberately
-    /// absent from `navigationModules` — it is pinned above the footer rather than listed with the
-    /// day-to-day modules, because it is an audit rather than a place you work.
+    /// Install policies driven by the Installomator script — discovery, deployment and editing.
+    ///
+    /// Pinned below the list rather than in it, and declared here in that position because
+    /// `navigationIndex` reads this order to decide which way the detail pane slides. It is the only
+    /// module that brings something *in* from outside Jamf — every other one mirrors what the tenant
+    /// already holds — which is why it sits apart.
+    case installomator = "Installomator"
+    /// Housekeeping: policies, profiles and packages that look like they do nothing. Pinned lowest,
+    /// and quieter than Installomator: it is an audit you visit occasionally, not a place you work.
     case redundant = "Redundant"
 
     var id: String { rawValue }
 
-    /// The modules listed in the scrolling sidebar list, in order. `redundant` is pinned separately.
+    /// The modules listed in the scrolling sidebar list, in order. `installomator` and `redundant`
+    /// are pinned below it, each in its own zone.
     static var navigationModules: [AppModule] {
-        allCases.filter { $0 != .redundant }
+        allCases.filter { $0 != .installomator && $0 != .redundant }
     }
     
     var icon: String {
@@ -64,9 +69,27 @@ enum AppModule: String, CaseIterable, Identifiable {
     }
 }
 
+/// A short explanation a sidebar row can offer the first few times somebody meets it.
+///
+/// Dismissible for good, and resettable from Settings → General — an explanation you cannot turn
+/// off stops being help and becomes an obstacle.
+struct SidebarHint {
+    let title: String
+    let body: String
+    /// The `@AppStorage` key holding whether this hint may still appear.
+    let storageKey: String
+
+    /// Installomator is the only module whose name does not say what it does, because it is the only
+    /// one named after a tool rather than a kind of Jamf object.
+    static let installomator = SidebarHint(
+        title: "Installomator",
+        body: "Reads Installomator's published list of applications — over a thousand of them, kept current by the project — and shows which ones this Jamf instance already installs. Deploying one creates its install policy for you, instead of building each policy by hand.",
+        storageKey: "showInstallomatorSidebarHint"
+    )
+}
+
 struct SidebarView: View {
     @Binding var currentModule: AppModule
-    @Binding var showConfigSheet: Bool
     
     var body: some View {
         // The module list scrolls and the footer stays pinned. As one plain VStack the whole
@@ -78,10 +101,21 @@ struct SidebarView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
 
-            // Outside the ScrollView on purpose: it stays put above the footer instead of scrolling
-            // away with the modules, which is what "set apart from the others" has to mean in a
-            // sidebar whose list can overflow.
+            // Two pinned zones, outside the ScrollView so neither scrolls away with the modules.
+            //
+            // Installomator is framed on both sides, because it is the one module that brings
+            // software *in* rather than showing what Jamf already holds. Redundant sits below it
+            // with air between them and no frame of its own — clearing dead objects out is
+            // occasional housekeeping and should not compete for attention.
+            Divider()
+
+            moduleButton(for: .installomator)
+                .padding(.vertical, 8)
+
+            Divider()
+
             moduleButton(for: .redundant)
+                .padding(.top, 22)
                 .padding(.bottom, 8)
 
             Divider()
@@ -108,6 +142,7 @@ struct SidebarView: View {
         SidebarModuleRow(
             module: module,
             isSelected: currentModule == module,
+            hint: module == .installomator ? .installomator : nil,
             action: { currentModule = module }
         )
     }
@@ -118,7 +153,7 @@ struct SidebarView: View {
                 title: "Settings",
                 icon: "gearshape",
                 help: "Jamf Pro and Platform API credentials",
-                action: { showConfigSheet = true }
+                action: { SettingsPresenter.shared.present(.general) }
             )
 
             SidebarFooterRow(
@@ -185,15 +220,24 @@ private struct SidebarFooterRow: View {
 private struct SidebarModuleRow: View {
     let module: AppModule
     let isSelected: Bool
+    var hint: SidebarHint? = nil
     var action: () -> Void
 
     @State private var isHovering = false
+    @State private var isShowingHint = false
     /// Bumped on every press, purely to drive the icon's bounce.
     @State private var pressCount = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isHighlighted: Bool { isSelected || isHovering }
+
+    /// Read straight from defaults: the key varies per hint, so it cannot be an `@AppStorage`
+    /// property. The card writes through the same key, and a sidebar row is not redrawn often
+    /// enough for the lack of observation to matter.
+    private func hintIsAllowed(_ hint: SidebarHint) -> Bool {
+        UserDefaults.standard.object(forKey: hint.storageKey) as? Bool ?? true
+    }
 
     var body: some View {
         Button {
@@ -233,10 +277,64 @@ private struct SidebarModuleRow: View {
         .offset(x: isHovering && !reduceMotion ? 3 : 0)
         .animation(.snappy(duration: 0.18), value: isHovering)
         .animation(.snappy(duration: 0.22), value: isSelected)
-        .onHover { isHovering = $0 }
+        .onHover { inside in
+            isHovering = inside
+            if !inside { isShowingHint = false }
+        }
+        .popover(isPresented: $isShowingHint, arrowEdge: .trailing) {
+            if let hint {
+                SidebarHintCard(hint: hint) { isShowingHint = false }
+            }
+        }
+        // A dwell, not a sweep. Opening the moment the pointer touches the row would fire every
+        // time somebody crosses it on the way somewhere else, which is how a helpful explanation
+        // turns into something you learn to avoid.
+        .task(id: isHovering) {
+            guard isHovering, let hint, hintIsAllowed(hint) else { return }
+            try? await Task.sleep(for: .milliseconds(650))
+            guard !Task.isCancelled else { return }
+            isShowingHint = true
+        }
         // The label is an Image plus a Text inside an HStack, which exposes no accessibility name on
         // its own — VoiceOver read nothing for any of these.
         .accessibilityLabel(module.rawValue)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+}
+
+
+/// The contents of a sidebar hint: what the module does, and the means to stop being told.
+private struct SidebarHintCard: View {
+    let hint: SidebarHint
+    var onDismiss: () -> Void
+
+    @State private var suppressed = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(hint.title)
+                .font(.headline)
+
+            Text(hint.body)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Toggle("Don’t show this again", isOn: $suppressed)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .onChange(of: suppressed) {
+                    UserDefaults.standard.set(!suppressed, forKey: hint.storageKey)
+                    if suppressed { onDismiss() }
+                }
+                .help("You can bring this back from Settings → General")
+        }
+        .padding(16)
+        .frame(width: 320)
+        .onAppear {
+            suppressed = !(UserDefaults.standard.object(forKey: hint.storageKey) as? Bool ?? true)
+        }
     }
 }

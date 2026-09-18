@@ -20,6 +20,29 @@ final class SettingsPresenter: ObservableObject {
     private init() {}
 
     @Published var isPresented = false
+    /// Which tab Settings opens on. Somebody who has just pressed a button about connecting to Jamf
+    /// should land on the credentials, not on application preferences.
+    @Published var initialTab: SettingsTab = .general
+
+    func present(_ tab: SettingsTab) {
+        initialTab = tab
+        isPresented = true
+    }
+}
+
+/// The two halves of Settings: how the app behaves, and how it reaches Jamf.
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general = "General"
+    case jamfConnections = "Jamf Connections"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .general: return "gearshape"
+        case .jamfConnections: return "key.horizontal"
+        }
+    }
 }
 
 struct ConfigurationView: View {
@@ -39,6 +62,12 @@ struct ConfigurationView: View {
     @AppStorage(PlatformCredentialsStore.clientSecretKey) private var platformClientSecret = ""
 
     @Environment(\.dismiss) var dismiss
+
+    @ObservedObject private var presenter = SettingsPresenter.shared
+    @State private var tab: SettingsTab = .general
+
+    /// Whether the Installomator sidebar hint may still appear.
+    @AppStorage(SidebarHint.installomator.storageKey) private var showInstallomatorHint = true
 
     // Alert State
     @State private var showAlert = false
@@ -89,20 +118,35 @@ struct ConfigurationView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            Text("API Configuration")
-                .font(.title2)
-                .fontWeight(.bold)
-                .padding(.horizontal)
-                .padding(.top)
-                .padding(.bottom, 12)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Settings")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                Picker("", selection: $tab) {
+                    ForEach(SettingsTab.allCases) { option in
+                        Label(option.rawValue, systemImage: option.icon).tag(option)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(.horizontal)
+            .padding(.top)
+            .padding(.bottom, 12)
 
             Divider()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    importExportSection
-                    jamfProSection
-                    platformSection
+                    switch tab {
+                    case .general:
+                        generalSection
+                    case .jamfConnections:
+                        importExportSection
+                        jamfProSection
+                        platformSection
+                    }
                 }
                 .padding()
             }
@@ -112,7 +156,8 @@ struct ConfigurationView: View {
             // Footer Buttons
             HStack {
                 // Clear All Button
-                if !instanceURL.isEmpty || !clientId.isEmpty || !clientSecret.isEmpty || hasPlatformSettings {
+                if tab == .jamfConnections,
+                   !instanceURL.isEmpty || !clientId.isEmpty || !clientSecret.isEmpty || hasPlatformSettings {
                     Button(action: clearAllSettings) {
                         Label("Clear All", systemImage: "trash")
                             .foregroundColor(.red)
@@ -133,6 +178,7 @@ struct ConfigurationView: View {
         }
         .frame(width: 560, height: 720)
         .appBackground()
+        .onAppear { tab = presenter.initialTab }
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") { }
         } message: {
@@ -141,6 +187,46 @@ struct ConfigurationView: View {
     }
 
     // MARK: - Sections
+
+    /// How the app behaves, as opposed to how it reaches Jamf. Currently one setting; it exists as
+    /// its own tab because credentials and preferences are different kinds of thing and mixing them
+    /// is how a settings sheet becomes a single unreadable column.
+    private var generalSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Guidance", systemImage: "questionmark.bubble")
+                .font(.headline)
+
+            Text("Some modules explain themselves the first time you hover over them. Once dismissed they stay dismissed — bring them back here.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Installomator")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Text(showInstallomatorHint ? "Shown on hover" : "Dismissed")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Button("Show Again") {
+                    showInstallomatorHint = true
+                }
+                .disabled(showInstallomatorHint)
+                .help("Bring back the explanation that appears when you hover over Installomator")
+            }
+            .padding(12)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+            .cornerRadius(8)
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
+        .cornerRadius(12)
+    }
 
     private var importExportSection: some View {
         VStack(alignment: .leading, spacing: 12) {

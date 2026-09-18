@@ -15,7 +15,6 @@ struct LoginView: View {
     @Binding var isLoggedIn: Bool
     @Binding var statusMessage: String
     @Binding var isBusy: Bool
-    @Binding var showConfigSheet: Bool // NEW: Allow opening settings
     
     // Local Access to settings
     @AppStorage("jamfInstanceURL") private var savedInstanceURL = "https://zellis.jamfcloud.com"
@@ -45,7 +44,7 @@ struct LoginView: View {
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     
-                    Button(action: { showConfigSheet = true }) {
+                    Button(action: { SettingsPresenter.shared.present(.jamfConnections) }) {
                         Label("Open Settings", systemImage: "gear")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 4)
@@ -76,7 +75,7 @@ struct LoginView: View {
                 .buttonStyle(.borderedProminent)
                 
                 // Add a subtle settings link for users who want to change settings
-                Button(action: { showConfigSheet = true }) {
+                Button(action: { SettingsPresenter.shared.present(.jamfConnections) }) {
                     Label("Edit Settings", systemImage: "gear")
                         .font(.caption)
                 }
