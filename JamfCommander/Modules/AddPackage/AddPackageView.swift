@@ -38,6 +38,9 @@ struct AddPackageView: View {
     // The library
     @State private var packages: [JamfPackage] = []
     @State private var packageUsage: [String: [String]] = [:]
+    /// The other half of the same policy scan: policies that install through Installomator and so
+    /// have no package in the library. Needed by the export, which reports on both.
+    @State private var installomatorPolicies: [JamfAPIService.InstallomatorPolicyInfo] = []
     @State private var isLoadingPackages = false
     @State private var packagesLoadFailed = false
     @State private var isScanningUsage = false
@@ -96,6 +99,14 @@ struct AddPackageView: View {
             }
 
             if tab.isLibrary {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: exportPackages) {
+                        Label("Export", systemImage: "arrow.down.doc")
+                    }
+                    .help(exportHelp)
+                    .disabled(!canExport)
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         Task { await reloadLibrary() }
@@ -372,18 +383,24 @@ struct AddPackageView: View {
         await scanPackageUsage()
     }
 
-    /// The expensive half: every policy is read to find out which packages it installs. Run after the
-    /// list is already on screen, so the library is usable while the deployed state fills in.
+    /// The expensive half: every policy is read once, answering both which packages it installs and
+    /// whether it is an Installomator deployment. Run after the list is already on screen, so the
+    /// library is usable while the deployed state fills in.
     private func scanPackageUsage() async {
         await MainActor.run {
             isScanningUsage = true
             usageScanFailed = false
         }
 
+        // Widens Installomator detection past "the policy's script is called Installomator". A
+        // failure here only narrows detection, so it degrades rather than failing the scan.
+        let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
+
         do {
-            let usage = try await api.fetchPackagePolicyUsage()
+            let scan = try await api.scanPackageEstate(knownScriptIDs: knownScriptIDs)
             await MainActor.run {
-                packageUsage = usage
+                packageUsage = scan.usage
+                installomatorPolicies = scan.installomator
                 hasScannedUsage = true
                 isScanningUsage = false
             }
@@ -391,10 +408,41 @@ struct AddPackageView: View {
             print("[Packages] Package usage scan failed")
             await MainActor.run {
                 packageUsage = [:]
+                installomatorPolicies = []
                 hasScannedUsage = false
                 isScanningUsage = false
                 usageScanFailed = true
             }
         }
+    }
+
+    // MARK: - Export
+
+    /// Only offered once the policy scan has answered. Without it every package would be written out
+    /// as "not attached", which is a claim about production the file has no business making.
+    private var canExport: Bool {
+        hasScannedUsage && !isLoadingPackages && !isScanningUsage
+    }
+
+    private var exportHelp: String {
+        canExport
+            ? "Export every package and Installomator policy to CSV, with whether a policy installs it"
+            : "Available once the policy scan has finished"
+    }
+
+    private func exportPackages() {
+        let csv = ExportService.exportPackagesToCSV(
+            packages: packages,
+            usage: packageUsage,
+            installomator: installomatorPolicies,
+            categoryNames: categoryNamesByID
+        )
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        _ = ExportService.saveCSVToFile(
+            content: csv,
+            defaultName: "Packages_\(formatter.string(from: Date())).csv"
+        )
     }
 }

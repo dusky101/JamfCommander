@@ -439,9 +439,22 @@ Jamf Commander can export:
 - Profiles CSV
 - Detailed profiles CSV
 - Scripts CSV
+- Packages CSV
 - All supported data as a ZIP archive
 
 Exports use macOS save panels, so you choose the destination at export time.
+
+The packages export lives on the **Packages** module toolbar, on the Uploaded and Deployed tabs, and
+covers both kinds of install in one file. A **Source** column tells them apart:
+
+- **Uploaded PKG** — a record in Jamf's package library. **Attached to Policy** says whether any
+  policy installs it, and **Policies** names them; "No" is a package nothing installs.
+- **Installomator** — a policy that installs by running the Installomator script against a label, so
+  it has no library record. The row is itself a policy, so **Attached to Policy** is always Yes and
+  **Policy Enabled** is the column that says whether it will run.
+
+The button is disabled until the policy scan behind the library has finished — without it every
+package would be exported as unattached.
 
 Detailed policy and profile exports fetch extra object data in batches and include richer information such as scope, triggers, frequency, packages, scripts, exclusions, and deployment metadata where available.
 

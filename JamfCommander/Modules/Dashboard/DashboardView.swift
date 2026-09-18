@@ -58,6 +58,10 @@ struct DashboardView: View {
                 // MARK: - 1. Hero Stats Grid (Clickable)
                 HStack(alignment: .top, spacing: 16) {
                     // Stats Grid (Leading)
+                    // `.frame(maxWidth: .infinity)` rather than a trailing Spacer: with a Spacer the
+                    // grid was handed only its ideal width and the spacer swallowed the rest, so the
+                    // tiles bunched into three columns against a wide empty gap. Filling the row lets
+                    // the adaptive columns use the window.
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 16)], alignment: .leading, spacing: 16) {
                         
                         Button(action: { currentModule = .computers }) {
@@ -90,9 +94,8 @@ struct DashboardView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    
-                    Spacer()
-                    
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                     // Export All Button (Trailing)
                     Button(action: { exportAllData() }) {
                         ExportAllCard(isExporting: isExporting)

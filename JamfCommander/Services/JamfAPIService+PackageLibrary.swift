@@ -110,50 +110,69 @@ extension JamfAPIService {
         try await fetchJamfPackages().map(\.packageName).filter { !$0.isEmpty }
     }
 
-    /// Which policies install which package, keyed by package id.
+    /// Reads every policy **once** and answers both package questions from the same record: which
+    /// packages a policy installs, and whether the policy is an Installomator deployment.
     ///
-    /// Jamf offers no reverse lookup, so this hydrates every policy and reads its
-    /// `package_configuration`. That is the expensive scan `fetchInstallomatorPolicies` already
-    /// performs, and it is paced the same way — batches of 10, 0.5s between batches, three attempts
-    /// per policy with exponential backoff, and a policy that will not load is skipped rather than
-    /// failing the whole scan. Call it once, lazily.
-    func fetchPackagePolicyUsage() async throws -> [String: [String]] {
+    /// Jamf offers no reverse lookup for either, so both used to cost a full scan of their own —
+    /// `fetchPackagePolicyUsage` and `fetchInstallomatorPolicies` hydrate the same policies for
+    /// different fields. Anything needing both (the packages export) paid for the tenant's policies
+    /// twice. Pacing is unchanged: batches of 10, 0.5s between batches, three attempts per policy
+    /// with exponential backoff, and a policy that will not load is skipped rather than failing the
+    /// whole scan.
+    ///
+    /// - Parameter knownScriptIDs: Additional script ids to treat as Installomator, so a renamed
+    ///   script is still detected (see `fetchInstallomatorScriptIDs()`).
+    func scanPackageEstate(knownScriptIDs: Set<String> = []) async throws -> PackageEstateScan {
         let listResponse = try await genericFetch(
             endpoint: "JSSResource/policies",
             responseType: PolicyListResponse.self
         )
 
         var usage: [String: [String]] = [:]
+        var installomator: [InstallomatorPolicyInfo] = []
+
         let batchSize = 10
         let batches = stride(from: 0, to: listResponse.policies.count, by: batchSize).map {
             Array(listResponse.policies[$0..<min($0 + batchSize, listResponse.policies.count)])
         }
 
         for (batchIndex, batch) in batches.enumerated() {
-            await withTaskGroup(of: [(packageID: String, policyName: String)].self) { group in
+            await withTaskGroup(of: PolicyPackageFindings.self) { group in
                 for item in batch {
                     group.addTask {
                         for attempt in 1...3 {
                             do {
                                 let detail = try await self.fetchPolicyDetail(id: item.id)
                                 let packages = detail.package_configuration?.packages ?? []
-                                return packages.map {
-                                    (packageID: String($0.id), policyName: detail.general.name)
-                                }
+                                return PolicyPackageFindings(
+                                    packagePairs: packages.map {
+                                        PackagePolicyPair(
+                                            packageID: String($0.id),
+                                            policyName: detail.general.name
+                                        )
+                                    },
+                                    installomator: Self.installomatorInfo(
+                                        in: detail,
+                                        knownScriptIDs: knownScriptIDs
+                                    )
+                                )
                             } catch {
-                                if attempt == 3 { return [] }
+                                if attempt == 3 { return .none }
                                 try? await Task.sleep(
                                     nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000)
                                 )
                             }
                         }
-                        return []
+                        return .none
                     }
                 }
 
-                for await pairs in group {
-                    for pair in pairs {
+                for await findings in group {
+                    for pair in findings.packagePairs {
                         usage[pair.packageID, default: []].append(pair.policyName)
+                    }
+                    if let info = findings.installomator {
+                        installomator.append(info)
                     }
                 }
             }
@@ -170,7 +189,40 @@ extension JamfAPIService {
             }
         }
 
-        print("[Packages] Package usage scan: \(usage.count) package(s) attached to a policy")
-        return usage
+        installomator.sort {
+            $0.policyName.localizedCaseInsensitiveCompare($1.policyName) == .orderedAscending
+        }
+
+        print("[Packages] Estate scan: \(usage.count) package(s) attached to a policy, \(installomator.count) Installomator policy/policies")
+        return PackageEstateScan(usage: usage, installomator: installomator)
     }
+}
+
+// MARK: - Scan results
+
+/// What one pass over every policy reveals about how software reaches a Mac.
+///
+/// The two halves are deliberately different in kind: `usage` is about packages in Jamf's library,
+/// while `installomator` is about policies that install software **without** one — by running the
+/// Installomator script against a label. A tenant's software estate is the union of the two.
+struct PackageEstateScan: Sendable {
+    /// Names of the policies that install each package, keyed by package id. A package id absent
+    /// from this map is installed by nothing.
+    let usage: [String: [String]]
+    /// Policies that install software through Installomator, sorted by policy name.
+    let installomator: [JamfAPIService.InstallomatorPolicyInfo]
+}
+
+/// One policy's contribution to a scan, gathered inside the task group before it is merged.
+private struct PolicyPackageFindings: Sendable {
+    let packagePairs: [PackagePolicyPair]
+    let installomator: JamfAPIService.InstallomatorPolicyInfo?
+
+    /// A policy that could not be read, or that installs nothing of interest.
+    static let none = PolicyPackageFindings(packagePairs: [], installomator: nil)
+}
+
+private struct PackagePolicyPair: Sendable {
+    let packageID: String
+    let policyName: String
 }

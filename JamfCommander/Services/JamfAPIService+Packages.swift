@@ -118,6 +118,37 @@ extension JamfAPIService {
         return nil
     }
 
+    /// The Installomator deployment a hydrated policy represents, or `nil` if it is not one.
+    ///
+    /// The single place that judgement is made, so every pass that needs it — the Installomator
+    /// module's discovery scan and the package estate scan behind the packages export — agrees about
+    /// what counts. Matching is by script name **or** id: a policy payload can omit the script name,
+    /// and a tenant's Installomator script may be renamed to something else entirely.
+    /// `nonisolated` because the scans call it from inside a `TaskGroup`; it reads only its arguments.
+    nonisolated static func installomatorInfo(
+        in detail: PolicyDetailXML,
+        knownScriptIDs: Set<String>
+    ) -> InstallomatorPolicyInfo? {
+        guard let scripts = detail.scripts, !scripts.isEmpty else { return nil }
+
+        for script in scripts {
+            let isInstallomator = script.name.localizedCaseInsensitiveContains("installomator")
+                || knownScriptIDs.contains(script.id)
+            let label = script.parameter4?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if isInstallomator, !label.isEmpty {
+                return InstallomatorPolicyInfo(
+                    policyID: detail.general.id,
+                    policyName: detail.general.name,
+                    label: label,
+                    categoryName: detail.general.category?.name,
+                    enabled: detail.general.enabled,
+                    pinnedVersion: pinnedVersion(in: script)
+                )
+            }
+        }
+        return nil
+    }
+
     /// Names of every policy in the tenant — one list request, no per-policy hydration.
     /// Used for the pre-flight duplicate-name check before a batch creation runs.
     func fetchPolicyNames() async throws -> [String] {
@@ -170,27 +201,7 @@ extension JamfAPIService {
                         for attempt in 1...3 {
                             do {
                                 let detail = try await self.fetchPolicyDetail(id: item.id)
-                                
-                                guard let scripts = detail.scripts, !scripts.isEmpty else { return nil }
-
-                                for script in scripts {
-                                    // Match by name *or* id: the policy payload can omit the script
-                                    // name, and a tenant's Installomator script may be renamed.
-                                    let isInstallomator = script.name.localizedCaseInsensitiveContains("installomator")
-                                        || knownScriptIDs.contains(script.id)
-                                    let label = script.parameter4?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                                    if isInstallomator, !label.isEmpty {
-                                        return InstallomatorPolicyInfo(
-                                            policyID: detail.general.id,
-                                            policyName: detail.general.name,
-                                            label: label,
-                                            categoryName: detail.general.category?.name,
-                                            enabled: detail.general.enabled,
-                                            pinnedVersion: Self.pinnedVersion(in: script)
-                                        )
-                                    }
-                                }
-                                return nil
+                                return Self.installomatorInfo(in: detail, knownScriptIDs: knownScriptIDs)
                             } catch {
                                 if attempt == 3 { return nil }
                                 try? await Task.sleep(nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000))
