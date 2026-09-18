@@ -46,6 +46,22 @@ enum AppModule: String, CaseIterable, Identifiable {
         case .redundant: return "archivebox.fill"
         }
     }
+
+    /// The module's colour, matched to its tile on the dashboard so a module is the same colour
+    /// wherever you meet it. Scripts is deliberately the same neutral grey as its tile.
+    var accentColour: Color {
+        switch self {
+        case .dashboard: return .moduleNeutral
+        case .policies: return .moduleMagenta
+        case .profiles: return .moduleAmber
+        case .blueprints: return .moduleCyan
+        case .computers: return .moduleAzure
+        case .installomator: return .moduleSpring
+        case .packages: return .moduleViolet
+        case .scripts: return .moduleLime
+        case .redundant: return .moduleRose
+        }
+    }
 }
 
 struct SidebarView: View {
@@ -89,28 +105,11 @@ struct SidebarView: View {
     /// One sidebar entry. Shared by the scrolling list and the pinned Redundant entry so the two
     /// cannot drift apart in appearance or behaviour.
     private func moduleButton(for module: AppModule) -> some View {
-        Button(action: { currentModule = module }) {
-            HStack(spacing: 12) {
-                Image(systemName: module.icon)
-                    .font(.system(size: 16))
-                    .frame(width: 24)
-
-                Text(module.rawValue)
-                    .fontWeight(.medium)
-
-                Spacer()
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(currentModule == module ? Color.blue.opacity(0.15) : Color.clear)
-            .foregroundColor(currentModule == module ? .blue : .primary)
-            .cornerRadius(8)
-        }
-        .buttonStyle(.plain)
-        // The label is an Image plus a Text inside an HStack, which exposes no
-        // accessibility name on its own — VoiceOver read nothing for any of these.
-        .accessibilityLabel(module.rawValue)
-        .accessibilityAddTraits(currentModule == module ? [.isButton, .isSelected] : .isButton)
+        SidebarModuleRow(
+            module: module,
+            isSelected: currentModule == module,
+            action: { currentModule = module }
+        )
     }
 
     private var footer: some View {
@@ -138,5 +137,70 @@ struct SidebarView: View {
             .help("Jamf API setup, the Installomator prerequisite, and what each section does")
         }
         .padding(.top, 4)
+    }
+}
+
+
+/// A single sidebar entry.
+///
+/// Its own view because it owns hover state, and because the whole row — icon, label, background and
+/// outline — moves together in the module's own colour. Selection and hover are told apart by weight
+/// rather than by colour alone: selected is a stronger fill plus an outline, hover is a light wash.
+private struct SidebarModuleRow: View {
+    let module: AppModule
+    let isSelected: Bool
+    var action: () -> Void
+
+    @State private var isHovering = false
+    /// Bumped on every press, purely to drive the icon's bounce.
+    @State private var pressCount = 0
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var isHighlighted: Bool { isSelected || isHovering }
+
+    var body: some View {
+        Button {
+            pressCount += 1
+            action()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: module.icon)
+                    .font(.system(size: 16))
+                    .frame(width: 24)
+                    .foregroundStyle(isHighlighted ? module.accentColour : Color.secondary)
+                    // Holding the value still under Reduce Motion means the effect simply never
+                    // fires, rather than firing and being suppressed.
+                    .symbolEffect(.bounce, value: reduceMotion ? 0 : pressCount)
+
+                Text(module.rawValue)
+                    .fontWeight(.medium)
+                    .foregroundStyle(isHighlighted ? module.accentColour : Color.primary)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(module.accentColour.opacity(isSelected ? 0.18 : (isHovering ? 0.10 : 0)))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(module.accentColour.opacity(isSelected ? 0.45 : 0), lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        // A nudge rather than a scale: scaling a row this small softens its text.
+        .offset(x: isHovering && !reduceMotion ? 3 : 0)
+        .animation(.snappy(duration: 0.18), value: isHovering)
+        .animation(.snappy(duration: 0.22), value: isSelected)
+        .onHover { isHovering = $0 }
+        // The label is an Image plus a Text inside an HStack, which exposes no accessibility name on
+        // its own — VoiceOver read nothing for any of these.
+        .accessibilityLabel(module.rawValue)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }

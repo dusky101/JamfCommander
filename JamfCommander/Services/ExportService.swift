@@ -88,13 +88,47 @@ class ExportService {
             let scriptData = try await api.fetchScripts()
             progress?.updateProgress(for: .scripts, status: .complete, count: scriptData.count, total: scriptData.count)
 
-            let policyData = try await api.fetchPolicies()
+            // One pass over the policies answers three questions at once — the policies themselves,
+            // which packages they install, and which are Installomator deployments — so the two new
+            // exports cost no extra scan. This replaces the `fetchPolicies()` that used to be here
+            // rather than adding to it.
+            progress?.updateProgress(for: .packages, status: .fetching)
+            let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
+            let estate = try await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs)
+            let policyData = estate.policies
             let profileData = try await api.fetchProfiles()
+
+            let packageData = try await api.fetchJamfPackages()
+            let categoryData = try await api.fetchCategories()
+            let categoryNames = Dictionary(
+                categoryData.map { (String($0.id), $0.name) },
+                uniquingKeysWith: { first, _ in first }
+            )
 
             // Generate CSVs
             progress?.setCurrentTask("Generating CSV files...")
             let computerCSV = await ComputerExportService.exportToCSV(computers: computerData, api: api)
             let scriptCSV = ScriptExportService.exportToCSV(scripts: scriptData)
+
+            let packageCSV = PackageExportService.exportToCSV(
+                packages: packageData,
+                usage: estate.packageUsage,
+                installomator: estate.installomator,
+                categoryNames: categoryNames
+            )
+            progress?.updateProgress(for: .packages, status: .complete, count: packageData.count, total: packageData.count)
+
+            progress?.updateProgress(for: .redundant, status: .processing(current: 0, total: 1))
+            let redundantItems = RedundantAudit.items(
+                policies: estate.policies,
+                profiles: profileData,
+                packages: packageData,
+                packageUsage: estate.packageUsage,
+                installomatorPolicyIDs: Set(estate.installomator.map(\.policyID)),
+                categoryNames: categoryNames
+            )
+            let redundantCSV = RedundantExportService.exportToCSV(items: redundantItems)
+            progress?.updateProgress(for: .redundant, status: .complete, count: redundantItems.count, total: redundantItems.count)
 
             // Generate detailed exports for policies and profiles (with progress updates)
             let policyCSV = await PolicyExportService.exportDetailedToCSV(policies: policyData, api: api, progress: progress)
@@ -114,6 +148,8 @@ class ExportService {
             try policyCSV.write(to: tempDir.appendingPathComponent("Policies_\(dateString).csv"), atomically: true, encoding: .utf8)
             try profileCSV.write(to: tempDir.appendingPathComponent("Profiles_\(dateString).csv"), atomically: true, encoding: .utf8)
             try scriptCSV.write(to: tempDir.appendingPathComponent("Scripts_\(dateString).csv"), atomically: true, encoding: .utf8)
+            try packageCSV.write(to: tempDir.appendingPathComponent("Packages_\(dateString).csv"), atomically: true, encoding: .utf8)
+            try redundantCSV.write(to: tempDir.appendingPathComponent("Redundant_\(dateString).csv"), atomically: true, encoding: .utf8)
 
             // Create ZIP archive
             let zipURL = tempDir.appendingPathComponent("JamfCommander_Export_\(dateString).zip")

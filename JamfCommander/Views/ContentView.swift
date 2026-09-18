@@ -13,6 +13,8 @@ struct ContentView: View {
     
     // Navigation State
     @State private var currentModule: AppModule = .dashboard
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     
     // App State
     @State private var isLoggedIn = false
@@ -111,12 +113,26 @@ struct ContentView: View {
                 } else {
                     moduleContent
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        // Switching module swaps one branch of a `switch` for another, which SwiftUI
+                        // will not always read as an insertion. The id makes the swap explicit so the
+                        // transition actually runs, and costs nothing: the branches are distinct
+                        // views whose state is discarded on a switch either way.
+                        .id(currentModule)
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .offset(y: 10)),
+                                removal: .opacity
+                            )
+                        )
                 }
             }
             .background {
                 AppBackground()
                     .ignoresSafeArea()
             }
+            // The incoming module rises and fades in while the outgoing one fades out. Short enough
+            // to stay out of the way of somebody moving quickly through the sidebar.
+            .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: currentModule)
         }
         .sheet(isPresented: $showConfigSheet) {
             ConfigurationView(api: api)

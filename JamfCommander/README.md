@@ -28,6 +28,12 @@ The app uses both the Jamf Pro API and the Jamf Classic API because Jamf exposes
 - Network access to your Jamf Pro tenant
 - Network access to GitHub when using the Installomator Manager, because it downloads labels from the Installomator repository
 
+The app renders in a dark appearance regardless of the system setting. It has one designed
+appearance — the accent colours, glass and backdrop were drawn against dark — and shipping an
+undesigned light rendering alongside it was worse than shipping one. A designed light theme would
+lift this restriction; the module colours in `SharedUI/ModulePalette.swift` would need light variants
+to go with it.
+
 ## Jamf API Access
 
 Jamf Commander authenticates against:
@@ -120,7 +126,7 @@ The dashboard is the starting point after connection. It shows clickable totals 
 
 - Category manager for creating, renaming, and deleting categories.
 - Device status summary based on recent computer inventory records.
-- Export All action that writes a ZIP archive containing CSV files for computers, policies, profiles, and scripts.
+- Export All action that writes a ZIP archive containing CSV files for computers, policies, profiles, scripts, packages, and the Redundant audit.
 
 ### Computers
 
@@ -485,7 +491,9 @@ Jamf Commander can export:
 - Redundant audit CSV
 - All supported data as a ZIP archive
 
-Exports use macOS save panels, so you choose the destination at export time.
+Exports use macOS save panels, so you choose the destination at export time. The progress window
+lists only the exports actually running, so a single-domain export no longer shows rows that sit at
+"pending" throughout.
 
 The packages export lives on the **Packages** module toolbar, on the Uploaded and Deployed tabs, and
 covers both kinds of install in one file. A **Source** column tells them apart:

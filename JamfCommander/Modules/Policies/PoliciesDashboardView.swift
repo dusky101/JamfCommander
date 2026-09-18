@@ -136,7 +136,7 @@ struct PoliciesDashboardView: View {
             PoliciesInspectorView(policyId: selection.id, api: api)
         }
         .sheet(isPresented: $showExportProgress) {
-            ExportProgressSheet(isPresented: $showExportProgress, progress: exportProgress)
+            ExportProgressSheet(isPresented: $showExportProgress, progress: exportProgress, types: [.policies])
         }
     }
     

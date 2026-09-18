@@ -65,32 +65,32 @@ struct DashboardView: View {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 16)], alignment: .leading, spacing: 16) {
                         
                         Button(action: { currentModule = .computers }) {
-                            StatCard(title: "Computers", count: computerCount, icon: "desktopcomputer", color: .blue)
+                            StatCard(title: "Computers", count: computerCount, icon: "desktopcomputer", color: .moduleAzure)
                         }
                         .buttonStyle(.plain)
                         
                         Button(action: { currentModule = .policies }) {
-                            StatCard(title: "Policies", count: policyCount, icon: "scroll.fill", color: .purple)
+                            StatCard(title: "Policies", count: policyCount, icon: "scroll.fill", color: .moduleMagenta)
                         }
                         .buttonStyle(.plain)
                         
                         Button(action: { currentModule = .profiles }) {
-                            StatCard(title: "Profiles", count: profileCount, icon: "doc.text.fill", color: .orange)
+                            StatCard(title: "Profiles", count: profileCount, icon: "doc.text.fill", color: .moduleAmber)
                         }
                         .buttonStyle(.plain)
 
                         Button(action: { currentModule = .blueprints }) {
-                            StatCard(title: "Blueprints", count: blueprintCount, icon: "square.stack.3d.up.fill", color: .teal)
+                            StatCard(title: "Blueprints", count: blueprintCount, icon: "square.stack.3d.up.fill", color: .moduleCyan)
                         }
                         .buttonStyle(.plain)
 
                         Button(action: { currentModule = .packages }) {
-                            StatCard(title: "Packages", count: packageCount, icon: "shippingbox.fill", color: .indigo)
+                            StatCard(title: "Packages", count: packageCount, icon: "shippingbox.fill", color: .moduleViolet)
                         }
                         .buttonStyle(.plain)
 
                         Button(action: { currentModule = .scripts }) {
-                            StatCard(title: "Scripts", count: scriptCount, icon: "applescript.fill", color: .gray)
+                            StatCard(title: "Scripts", count: scriptCount, icon: "applescript.fill", color: .moduleLime)
                         }
                         .buttonStyle(.plain)
                     }
@@ -499,10 +499,10 @@ struct StatCard: View {
         .scaleEffect(isHovering ? 1.02 : 1.0)
         .animation(.spring(response: 0.3), value: isHovering)
         .onHover { isHovering = $0 }
-        // Make the cursor point so it feels clickable
-        .onHover { inside in
-            if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-        }
+        // Declarative, and balanced by the system. The old NSCursor push/pop pair called into AppKit
+        // from a hover callback — which can land inside a Core Animation commit — and popped on
+        // hover-out whether or not a matching push had happened, so the cursor stack could drift.
+        .pointerStyle(.link)
     }
 }
 
@@ -628,9 +628,7 @@ struct ExportAllCard: View {
             // Reaching for the card is a deliberate act, so answering it is not the same as looping.
             if inside && shouldShine { shineTrigger += 1 }
         }
-        .onHover { inside in
-            if inside && !isExporting { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-        }
+        .pointerStyle(isExporting ? nil : .link)
         .task {
             // A beat after the dashboard settles, so the sweep is seen rather than lost in the
             // window drawing itself.

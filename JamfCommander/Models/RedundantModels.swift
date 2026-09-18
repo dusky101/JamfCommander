@@ -95,9 +95,9 @@ enum RedundantKind: String, CaseIterable, Identifiable, Sendable {
 
     var colour: Color {
         switch self {
-        case .policy: return .purple
-        case .profile: return .orange
-        case .package: return .indigo
+        case .policy: return .moduleMagenta
+        case .profile: return .moduleAmber
+        case .package: return .moduleViolet
         }
     }
 

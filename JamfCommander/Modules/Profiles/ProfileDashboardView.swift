@@ -150,7 +150,7 @@ struct ProfileDashboardView: View {
             ProfileInspectorView(profileId: selection.id, api: api)
         }
         .sheet(isPresented: $showExportProgress) {
-            ExportProgressSheet(isPresented: $showExportProgress, progress: exportProgress)
+            ExportProgressSheet(isPresented: $showExportProgress, progress: exportProgress, types: [.profiles])
         }
     }
     

@@ -11,6 +11,10 @@ import Combine
 struct ExportProgressSheet: View {
     @Binding var isPresented: Bool
     @ObservedObject var progress: ExportProgress
+    /// Which rows to show. Defaults to everything, which is what Export All produces. A
+    /// single-domain export passes just its own, rather than listing rows that will sit at
+    /// "pending" for the whole operation and read as though something had stalled.
+    var types: [ExportType] = ExportType.allCases
     
     var body: some View {
         VStack(spacing: 24) {
@@ -43,41 +47,16 @@ struct ExportProgressSheet: View {
             
             // Progress Items
             VStack(alignment: .leading, spacing: 16) {
-                ExportProgressRow(
-                    title: "Computers",
-                    icon: "desktopcomputer",
-                    color: .blue,
-                    status: progress.computersStatus,
-                    count: progress.computersCount,
-                    total: progress.computersTotal
-                )
-                
-                ExportProgressRow(
-                    title: "Policies",
-                    icon: "scroll.fill",
-                    color: .purple,
-                    status: progress.policiesStatus,
-                    count: progress.policiesCount,
-                    total: progress.policiesTotal
-                )
-                
-                ExportProgressRow(
-                    title: "Profiles",
-                    icon: "doc.text.fill",
-                    color: .orange,
-                    status: progress.profilesStatus,
-                    count: progress.profilesCount,
-                    total: progress.profilesTotal
-                )
-                
-                ExportProgressRow(
-                    title: "Scripts",
-                    icon: "applescript.fill",
-                    color: .gray,
-                    status: progress.scriptsStatus,
-                    count: progress.scriptsCount,
-                    total: progress.scriptsTotal
-                )
+                ForEach(types) { type in
+                    ExportProgressRow(
+                        title: type.title,
+                        icon: type.icon,
+                        color: type.colour,
+                        status: progress.status(for: type),
+                        count: progress.count(for: type),
+                        total: progress.total(for: type)
+                    )
+                }
             }
             .padding()
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
@@ -188,69 +167,39 @@ enum ExportStatus: Equatable {
 class ExportProgress: ObservableObject {
     @Published var currentTask: String = "Preparing..."
     @Published var isComplete: Bool = false
-    
-    @Published var computersStatus: ExportStatus = .pending
-    @Published var computersCount: Int = 0
-    @Published var computersTotal: Int = 0
-    
-    @Published var policiesStatus: ExportStatus = .pending
-    @Published var policiesCount: Int = 0
-    @Published var policiesTotal: Int = 0
-    
-    @Published var profilesStatus: ExportStatus = .pending
-    @Published var profilesCount: Int = 0
-    @Published var profilesTotal: Int = 0
-    
-    @Published var scriptsStatus: ExportStatus = .pending
-    @Published var scriptsCount: Int = 0
-    @Published var scriptsTotal: Int = 0
-    
+
+    // Keyed by type rather than a property per domain: adding an export used to mean four new
+    // properties, four lines in reset(), a switch case and a hand-written row.
+    @Published private(set) var statuses: [ExportType: ExportStatus] = [:]
+    @Published private(set) var counts: [ExportType: Int] = [:]
+    @Published private(set) var totals: [ExportType: Int] = [:]
+
+    func status(for type: ExportType) -> ExportStatus { statuses[type] ?? .pending }
+    func count(for type: ExportType) -> Int { counts[type] ?? 0 }
+    func total(for type: ExportType) -> Int { totals[type] ?? 0 }
+
     func reset() {
         currentTask = "Preparing..."
         isComplete = false
-        computersStatus = .pending
-        policiesStatus = .pending
-        profilesStatus = .pending
-        scriptsStatus = .pending
-        computersCount = 0
-        policiesCount = 0
-        profilesCount = 0
-        scriptsCount = 0
-        computersTotal = 0
-        policiesTotal = 0
-        profilesTotal = 0
-        scriptsTotal = 0
+        statuses.removeAll()
+        counts.removeAll()
+        totals.removeAll()
     }
-    
+
     func updateProgress(for type: ExportType, status: ExportStatus, count: Int = 0, total: Int = 0) {
         DispatchQueue.main.async {
-            switch type {
-            case .computers:
-                self.computersStatus = status
-                self.computersCount = count
-                self.computersTotal = total
-            case .policies:
-                self.policiesStatus = status
-                self.policiesCount = count
-                self.policiesTotal = total
-            case .profiles:
-                self.profilesStatus = status
-                self.profilesCount = count
-                self.profilesTotal = total
-            case .scripts:
-                self.scriptsStatus = status
-                self.scriptsCount = count
-                self.scriptsTotal = total
-            }
+            self.statuses[type] = status
+            self.counts[type] = count
+            self.totals[type] = total
         }
     }
-    
+
     func setCurrentTask(_ task: String) {
         DispatchQueue.main.async {
             self.currentTask = task
         }
     }
-    
+
     func markComplete() {
         DispatchQueue.main.async {
             self.isComplete = true
@@ -259,9 +208,48 @@ class ExportProgress: ObservableObject {
     }
 }
 
-enum ExportType {
+enum ExportType: String, CaseIterable, Identifiable, Hashable {
     case computers
     case policies
     case profiles
     case scripts
+    case packages
+    case redundant
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .computers: return "Computers"
+        case .policies: return "Policies"
+        case .profiles: return "Profiles"
+        case .scripts: return "Scripts"
+        case .packages: return "Packages"
+        case .redundant: return "Redundant"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .computers: return "desktopcomputer"
+        case .policies: return "scroll.fill"
+        case .profiles: return "doc.text.fill"
+        case .scripts: return "applescript.fill"
+        case .packages: return "shippingbox.fill"
+        case .redundant: return "archivebox.fill"
+        }
+    }
+
+    /// Matched to the module's colour elsewhere in the app, so a row here is recognisably the same
+    /// thing as its sidebar entry and its dashboard tile.
+    var colour: Color {
+        switch self {
+        case .computers: return .moduleAzure
+        case .policies: return .moduleMagenta
+        case .profiles: return .moduleAmber
+        case .scripts: return .moduleLime
+        case .packages: return .moduleViolet
+        case .redundant: return .moduleRose
+        }
+    }
 }

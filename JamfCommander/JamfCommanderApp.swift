@@ -17,6 +17,16 @@ struct JamfCommanderApp: App {
                 // ideally wanted — so switching to a module with a tall filter bar physically grew
                 // the window and pushed its own controls off the screen.
                 .frame(minWidth: 960, minHeight: 600)
+                // The app has one designed appearance. Its neon accents, glass and gradient backdrop
+                // were all drawn against dark; the light rendering was those same values inherited
+                // onto white, which is why it looked washed out rather than designed.
+                //
+                // This overrides a system preference, which is not free: some people set light mode
+                // for medical reasons (light text on a dark ground haloes badly with astigmatism),
+                // and Mac apps are expected to follow the system. The right answer is a *designed*
+                // light theme, at which point this line goes and the palette in ModulePalette.swift
+                // gains light variants. Until then, one finished appearance beats two, one unfinished.
+                .preferredColorScheme(.dark)
         }
         .commands {
             // Replace the default Help item so ⌘? opens the app's own help rather than looking for
