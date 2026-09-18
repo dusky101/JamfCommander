@@ -9,6 +9,9 @@ import SwiftUI
 
 struct LoadingProgressView: View {
     var message: String = "Loading Jamf data..."
+    /// The smaller line under the spinner. The default describes the app's usual first load; a
+    /// screen that fetches something else should say so rather than let this claim stand.
+    var detail: String = "Fetching computers, policies, profiles and scripts..."
     
     @State private var animateIcon = false
     
@@ -26,7 +29,7 @@ struct LoadingProgressView: View {
             ProgressView()
                 .controlSize(.large)
             
-            Text("Fetching computers, policies, profiles and scripts...")
+            Text(detail)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)

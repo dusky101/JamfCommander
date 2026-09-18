@@ -16,7 +16,7 @@
 //    will actually run is **Policy Enabled**.
 //
 //  A basic export in the sense of `exports.md`: synchronous, built from data the caller already holds.
-//  The expensive part — `JamfAPIService.scanPackageEstate` reading every policy — belongs to the view
+//  The expensive part — `JamfAPIService.scanPolicyEstate` reading every policy — belongs to the view
 //  that already ran it, so exporting never triggers a second pass over the tenant.
 //
 
@@ -47,7 +47,7 @@ class PackageExportService {
     ///
     /// - Parameters:
     ///   - packages: Jamf's package library, as `fetchJamfPackages()` returns it.
-    ///   - usage: Package id → the names of the policies installing it, from `scanPackageEstate`.
+    ///   - usage: Package id → the names of the policies installing it, from `scanPolicyEstate`.
     ///     A package id missing from this map is installed by nothing.
     ///   - installomator: The Installomator policies found by the same scan.
     ///   - categoryNames: Jamf category id → name, so library rows carry a readable category rather

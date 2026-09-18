@@ -55,7 +55,7 @@ class ExportService {
     /// Everything this instance can install — Jamf's package library and the Installomator policies
     /// that install without a package — with whether a policy installs each one.
     ///
-    /// Synchronous by design. The expensive part is `JamfAPIService.scanPackageEstate`, which reads
+    /// Synchronous by design. The expensive part is `JamfAPIService.scanPolicyEstate`, which reads
     /// every policy; the caller passes the result it already holds so exporting never starts a second
     /// pass over the tenant.
     static func exportPackagesToCSV(

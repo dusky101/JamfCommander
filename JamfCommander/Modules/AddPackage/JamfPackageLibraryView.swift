@@ -7,7 +7,7 @@
 //
 //  Whether a package is *deployed* is the one thing this view cannot know cheaply — Jamf has no
 //  reverse lookup from package to policy, so the answer arrives from a background scan
-//  (`scanPackageEstate`). Until it does, rows say "Checking…" rather than implying a package is
+//  (`scanPolicyEstate`). Until it does, rows say "Checking…" rather than implying a package is
 //  unused, which would be the more damaging thing to get wrong.
 //
 

@@ -167,6 +167,9 @@ struct ContentView: View {
 
         case .packages:
             AddPackageView(api: api)
+
+        case .redundant:
+            RedundantDashboardView(api: api)
         }
     }
 

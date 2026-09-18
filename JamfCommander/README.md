@@ -429,6 +429,32 @@ Practical notes:
 - The upload uses the Jamf Pro API's package upload endpoint. On a Jamf Pro too old to offer it, the
   app says so plainly instead of failing obscurely.
 
+### Redundant
+
+A read-only audit of objects that look like they do nothing. It is pinned at the bottom of the
+sidebar, above Settings, because it is housekeeping rather than somewhere you work day to day.
+
+It lists:
+
+- **Policies** that are disabled, or that have nothing scoped to them. Policies that install through
+  Installomator are marked, since the software they install has no package in the library.
+- **Profiles** that have nothing scoped to them. Jamf configuration profiles have no
+  enabled/disabled flag, so "not enabled" never applies to one.
+- **Packages** in Jamf's library that no policy installs. These are reported only — removing a
+  package record is done in Jamf.
+
+Every row shows the reason it was listed, and the view filters by All, Not enabled, Not scoped or
+Not attached.
+
+**What "not scoped" can and cannot see.** It means no computers and no computer groups are targeted.
+Jamf can also scope by building, department or user, and those are not read, so a policy scoped only
+that way appears here as unscoped. Check anything unexpected in Jamf before acting on it.
+
+The scan reads every policy, profile and package, so it takes a while on a large instance. It runs
+when the module is opened and when Refresh is pressed. If any of those reads fails the audit reports
+an error rather than showing a partial list — an empty section would otherwise read as "nothing of
+this kind is redundant" when it really means "this could not be checked".
+
 ## Exporting Data
 
 Jamf Commander can export:

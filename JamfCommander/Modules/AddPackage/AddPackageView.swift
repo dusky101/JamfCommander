@@ -397,9 +397,9 @@ struct AddPackageView: View {
         let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
 
         do {
-            let scan = try await api.scanPackageEstate(knownScriptIDs: knownScriptIDs)
+            let scan = try await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs)
             await MainActor.run {
-                packageUsage = scan.usage
+                packageUsage = scan.packageUsage
                 installomatorPolicies = scan.installomator
                 hasScannedUsage = true
                 isScanningUsage = false
