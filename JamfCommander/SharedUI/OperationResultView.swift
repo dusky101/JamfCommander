@@ -17,6 +17,11 @@ struct OperationResult: Identifiable {
     // Optional: Only used for Move operations
     var fromCategory: String? = nil
     var toCategory: String? = nil
+
+    /// Optional: the caller's own identifier for the item, so a caller with a mixed list can match a
+    /// result back to the exact object. Names are not unique across object kinds, which makes them
+    /// unsafe to match on when the next step is removing rows from a list.
+    var itemID: String? = nil
 }
 
 // 2. The Summary Sheet

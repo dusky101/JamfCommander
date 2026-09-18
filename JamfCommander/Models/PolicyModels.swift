@@ -26,7 +26,11 @@ struct Policy: Identifiable, Codable, Hashable {
     let categoryName: String?
     let enabled: Bool
     let scope: PolicyScope?
-    
+    /// Whether the scope targets anything, tested against the raw payload rather than the fields
+    /// `PolicyScope` models — see `ScopeTargetProbe`. `scope` remains the thing to display; this is
+    /// the thing to trust when deciding whether a policy reaches any Mac.
+    var scopeTargetsAnything: Bool = false
+
     // Helper for Grouping
     var safeCategory: String { categoryName ?? "No Category" }
 }
@@ -40,6 +44,9 @@ struct PolicyDetailResponse: Codable {
 struct PolicyDetailXML: Codable {
     let general: PolicyGeneral
     let scope: PolicyScope
+    /// The same `scope` object read generically, so targets this app does not model (buildings,
+    /// departments) still count. See `ScopeTargetProbe`.
+    let scopeTargets: ScopeTargetProbe
     let self_service: PolicySelfServiceXML?
     let package_configuration: PolicyPackageConfiguration?
     let scripts: [PolicyScript]?
@@ -56,6 +63,10 @@ struct PolicyDetailXML: Codable {
         general = try container.decode(PolicyGeneral.self, forKey: .general)
         scope = (try? container.decode(PolicyScope.self, forKey: .scope))
             ?? PolicyScope(all_computers: false, computers: nil, computer_groups: nil, exclusions: nil)
+        // A scope that cannot be read at all must not read as "targets nothing" — that is the claim
+        // this audit acts on — so an unreadable scope is reported as targeting something.
+        scopeTargets = (try? container.decode(ScopeTargetProbe.self, forKey: .scope))
+            ?? ScopeTargetProbe(targetsAnything: true)
         self_service = try? container.decode(PolicySelfServiceXML.self, forKey: .self_service)
         files_processes = try? container.decode(PolicyFilesProcesses.self, forKey: .files_processes)
         package_configuration = try? container.decode(PolicyPackageConfiguration.self, forKey: .package_configuration)

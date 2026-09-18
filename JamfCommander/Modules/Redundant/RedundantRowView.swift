@@ -14,9 +14,19 @@ import SwiftUI
 
 struct RedundantRowView: View {
     let item: RedundantItem
+    var isSelected: Bool = false
+    /// Packages are listed for review only, so they carry no selection control at all rather than
+    /// one that silently does nothing.
+    var isSelectable: Bool = true
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
+            if isSelectable {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18))
+                    .foregroundColor(isSelected ? .blue : .secondary.opacity(0.4))
+            }
+
             ZStack {
                 Circle()
                     .fill(item.kind.colour.opacity(0.1))
@@ -73,10 +83,15 @@ struct RedundantRowView: View {
         }
         .padding(12)
         .liquidGlass(cornerRadius: 12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.blue.opacity(isSelected ? 0.7 : 0), lineWidth: 2)
+        )
         // The glass effect, unlike a material background, doesn't fill the hit area on its own.
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
     /// The row reads as one sentence, because the badges alone are meaningless out of context.

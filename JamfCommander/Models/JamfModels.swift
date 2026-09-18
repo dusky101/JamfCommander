@@ -117,17 +117,30 @@ struct ProfileDetailResponse: Codable {
 struct ProfileDetail: Codable, Sendable {
     let general: GeneralInfo
     let scope: ScopeInfo
-    
-    // Determine if profile is scoped based on scope
+    /// The same `scope` object read generically, so targets `ScopeInfo` does not model — buildings
+    /// and departments — still count as scoped. See `ScopeTargetProbe`.
+    let scopeTargets: ScopeTargetProbe
+
+    enum CodingKeys: String, CodingKey {
+        case general, scope
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        general = try container.decode(GeneralInfo.self, forKey: .general)
+        scope = try container.decode(ScopeInfo.self, forKey: .scope)
+        // A scope that cannot be read must not read as "targets nothing": the Redundant audit acts
+        // on that claim, so an unreadable scope is reported as targeting something.
+        scopeTargets = (try? container.decode(ScopeTargetProbe.self, forKey: .scope))
+            ?? ScopeTargetProbe(targetsAnything: true)
+    }
+
+    /// Whether anything is scoped to this profile.
+    ///
+    /// Read from the raw payload rather than the three fields `ScopeInfo` models, so a profile
+    /// targeted only at a building or department is not reported as reaching nothing.
     nonisolated var isActive: Bool {
-        // Scoped if deployed to all computers
-        if scope.all_computers {
-            return true
-        }
-        // Scoped if targeted to any specific computers or groups
-        let hasComputers = !(scope.computers?.isEmpty ?? true)
-        let hasGroups = !(scope.computer_groups?.isEmpty ?? true)
-        return hasComputers || hasGroups
+        scopeTargets.targetsAnything
     }
 }
 

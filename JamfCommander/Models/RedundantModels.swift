@@ -16,11 +16,10 @@
 //  · A **package** is listed when no policy installs it. It is reported, never acted on — see
 //    `RedundantKind.supportsActions`.
 //
-//  IMPORTANT — what "not scoped" means here. It is read from the scope fields this app decodes:
-//  `all_computers`, targeted computers, and targeted computer groups. Jamf can also scope by
-//  building, department or user, and `PolicyScope`/`ScopeInfo` do not model those, so a policy
-//  scoped *only* that way would be listed as unscoped when it is not. The UI says so in as many
-//  words, and this is why the audit reports rather than acts on its own.
+//  What "not scoped" means here. It is read from the raw scope payload by `ScopeTargetProbe`, not
+//  from the three target fields `PolicyScope`/`ScopeInfo` model, so a policy or profile targeted only
+//  at a building or department is correctly treated as scoped. A scope that cannot be read at all is
+//  treated as scoped, so the audit's mistakes fall on the side of leaving things alone.
 //
 
 import Foundation
@@ -190,18 +189,6 @@ enum RedundantFilter: String, CaseIterable, Identifiable {
 /// above are the whole story and can be read in one place.
 enum RedundantAudit {
 
-    /// Whether a policy's scope reaches anything this app can see.
-    ///
-    /// Mirrors `ProfileDetail.isActive` deliberately, so a policy and a profile are judged by the
-    /// same standard. See the file header for what this cannot see.
-    static func isScoped(_ scope: PolicyScope?) -> Bool {
-        guard let scope else { return false }
-        if scope.all_computers { return true }
-        let hasComputers = !(scope.computers?.isEmpty ?? true)
-        let hasGroups = !(scope.computer_groups?.isEmpty ?? true)
-        return hasComputers || hasGroups
-    }
-
     /// Everything that looks redundant, sorted by kind and then name.
     ///
     /// - Parameters:
@@ -224,7 +211,7 @@ enum RedundantAudit {
         for policy in policies {
             var reasons: Set<RedundantReason> = []
             if !policy.enabled { reasons.insert(.notEnabled) }
-            if !isScoped(policy.scope) { reasons.insert(.notScoped) }
+            if !policy.scopeTargetsAnything { reasons.insert(.notScoped) }
             guard !reasons.isEmpty else { continue }
 
             items.append(

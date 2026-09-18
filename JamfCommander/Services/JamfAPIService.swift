@@ -223,7 +223,8 @@ class JamfAPIService: ObservableObject {
                                         categoryId: detail.general.category?.id,
                                         categoryName: detail.general.category?.name,
                                         enabled: detail.general.enabled,
-                                        scope: detail.scope
+                                        scope: detail.scope,
+                                        scopeTargetsAnything: detail.scopeTargets.targetsAnything
                                     )
                                 } catch {
                                     if attempt == 3 {

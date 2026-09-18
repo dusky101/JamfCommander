@@ -16,6 +16,12 @@ struct FilterBar: View {
     // Data Sources: Pass one or the other (or both) to populate counts
     var profiles: [ConfigProfile] = []
     var policies: [Policy] = [] // Added for Policy Dashboard support
+
+    /// How many items a category holds, for a caller whose list is neither profiles nor policies —
+    /// the Redundant audit mixes three kinds of object. Supplied, it replaces the built-in count.
+    var customCount: ((Category) -> Int)? = nil
+    /// The number on the "All Categories" chip when `customCount` is in use.
+    var customTotal: Int? = nil
     
     var onRefresh: (() -> Void)?
     var onExport: (() -> Void)? // Optional export action
@@ -28,6 +34,7 @@ struct FilterBar: View {
 
     /// How many items a category holds, across whichever data source was supplied.
     private func itemCount(for category: Category) -> Int {
+        if let customCount { return customCount(category) }
         let profileCount = profiles.filter { $0.categoryName == category.name }.count
         let policyCount = policies.filter { ($0.categoryName ?? "No Category") == category.name }.count
         return profileCount + policyCount
@@ -152,7 +159,7 @@ struct FilterBar: View {
                                 icon: "square.grid.2x2",
                                 color: .blue,
                                 isSelected: selectedCategory == nil,
-                                count: profiles.count + policies.count // Sum of all items
+                                count: customTotal ?? (profiles.count + policies.count) // Sum of all items
                             ) {
                                 withAnimation { selectedCategory = nil }
                             }

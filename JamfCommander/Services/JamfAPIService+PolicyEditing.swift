@@ -124,6 +124,17 @@ extension JamfAPIService {
         try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
     }
 
+    /// Enables or disables a policy in place, writing only `<general><enabled>`.
+    ///
+    /// A partial update in the same shape `updateInstallomatorPolicy` already writes, so nothing
+    /// else about the policy is touched. Disabling is the reversible half of the Redundant audit:
+    /// the policy, its scope and its payload all stay in Jamf, it simply stops running. No dynamic
+    /// string reaches the body, so there is nothing here to escape.
+    func setPolicyEnabled(id: Int, enabled: Bool) async throws {
+        let xml = "<policy><general><enabled>\(enabled)</enabled></general></policy>"
+        try await genericRequest(method: "PUT", endpoint: "JSSResource/policies/id/\(id)", body: xml)
+    }
+
     /// Scopes a policy to all computers in place. Writes only the `<scope>` section, setting
     /// `all_computers` true and clearing any targeted computers/computer groups (mirrors the
     /// proven `setProfileScopeToAllComputers` shape). Existing exclusions are left untouched.

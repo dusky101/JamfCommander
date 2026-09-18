@@ -29,83 +29,80 @@ struct RedundantDashboardView: View {
     @State private var loadFailed = false
     @State private var hasLoaded = false
 
+    @State private var categories: [Category] = []
+
     @State private var filter: RedundantFilter = .all
     @State private var searchText = ""
+    @State private var selectedCategory: Category?
     @State private var collapsedKinds: Set<RedundantKind> = []
+
+    // Selection & actions
+    @State private var selection: Set<String> = []
+    @State private var isWorking = false
+    @State private var results: [OperationResult] = []
+    @State private var resultTitle = ""
+    @State private var showResults = false
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            // --- Top Bar --- the same swap the Policies module makes: filters until something is
+            // selected, then the actions for what is selected.
+            if !selection.isEmpty {
+                RedundantActionPanel(
+                    categories: categories,
+                    selectedItems: selectedItems,
+                    isBusy: isWorking,
+                    onClearSelection: { withAnimation { selection.removeAll() } },
+                    onConfirmedAction: { action, targets in perform(action, on: targets) }
+                )
+                .frame(height: 180)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(2)
+            } else {
+                VStack(spacing: 0) {
+                    FilterBar(
+                        searchText: $searchText,
+                        categories: categories,
+                        selectedCategory: $selectedCategory,
+                        customCount: { category in
+                            items.filter { $0.categoryName == category.name }.count
+                        },
+                        customTotal: items.count,
+                        onRefresh: { Task { await load() } },
+                        onExport: { exportAudit() }
+                    )
+
+                    reasonBar
+                }
+                .zIndex(1)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             content
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task { await load() }
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .help("Scan Jamf again")
-                .disabled(isLoading)
-            }
-        }
+        // Pin to the top. Without this, content taller than the pane is centred, so the overflow is
+        // split above and below and the bar disappears under the title bar instead of the list
+        // simply running off the bottom.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(.easeInOut(duration: 0.2), value: selection.isEmpty)
         .task {
             // The scan is far too heavy to repeat every time the module is shown.
             guard !hasLoaded else { return }
             await load()
         }
-    }
-
-    // MARK: - Header
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Redundant")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .lineLimit(1)
-
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 12)
-            }
-
-            if !isLoading && !loadFailed && !items.isEmpty {
-                filterChips
-                searchField
-
-                // Said plainly, because the audit's weakest claim is the one most likely to be
-                // acted on. See the header of RedundantModels.swift.
-                Label(
-                    "\"Not scoped\" means no computers or computer groups are targeted. Scoping by building, department or user is not read, so check anything unexpected in Jamf before acting on it.",
-                    systemImage: "info.circle"
-                )
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        .sheet(isPresented: $showResults) {
+            OperationResultView(title: resultTitle, results: results) {
+                showResults = false
             }
         }
-        .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private var subtitle: String {
-        if isLoading { return "Reading every policy, profile and package in this instance." }
-        if loadFailed { return "The audit could not be completed." }
-        if items.isEmpty { return "Nothing in this instance looks redundant." }
-        return "\(items.count) object\(items.count == 1 ? "" : "s") that look like they do nothing."
-    }
+    // MARK: - Reason filters + select all
 
-    private var filterChips: some View {
-        FlowLayout(spacing: 8) {
+    /// The audit's own filters, under the shared category bar: which *reason* to show, and a select
+    /// all for everything currently listed.
+    private var reasonBar: some View {
+        HStack(spacing: 8) {
             ForEach(RedundantFilter.allCases) { option in
                 FilterChip(
                     title: option.rawValue,
@@ -116,35 +113,26 @@ struct RedundantDashboardView: View {
                 ) {
                     withAnimation { filter = option }
                 }
+                .help(option.reason?.explanation ?? "Everything the scan found")
             }
-        }
-    }
 
-    private var searchField: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
+            Spacer()
 
-            TextField("Search names, categories or IDs...", text: $searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-
-            if !searchText.isEmpty {
-                Button(action: { searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
+            if !filteredItems.isEmpty {
+                Text("\(filteredItems.count) shown")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
+
+            Button(allActionableSelected ? "Clear Selection" : "Select All (\(actionableFilteredItems.count))") {
+                withAnimation { toggleSelectAll() }
+            }
+            .disabled(actionableFilteredItems.isEmpty)
+            .help("Select every policy and profile currently listed. Packages are report only.")
         }
-        .padding(8)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-        )
+        .padding(.horizontal)
+        .padding(.vertical, 10)
+        .overlay(Divider().opacity(0.5), alignment: .bottom)
     }
 
     // MARK: - Content
@@ -227,7 +215,16 @@ struct RedundantDashboardView: View {
 
             if !collapsedKinds.contains(kind) {
                 ForEach(items) { item in
-                    RedundantRowView(item: item)
+                    if item.kind.supportsActions {
+                        Button {
+                            toggle(item)
+                        } label: {
+                            RedundantRowView(item: item, isSelected: selection.contains(item.id))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        RedundantRowView(item: item, isSelectable: false)
+                    }
                 }
             }
         }
@@ -281,15 +278,31 @@ struct RedundantDashboardView: View {
     // MARK: - Derived
 
     private var filteredItems: [RedundantItem] {
-        let byReason = items.filter { filter.matches($0) }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return byReason }
 
-        return byReason.filter {
-            $0.name.localizedCaseInsensitiveContains(query)
-                || $0.categoryName.localizedCaseInsensitiveContains(query)
-                || $0.jamfID == query
+        return items.filter { item in
+            guard filter.matches(item) else { return false }
+            if let selectedCategory, item.categoryName != selectedCategory.name { return false }
+            guard !query.isEmpty else { return true }
+            return item.name.localizedCaseInsensitiveContains(query)
+                || item.categoryName.localizedCaseInsensitiveContains(query)
+                || item.jamfID == query
         }
+    }
+
+    /// Only what the audit can actually change. Packages are listed but never acted on, so they are
+    /// never selected either — a selection that silently does nothing is worse than no selection.
+    private var actionableFilteredItems: [RedundantItem] {
+        filteredItems.filter { $0.kind.supportsActions }
+    }
+
+    private var selectedItems: [RedundantItem] {
+        items.filter { selection.contains($0.id) }
+    }
+
+    private var allActionableSelected: Bool {
+        !actionableFilteredItems.isEmpty
+            && actionableFilteredItems.allSatisfy { selection.contains($0.id) }
     }
 
     private var groupedItems: [(kind: RedundantKind, items: [RedundantItem])] {
@@ -301,6 +314,109 @@ struct RedundantDashboardView: View {
 
     private func count(for option: RedundantFilter) -> Int {
         items.filter { option.matches($0) }.count
+    }
+
+    // MARK: - Selection
+
+    private func toggle(_ item: RedundantItem) {
+        if selection.contains(item.id) {
+            selection.remove(item.id)
+        } else {
+            selection.insert(item.id)
+        }
+    }
+
+    private func toggleSelectAll() {
+        let visible = Set(actionableFilteredItems.map(\.id))
+        if allActionableSelected {
+            selection.subtract(visible)
+        } else {
+            selection.formUnion(visible)
+        }
+    }
+
+    // MARK: - Acting
+
+    /// Runs a confirmed action and reports exactly what Jamf did with each item.
+    ///
+    /// The list is then brought in line with what actually succeeded rather than re-scanned: a full
+    /// scan reads every policy, profile and package again, which is far too much to pay after every
+    /// action. Refresh re-reads Jamf when certainty is wanted.
+    private func perform(_ action: JamfAPIService.RedundantAction, on targets: [RedundantItem]) {
+        guard !targets.isEmpty, !isWorking else { return }
+        isWorking = true
+
+        Task {
+            let outcome = await api.applyRedundantAction(action, to: targets)
+            let changed = Set(outcome.filter(\.success).compactMap(\.itemID))
+
+            await MainActor.run {
+                applyLocally(action, to: changed)
+                selection.subtract(changed)
+                results = outcome
+                resultTitle = action.title
+                isWorking = false
+                showResults = true
+            }
+        }
+    }
+
+    /// Reflects a completed action in the list.
+    ///
+    /// Only a delete removes a row. A move changes where something is filed but not whether it is
+    /// redundant, and disabling an unscoped policy makes it *more* redundant, not less — so both
+    /// keep their row, updated.
+    private func applyLocally(_ action: JamfAPIService.RedundantAction, to changed: Set<String>) {
+        guard !changed.isEmpty else { return }
+
+        switch action {
+        case .delete:
+            items.removeAll { changed.contains($0.id) }
+
+        case .disable:
+            items = items.map { item in
+                guard changed.contains(item.id) else { return item }
+                return RedundantItem(
+                    kind: item.kind,
+                    jamfID: item.jamfID,
+                    name: item.name,
+                    categoryName: item.categoryName,
+                    reasons: item.reasons.union([.notEnabled]),
+                    isEnabled: false,
+                    isInstallomator: item.isInstallomator
+                )
+            }
+
+        case .moveToCategory(_, let name):
+            items = items.map { item in
+                guard changed.contains(item.id) else { return item }
+                return RedundantItem(
+                    kind: item.kind,
+                    jamfID: item.jamfID,
+                    name: item.name,
+                    categoryName: name,
+                    reasons: item.reasons,
+                    isEnabled: item.isEnabled,
+                    isInstallomator: item.isInstallomator
+                )
+            }
+        }
+    }
+
+    // MARK: - Report
+
+    /// Writes what is currently listed to CSV — the audit as a record you can take away, circulate,
+    /// or work through outside the app. Exports the filtered view, not the whole scan, so what you
+    /// are looking at is what you get.
+    private func exportAudit() {
+        let csv = RedundantExportService.exportToCSV(items: filteredItems)
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        _ = ExportService.saveCSVToFile(
+            content: csv,
+            defaultName: "Redundant_\(formatter.string(from: Date())).csv"
+        )
     }
 
     // MARK: - Loading
@@ -340,6 +456,12 @@ struct RedundantDashboardView: View {
 
             await MainActor.run {
                 items = audit
+                self.categories = categories.sorted {
+                    $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+                // A row that has gone is no longer selectable; drop it rather than acting on a
+                // selection that no longer matches what is on screen.
+                selection = selection.intersection(Set(audit.map(\.id)))
                 isLoading = false
                 hasLoaded = true
             }
@@ -348,6 +470,7 @@ struct RedundantDashboardView: View {
             print("[Redundant] Audit scan failed")
             await MainActor.run {
                 items = []
+                selection.removeAll()
                 isLoading = false
                 loadFailed = true
             }

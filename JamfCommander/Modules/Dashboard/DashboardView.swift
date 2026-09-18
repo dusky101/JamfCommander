@@ -56,7 +56,7 @@ struct DashboardView: View {
             VStack(spacing: 24) {
                 
                 // MARK: - 1. Hero Stats Grid (Clickable)
-                HStack(alignment: .top, spacing: 16) {
+                HStack(alignment: .top, spacing: 32) {
                     // Stats Grid (Leading)
                     // `.frame(maxWidth: .infinity)` rather than a trailing Spacer: with a Spacer the
                     // grid was handed only its ideal width and the spacer swallowed the rest, so the
@@ -95,6 +95,9 @@ struct DashboardView: View {
                         .buttonStyle(.plain)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    // The tiles fill the row, so without this they run straight into the export
+                    // card and the two read as one group.
+                    .padding(.trailing, 8)
 
                     // Export All Button (Trailing)
                     Button(action: { exportAllData() }) {
@@ -535,6 +538,18 @@ struct CategoryTile: View {
 struct ExportAllCard: View {
     let isExporting: Bool
     @State private var isHovering = false
+
+    /// Drives the shine sweep. It travels well past both edges, so the band is only visible for part
+    /// of each cycle — the card catches the light every few seconds rather than glinting constantly.
+    @State private var shineOffset: CGFloat = -1.4
+
+    /// A perpetual animation is exactly what this setting exists to stop, so the card simply sits
+    /// still when it is on.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var shouldShine: Bool {
+        !isExporting && !reduceMotion
+    }
     
     var body: some View {
         VStack(alignment: .center, spacing: 8) {
@@ -566,6 +581,9 @@ struct ExportAllCard: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 8)
         .liquidGlass(cornerRadius: 12)
+        .overlay {
+            shine
+        }
         .overlay(
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.green.opacity(isHovering ? 0.5 : 0.2), lineWidth: 2)
@@ -575,6 +593,44 @@ struct ExportAllCard: View {
         .onHover { isHovering = $0 }
         .onHover { inside in
             if inside && !isExporting { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+        }
+        .onAppear { startShine() }
+        .onChange(of: shouldShine) { startShine() }
+    }
+
+    /// A narrow diagonal highlight that sweeps across the card.
+    ///
+    /// `.plusLighter` adds light rather than painting white over the glass, so it reads as a
+    /// reflection on the surface instead of a white bar crossing it, and it stays subtle on both a
+    /// light and a dark background.
+    @ViewBuilder
+    private var shine: some View {
+        if shouldShine {
+            GeometryReader { geometry in
+                let width = geometry.size.width
+
+                LinearGradient(
+                    colors: [.clear, Color.white.opacity(0.45), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: width * 0.35)
+                .rotationEffect(.degrees(25))
+                .offset(x: shineOffset * width)
+                .blendMode(.plusLighter)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .allowsHitTesting(false)
+            // Decoration only — VoiceOver already reads the button's label.
+            .accessibilityHidden(true)
+        }
+    }
+
+    private func startShine() {
+        guard shouldShine else { return }
+        shineOffset = -1.4
+        withAnimation(.linear(duration: 3.2).repeatForever(autoreverses: false)) {
+            shineOffset = 1.4
         }
     }
 }

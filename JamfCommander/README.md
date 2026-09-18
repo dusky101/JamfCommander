@@ -431,8 +431,9 @@ Practical notes:
 
 ### Redundant
 
-A read-only audit of objects that look like they do nothing. It is pinned at the bottom of the
-sidebar, above Settings, because it is housekeeping rather than somewhere you work day to day.
+An audit of objects that look like they do nothing, with the means to tidy them up. It is pinned at
+the bottom of the sidebar, above Settings, because it is housekeeping rather than somewhere you work
+day to day.
 
 It lists:
 
@@ -443,15 +444,30 @@ It lists:
 - **Packages** in Jamf's library that no policy installs. These are reported only — removing a
   package record is done in Jamf.
 
-Every row shows the reason it was listed, and the view filters by All, Not enabled, Not scoped or
-Not attached.
+Every row shows the reason it was listed. The view uses the same category filter bar as the other
+modules, with its own row of reason filters underneath — All, Not enabled, Not scoped, Not attached —
+and a Select All button.
 
-**What "not scoped" can and cannot see.** It means no computers and no computer groups are targeted.
-Jamf can also scope by building, department or user, and those are not read, so a policy scoped only
-that way appears here as unscoped. Check anything unexpected in Jamf before acting on it.
+Selecting anything swaps the filter bar for the action panel, exactly as the Policies module does:
+
+- **Move to Category** — the primary action, because it can be undone by hand. Files the selected
+  policies and profiles under a category (for example one called "Redundant"), leaving them enabled,
+  scoped and running. A policy's Self Service category is updated to match.
+- **Disable** — policies only, and only those currently enabled. They stay in Jamf with scope and
+  payload intact but stop running. Reversible from the Policies module.
+- **Delete** — permanent. Confirmed separately, and named by count.
+
+Packages are never changed from here. The export button on the filter bar writes the currently
+filtered list to CSV, as a record to review or circulate before anything is acted on.
+
+**What "not scoped" means.** Nothing is targeted — no computers, computer groups, buildings or
+departments. Exclusions and limitations narrow a scope rather than create one, so they do not count
+as targets. A scope that cannot be read at all is treated as scoped, so the audit errs towards
+leaving things alone.
 
 The scan reads every policy, profile and package, so it takes a while on a large instance. It runs
-when the module is opened and when Refresh is pressed. If any of those reads fails the audit reports
+when the module is opened and when Refresh is pressed — not after every action, which is why the list
+updates in place once something is moved, disabled or deleted. If any of those reads fails the audit reports
 an error rather than showing a partial list — an empty section would otherwise read as "nothing of
 this kind is redundant" when it really means "this could not be checked".
 
@@ -466,6 +482,7 @@ Jamf Commander can export:
 - Detailed profiles CSV
 - Scripts CSV
 - Packages CSV
+- Redundant audit CSV
 - All supported data as a ZIP archive
 
 Exports use macOS save panels, so you choose the destination at export time.
@@ -496,6 +513,7 @@ Actions that modify Jamf include:
 - Cloning policies and profiles.
 - Creating Installomator deployment policies.
 - Deleting policies and profiles.
+- Disabling policies from the Redundant audit, and moving or deleting what it lists.
 
 Deletion is permanent from the app's perspective. Make sure you have backups or a recovery process before using bulk delete actions.
 
