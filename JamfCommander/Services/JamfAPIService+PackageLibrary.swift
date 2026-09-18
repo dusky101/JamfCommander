@@ -210,7 +210,7 @@ extension JamfAPIService {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
 
-        print("[Packages] Estate scan: \(policies.count) policy/policies read, \(usage.count) package(s) attached to a policy, \(installomator.count) Installomator policy/policies")
+        print("[Packages] Estate scan: \(policies.count) policies read · \(usage.count) packages attached to a policy · \(installomator.count) Installomator policies")
         return PolicyEstateScan(policies: policies, packageUsage: usage, installomator: installomator)
     }
 }

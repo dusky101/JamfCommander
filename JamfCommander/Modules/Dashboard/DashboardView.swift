@@ -553,7 +553,7 @@ struct ExportAllCard: View {
     }
 
     /// The two things the sweep animates, on independent tracks.
-    private struct ShineValues {
+    private struct ShineValues: Sendable {
         /// −1 parks the streak just off the leading edge, +1 just off the trailing edge.
         var travel: CGFloat = -1
         /// Fades the streak in and out, so it never appears or vanishes mid-card.
@@ -593,9 +593,11 @@ struct ExportAllCard: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 8)
         .liquidGlass(cornerRadius: 12)
-        .keyframeAnimator(initialValue: ShineValues(), trigger: shineTrigger) { content, value in
+        // `shouldShine` reads @Environment and must be read here, on the main actor: the content
+        // closure below is nonisolated, so it is captured rather than called into.
+        .keyframeAnimator(initialValue: ShineValues(), trigger: shineTrigger) { [isActive = shouldShine] content, value in
             content.overlay {
-                shine(value)
+                Self.shine(value, isActive: isActive)
             }
         } keyframes: { _ in
             // Out, a beat at the far edge, and back. One run per trigger — no `repeating`.
@@ -643,9 +645,11 @@ struct ExportAllCard: View {
     ///
     /// `.plusLighter` adds light to what is beneath rather than painting over it, so the card's text
     /// and icon brighten as the streak passes instead of being covered by it.
+    /// `nonisolated static` because `keyframeAnimator`'s content closure runs outside the main
+    /// actor: it touches no view state, only the values it is handed.
     @ViewBuilder
-    private func shine(_ value: ShineValues) -> some View {
-        if shouldShine {
+    nonisolated private static func shine(_ value: ShineValues, isActive: Bool) -> some View {
+        if isActive {
             GeometryReader { geometry in
                 let width = geometry.size.width
                 let height = geometry.size.height
