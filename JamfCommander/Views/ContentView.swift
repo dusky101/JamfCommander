@@ -162,10 +162,10 @@ struct ContentView: View {
         case .scripts:
             ScriptsDashboardView(api: api)
 
-        case .packages:
+        case .installomator:
             PackagesDashboardView(api: api)
 
-        case .addPackage:
+        case .packages:
             AddPackageView(api: api)
         }
     }

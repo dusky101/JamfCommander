@@ -13,11 +13,14 @@ struct DashboardView: View {
     // NEW: Binding to control navigation from the stats
     @Binding var currentModule: AppModule
     
-    // Stats State
-    @State private var computerCount = 0
-    @State private var profileCount = 0
-    @State private var scriptCount = 0
-    @State private var policyCount = 0
+    // Stats State. Optional, not zero: a section of Jamf that could not be read shows "—" on its
+    // tile, which is the truth — a 0 would read as "you have none of these".
+    @State private var computerCount: Int?
+    @State private var profileCount: Int?
+    @State private var scriptCount: Int?
+    @State private var policyCount: Int?
+    @State private var blueprintCount: Int?
+    @State private var packageCount: Int?
     
     // Data Lists
     @State private var categories: [Category] = []
@@ -71,7 +74,17 @@ struct DashboardView: View {
                             StatCard(title: "Profiles", count: profileCount, icon: "doc.text.fill", color: .orange)
                         }
                         .buttonStyle(.plain)
-                        
+
+                        Button(action: { currentModule = .blueprints }) {
+                            StatCard(title: "Blueprints", count: blueprintCount, icon: "square.stack.3d.up.fill", color: .teal)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: { currentModule = .packages }) {
+                            StatCard(title: "Packages", count: packageCount, icon: "shippingbox.fill", color: .indigo)
+                        }
+                        .buttonStyle(.plain)
+
                         Button(action: { currentModule = .scripts }) {
                             StatCard(title: "Scripts", count: scriptCount, icon: "applescript.fill", color: .gray)
                         }
@@ -322,28 +335,47 @@ struct DashboardView: View {
     
     func refreshDashboard() async {
         isLoading = true
-        do {
-            async let fetchedComputers = api.fetchDashboardComputers()
-            async let fetchedProfiles = api.fetchProfiles()
-            async let fetchedScripts = api.fetchScripts()
-            async let fetchedPolicies = api.fetchPolicies()
-            async let fetchedCategories = api.fetchCategories()
-            
-            let (comps, profs, scripts, pols, cats) = try await (fetchedComputers, fetchedProfiles, fetchedScripts, fetchedPolicies, fetchedCategories)
-            
-            await MainActor.run {
-                self.computers = comps
-                self.computerCount = comps.count
-                self.profileCount = profs.count
-                self.scriptCount = scripts.count
-                self.policyCount = pols.count
-                self.categories = cats.sorted { $0.name < $1.name }
-                self.isLoading = false
-            }
-        } catch {
-            print("Dashboard Refresh Error: \(error)")
-            self.isLoading = false
-        }
+
+        // Each count stands or falls on its own. These were previously awaited as a single tuple,
+        // so one failure — a throttled request, or the Platform API refusing a Blueprints read —
+        // left every tile reading zero. Now a section that could not be read shows "—" and the
+        // rest of the dashboard still fills in.
+        async let fetchedComputers = api.fetchDashboardComputers()
+        async let fetchedProfiles = api.fetchProfiles()
+        async let fetchedScripts = api.fetchScripts()
+        async let fetchedPolicies = api.fetchPolicies()
+        async let fetchedCategories = api.fetchCategories()
+        async let fetchedPackages = api.fetchJamfPackages()
+
+        let comps = try? await fetchedComputers
+        let profs = try? await fetchedProfiles
+        let scripts = try? await fetchedScripts
+        let pols = try? await fetchedPolicies
+        let cats = try? await fetchedCategories
+        let packages = try? await fetchedPackages
+        let blueprints = await loadBlueprintCount()
+
+        computerCount = comps?.count
+        profileCount = profs?.count
+        scriptCount = scripts?.count
+        policyCount = pols?.count
+        packageCount = packages?.count
+        blueprintCount = blueprints
+
+        // A failed read leaves the last good list in place rather than replacing it with an empty
+        // one, which would claim the estate is empty when it is only unreachable.
+        if let comps { computers = comps }
+        if let cats { categories = cats.sorted { $0.name < $1.name } }
+
+        isLoading = false
+    }
+
+    /// Blueprints are served by the Platform API, which uses its own credentials (see
+    /// `PlatformAPISession`). Without them the request could only fail, so it is not made: the tile
+    /// shows no value and still navigates to the module, where the credentials can be set up.
+    private func loadBlueprintCount() async -> Int? {
+        guard api.isPlatformConfigured else { return nil }
+        return try? await api.fetchBlueprints().count
     }
     
     func openCategorySheet(for category: Category?) {
@@ -413,11 +445,24 @@ struct DashboardView: View {
 
 struct StatCard: View {
     let title: String
-    let count: Int
+    /// `nil` when the count could not be read — rendered as "—" rather than 0, so an unreachable
+    /// section is never mistaken for an empty one.
+    let count: Int?
     let icon: String
     let color: Color
     
     @State private var isHovering = false
+
+    private var countText: String {
+        count.map(String.init) ?? "—"
+    }
+
+    /// The card is an icon and two pieces of text, none of which names the tile on its own, so the
+    /// whole card is exposed as one element with a spoken summary.
+    private var accessibilitySummary: String {
+        guard let count else { return "\(title), count unavailable" }
+        return "\(title), \(count)"
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -431,9 +476,9 @@ struct StatCard: View {
                         .foregroundColor(color)
                 }
                 Spacer()
-                Text("\(count)")
+                Text(countText)
                     .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
+                    .foregroundColor(count == nil ? .secondary : .primary)
             }
             
             Text(title)
@@ -442,6 +487,9 @@ struct StatCard: View {
         }
         .padding(16)
         .liquidGlass(cornerRadius: 12)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+        .accessibilityHint("Opens the \(title) section")
         .scaleEffect(isHovering ? 1.02 : 1.0)
         .animation(.spring(response: 0.3), value: isHovering)
         .onHover { isHovering = $0 }

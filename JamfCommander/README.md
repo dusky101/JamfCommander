@@ -58,7 +58,7 @@ Recommended privilege areas:
 - Categories: read, create, update, and delete if using category management.
 - macOS Configuration Profiles: read, update, create, and delete if using profile actions.
 - Policies: read, update, create, and delete if using policy actions or Installomator deployment.
-- Packages: read, create, and update if uploading custom packages from **Add PKG**.
+- Packages: read, create, and update if uploading custom packages from **Packages**.
 - Scripts: read scripts and script metadata.
 
 Use the least-privileged Jamf API role that supports your workflow.
@@ -116,7 +116,7 @@ Important: `.jamfconfig` files are Base64 encoded for light obfuscation, not enc
 
 ### Dashboard
 
-The dashboard is the starting point after connection. It shows clickable totals for computers, policies, profiles, and scripts. It also includes:
+The dashboard is the starting point after connection. It shows clickable totals for computers, policies, profiles, blueprints, packages, and scripts; each opens its module. A total that could not be read shows — rather than 0. It also includes:
 
 - Category manager for creating, renaming, and deleting categories.
 - Device status summary based on recent computer inventory records.
@@ -239,9 +239,9 @@ The Scripts module uses the Jamf Pro scripts API. You can:
 - View script source.
 - Export scripts to CSV.
 
-### Packages / Installomator Manager
+### Installomator
 
-The Packages module is an Installomator policy manager. It does not manage uploaded Jamf package files directly. Instead, it compares:
+The Installomator module (folder `Modules/Packages/`) is an Installomator policy manager. It does not manage uploaded Jamf package files directly. Instead, it compares:
 
 - Existing Jamf policies that use an Installomator script and a label in parameter 4.
 - Available labels from the upstream Installomator `Labels.txt` file on GitHub.
@@ -381,7 +381,7 @@ Important limits, by design:
 Version pinning is entirely optional. Leaving it on "Let Installomator decide" produces exactly the
 policies the app has always created.
 
-### Add PKG (custom packages)
+### Packages (Jamf package library and custom uploads)
 
 The module has three tabs, laid out like the Installomator manager:
 
@@ -398,7 +398,7 @@ pretending a package is unused, and the Deployed count shows an ellipsis until t
 **Refresh** re-reads both the library and the scan.
 
 Some software has no Installomator label — a label may never have existed, or it may have been
-withdrawn upstream, which is what the **Missing** state in the Packages module reports. **Add PKG**
+withdrawn upstream, which is what the **Missing** state in the Installomator module reports. **Packages**
 covers that case: drop a `.pkg`, `.mpkg`, `.dmg` or `.zip` onto the page (or choose it), fill in the
 details, and the app uploads it to Jamf and creates the install policy.
 

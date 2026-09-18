@@ -15,9 +15,11 @@ enum AppModule: String, CaseIterable, Identifiable {
     /// its own credentials — see PlatformAPISession.
     case blueprints = "Blueprints"
     case computers = "Computers"
-    case packages = "Packages" // Added Packages
-    /// Uploading a package the administrator supplies, for software Installomator has no label for.
-    case addPackage = "Add PKG"
+    /// Install policies driven by the Installomator script — discovery, deployment and editing.
+    case installomator = "Installomator"
+    /// Jamf's own package library: the packages already held, and uploading one the administrator
+    /// supplies for software Installomator has no label for.
+    case packages = "Packages"
     case scripts = "Scripts"
 
     var id: String { rawValue }
@@ -30,8 +32,8 @@ enum AppModule: String, CaseIterable, Identifiable {
         case .computers: return "desktopcomputer"
         case .scripts: return "applescript.fill"
         case .policies: return "scroll.fill"
-        case .packages: return "shippingbox.fill" // Icon for Packages
-        case .addPackage: return "arrow.up.doc.fill"
+        case .installomator: return "arrow.down.app.fill"
+        case .packages: return "shippingbox.fill"
         }
     }
 }
