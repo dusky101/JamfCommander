@@ -12,14 +12,43 @@ struct ContentView: View {
     @ObservedObject private var helpPresenter = HelpPresenter.shared
     
     // Navigation State
-    @State private var currentModule: AppModule = .dashboard
+    //
+    // The direction travels with the selection rather than being worked out afterwards. An
+    // `onChange` would fire after the pane had already been rebuilt, so the new pane would animate
+    // using the *previous* move's direction \u2014 always one click behind.
+    private struct ModuleSelection: Equatable {
+        var module: AppModule
+        var direction: ModuleTransitionDirection = .forward
+
+        static func == (lhs: Self, rhs: Self) -> Bool { lhs.module == rhs.module }
+    }
+
+    @State private var selection = ModuleSelection(module: .dashboard)
+
+    /// What every child still sees: a plain `Binding<AppModule>`. Setting it works out which way
+    /// through the sidebar the move went, so the sidebar and the dashboard tiles need to know
+    /// nothing about transitions.
+    private var currentModule: Binding<AppModule> {
+        Binding(
+            get: { selection.module },
+            set: { newModule in
+                guard newModule != selection.module else { return }
+                selection = ModuleSelection(
+                    module: newModule,
+                    direction: newModule.navigationIndex >= selection.module.navigationIndex
+                        ? .forward
+                        : .backward
+                )
+            }
+        )
+    }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    
+
     // App State
     @State private var isLoggedIn = false
     @State private var isBusy = false
-    @State private var showConfigSheet = false
+    @ObservedObject private var settingsPresenter = SettingsPresenter.shared
     @State private var statusMessage = "Please initialise connection."
     
     // Data (For Profile Dashboard Only - Old Pattern)
@@ -50,7 +79,7 @@ struct ContentView: View {
                 .padding(.top, 10)
                 
                 if isLoggedIn {
-                    SidebarView(currentModule: $currentModule, showConfigSheet: $showConfigSheet)
+                    SidebarView(currentModule: currentModule, showConfigSheet: $settingsPresenter.isPresented)
                 } else {
                     Spacer()
                     if isBusy {
@@ -104,7 +133,7 @@ struct ContentView: View {
                         isLoggedIn: $isLoggedIn,
                         statusMessage: $statusMessage,
                         isBusy: $isBusy,
-                        showConfigSheet: $showConfigSheet,
+                        showConfigSheet: $settingsPresenter.isPresented,
                         onLoginSuccess: refreshAllData
                     )
                     .frame(maxWidth: 400)
@@ -117,24 +146,22 @@ struct ContentView: View {
                         // will not always read as an insertion. The id makes the swap explicit so the
                         // transition actually runs, and costs nothing: the branches are distinct
                         // views whose state is discarded on a switch either way.
-                        .id(currentModule)
-                        .transition(
-                            .asymmetric(
-                                insertion: .opacity.combined(with: .offset(y: 10)),
-                                removal: .opacity
-                            )
-                        )
+                        .id(selection.module)
+                        .transition(.modulePane(selection.direction))
+                        // The pane slides its whole width, so it must not paint outside the detail
+                        // area on the way past.
+                        .clipped()
                 }
             }
             .background {
                 AppBackground()
                     .ignoresSafeArea()
             }
-            // The incoming module rises and fades in while the outgoing one fades out. Short enough
-            // to stay out of the way of somebody moving quickly through the sidebar.
-            .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: currentModule)
+            // Long enough to read as a movement, short enough to stay out of the way of somebody
+            // going quickly down the sidebar.
+            .animation(reduceMotion ? nil : .smooth(duration: 0.34), value: selection.module)
         }
-        .sheet(isPresented: $showConfigSheet) {
+        .sheet(isPresented: $settingsPresenter.isPresented) {
             ConfigurationView(api: api)
         }
         // Help is reachable from the sidebar footer and the macOS Help menu, so the presenter is
@@ -153,9 +180,9 @@ struct ContentView: View {
     /// The module for the current sidebar selection.
     @ViewBuilder
     private var moduleContent: some View {
-        switch currentModule {
+        switch selection.module {
         case .dashboard:
-            DashboardView(api: api, currentModule: $currentModule)
+            DashboardView(api: api, currentModule: currentModule)
 
         case .policies:
             PoliciesDashboardView(api: api)
@@ -170,7 +197,7 @@ struct ContentView: View {
             )
 
         case .blueprints:
-            BlueprintsDashboardView(api: api, showConfigSheet: $showConfigSheet)
+            BlueprintsDashboardView(api: api, showConfigSheet: $settingsPresenter.isPresented)
 
         case .computers:
             ComputersDashboardView(api: api)

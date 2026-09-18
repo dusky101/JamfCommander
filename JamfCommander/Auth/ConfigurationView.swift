@@ -7,6 +7,20 @@
 
 
 import SwiftUI
+import Combine
+
+/// Opens Settings from anywhere.
+///
+/// Shared rather than local state because Settings is reachable from two places that know nothing
+/// about each other: the sidebar footer, and the standard Settings item in the application menu
+/// (⌘,), which macOS expects every app to have and which lives in the `App` scene.
+@MainActor
+final class SettingsPresenter: ObservableObject {
+    static let shared = SettingsPresenter()
+    private init() {}
+
+    @Published var isPresented = false
+}
 
 struct ConfigurationView: View {
     /// Needed only for "Test Connection" on the Platform API section; the credential fields

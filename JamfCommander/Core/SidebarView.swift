@@ -113,30 +113,66 @@ struct SidebarView: View {
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Settings & Help
-            Button(action: { showConfigSheet = true }) {
-                HStack {
-                    Image(systemName: "gearshape")
-                    Text("Settings")
-                }
-                .padding(10)
-                .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 2) {
+            SidebarFooterRow(
+                title: "Settings",
+                icon: "gearshape",
+                help: "Jamf Pro and Platform API credentials",
+                action: { showConfigSheet = true }
+            )
 
-            Button(action: { HelpPresenter.shared.isPresented = true }) {
-                HStack {
-                    Image(systemName: "questionmark.circle")
-                    Text("Help")
-                }
-                .padding(10)
-                .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Jamf API setup, the Installomator prerequisite, and what each section does")
+            SidebarFooterRow(
+                title: "Help",
+                icon: "questionmark.circle",
+                help: "Jamf API setup, the Installomator prerequisite, and what each section does",
+                action: { HelpPresenter.shared.isPresented = true }
+            )
         }
         .padding(.top, 4)
+    }
+}
+
+/// Settings and Help.
+///
+/// They behave like the module rows above them — they light up under the pointer and show the link
+/// cursor — but stay colourless, because neither is a place in the module list and giving them a hue
+/// would put them in competition with it.
+private struct SidebarFooterRow: View {
+    let title: String
+    let icon: String
+    let help: String
+    var action: () -> Void
+
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .frame(width: 24)
+
+                Text(title)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 7)
+            .padding(.horizontal, 12)
+            .foregroundStyle(isHovering ? Color.primary : Color.secondary)
+            .background {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(isHovering ? 0.08 : 0))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .offset(x: isHovering && !reduceMotion ? 3 : 0)
+        .animation(.snappy(duration: 0.18), value: isHovering)
+        .onHover { isHovering = $0 }
+        .help(help)
+        .accessibilityLabel(title)
     }
 }
 

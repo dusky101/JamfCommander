@@ -29,6 +29,15 @@ struct JamfCommanderApp: App {
                 .preferredColorScheme(.dark)
         }
         .commands {
+            // The standard Settings item macOS expects in the application menu, on ⌘, — the sidebar
+            // footer is the same sheet, not a second way of configuring the app.
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    SettingsPresenter.shared.isPresented = true
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
             // Replace the default Help item so ⌘? opens the app's own help rather than looking for
             // a help book that doesn't exist.
             CommandGroup(replacing: .help) {
