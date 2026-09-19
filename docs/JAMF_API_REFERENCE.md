@@ -168,6 +168,13 @@ retried without pushing the file again.
 - Detail: `GET api/v3/computers-inventory/{id}?section=GENERAL&section=HARDWARE&section=OPERATING_SYSTEM&section=CONFIGURATION_PROFILES&section=USER_AND_LOCATION`.
 
 ### Installomator labels (external, GitHub — read-only)
+- `GET https://api.github.com/repos/Installomator/Installomator/commits?path=Labels.txt&per_page=1`
+  — the **only** call to `api.github.com`, made for the Dashboard's Installomator tile: read
+  `[0].commit.committer.date` (ISO 8601) as when the label list last changed. The raw host below
+  cannot answer this — it returns an `ETag` and cache headers but **no `Last-Modified`**, verified
+  against the live host. Unauthenticated, so GitHub requires a `User-Agent` and rate limits to
+  **60 requests an hour per address**; a failure returns `nil` and the tile shows its count with no
+  date rather than reading as unavailable.
 - `GET https://raw.githubusercontent.com/Installomator/Installomator/main/Labels.txt`
   — parse non-empty, non-`#`, single-token lines as labels. **De-duplicate case-insensitively**: the
   file is not guaranteed unique (`omnissahorizonclient` currently appears twice), and a repeat would

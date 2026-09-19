@@ -124,9 +124,16 @@ Important: `.jamfconfig` files are Base64 encoded for light obfuscation, not enc
 
 The dashboard is the starting point after connection. It shows clickable totals for computers, policies, profiles, blueprints, packages, and scripts; each opens its module. A total that could not be read shows — rather than 0. It also includes:
 
-- Category manager for creating, renaming, and deleting categories.
+- Category manager for creating, renaming, and deleting categories. Collapsed on open, so the overview is not pushed off the screen by a long category list.
 - Device status summary based on recent computer inventory records.
 - Export All action that writes a ZIP archive containing CSV files for computers, policies, profiles, scripts, packages, and the Unused audit.
+
+Two further tiles answer a question rather than count a list, and are filled in **after** the rest of the dashboard is on screen:
+
+- **Installomator** — how many labels Installomator currently publishes, and how long ago that list last changed upstream (the age GitHub shows against `Labels.txt`; hover for the exact date). The date comes from GitHub's commits API, which is the only call this app makes to `api.github.com`; if it is unavailable or rate limited the tile shows the count alone.
+- **Unused** — how many objects the Unused audit would list. Answering it means reading every policy in the tenant, the most expensive operation in the app, which is why it loads last. It reuses the profiles, packages and categories the dashboard has already fetched, so the extra cost is one estate scan rather than a second copy of four fetches.
+
+Both spin while they work. A spinner means still loading; a dash still means the read failed.
 
 ### Computers
 

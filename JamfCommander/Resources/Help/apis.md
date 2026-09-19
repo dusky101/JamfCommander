@@ -52,19 +52,25 @@ and the module will simply say it is not configured.
 
 ## 4. Installomator’s label list, from GitHub
 
-`https://raw.githubusercontent.com/` — unauthenticated, read-only, and outbound only.
+`https://raw.githubusercontent.com/` and `https://api.github.com/` — unauthenticated, read-only,
+and outbound only.
 
 The Installomator module reads the list of application labels, and the per-label explanations, from
-the Installomator project’s public repository. That is the only request this app makes to anything
-that is not Jamf, and it sends nothing about your tenant.
+the Installomator project’s public repository. The Dashboard additionally asks GitHub when that
+label list last changed, so the Installomator tile can show the date. Those are the only requests
+this app makes to anything that is not Jamf, and neither sends anything about your tenant.
 
-If your network blocks it, the Installomator module says so and the rest of the app is unaffected.
+If your network blocks them, the Installomator module says so and the rest of the app is unaffected.
+
+> **Note:** The date lookup is rate limited by GitHub to 60 requests an hour per address, shared
+> across everything on your network that asks unauthenticated. If it is refused, the Dashboard tile
+> shows the label count without a date and nothing else changes.
 
 ## For a firewall or proxy allowlist
 
 - `yourcompany.jamfcloud.com` — your own Jamf Pro instance, whatever its hostname is
 - `us.api.jamfcloud.com`, `eu.api.jamfcloud.com` or `apac.api.jamfcloud.com` — only if you use
   Blueprints, and only your own region
-- `raw.githubusercontent.com` — only if you use the Installomator module
+- `raw.githubusercontent.com` and `api.github.com` — only if you use the Installomator module
 
 All outbound, all HTTPS. The app listens on nothing.

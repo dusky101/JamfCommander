@@ -230,6 +230,38 @@ extension JamfAPIService {
         )
     }
 
+    /// When `Labels.txt` last changed upstream, or `nil` when GitHub will not say.
+    ///
+    /// Read from GitHub's commits API rather than from the file itself: `raw.githubusercontent.com`
+    /// returns only an `ETag` and cache headers, no `Last-Modified`, so the date is simply not
+    /// available on the endpoint the labels come from. Checked against the live host rather than
+    /// assumed.
+    ///
+    /// This is the app's only call to `api.github.com`. It is unauthenticated, sends nothing about
+    /// the tenant, and is rate limited to 60 requests an hour per address — which is why a failure
+    /// is swallowed rather than thrown: the Dashboard tile shows the label count with no date, and
+    /// the Installomator module itself is unaffected either way.
+    func fetchInstallomatorLabelsUpdated() async -> Date? {
+        let urlString = "https://api.github.com/repos/Installomator/Installomator/commits"
+            + "?path=Labels.txt&per_page=1"
+        guard let url = URL(string: urlString) else { return nil }
+
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        // GitHub refuses an unauthenticated request that sends no User-Agent. The app's own name is
+        // already public; nothing about the tenant goes in it.
+        request.setValue("JamfCommander", forHTTPHeaderField: "User-Agent")
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode),
+              let commits = try? JSONDecoder().decode([GitHubCommitEntry].self, from: data),
+              let newest = commits.first else { return nil }
+
+        return ISO8601DateFormatter().date(from: newest.commit.committer.date)
+    }
+
     /// Fetches the Installomator Labels.txt from GitHub and parses individual labels.
     /// Each non-empty, non-comment line that matches the label pattern is extracted.
     ///
@@ -548,5 +580,20 @@ extension JamfAPIService {
         if text.contains("category") { return .category }
         if text.contains("xml") || text.contains("parse") || text.contains("malformed") { return .malformedBody }
         return .none
+    }
+}
+
+/// Just enough of a GitHub commit to read its date. Everything else the API returns is ignored, so
+/// a change to the rest of the payload cannot break the decode.
+private struct GitHubCommitEntry: Decodable {
+    let commit: Commit
+
+    struct Commit: Decodable {
+        let committer: Committer
+
+        struct Committer: Decodable {
+            /// ISO 8601, e.g. `2026-09-15T19:43:00Z`.
+            let date: String
+        }
     }
 }

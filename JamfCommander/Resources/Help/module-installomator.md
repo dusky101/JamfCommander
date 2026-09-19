@@ -44,6 +44,7 @@ Installomator’s label list is read from the Installomator project’s public r
 refresh rather than from a cached copy — so what you see is what Installomator publishes now, not
 what it published the last time the app ran.
 
-This module therefore needs outbound access to `raw.githubusercontent.com`. If GitHub cannot be
+This module therefore needs outbound access to `raw.githubusercontent.com`, and the Dashboard tile
+asks `api.github.com` when that list last changed. If GitHub cannot be
 reached the module says so and marks **nothing** as missing, which is the safe way round: a network
 failure must never be read as “these labels have been withdrawn”.

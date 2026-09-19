@@ -27,8 +27,8 @@ Download the current release and add `Installomator.sh` to Jamf as a script.
 *Before using Installomator* has the exact steps, including the parameter labels to set.
 
 > **Note:** The module also reads Installomator’s published label list directly from GitHub, so it
-> needs outbound access to `raw.githubusercontent.com`. That is a separate thing from having the
-> script in Jamf, and you need both.
+> needs outbound access to `raw.githubusercontent.com`, and to `api.github.com` for the date on the
+> Dashboard tile. That is a separate thing from having the script in Jamf, and you need both.
 
 ## DDM Explorer — an app on your own Mac
 

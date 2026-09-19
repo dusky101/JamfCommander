@@ -27,6 +27,16 @@ struct DashboardView: View {
     @State private var policyCount: Int?
     @State private var blueprintCount: Int?
     @State private var packageCount: Int?
+
+    // The two headline tiles that cost more than a list fetch, so they fill in after the rest of
+    // the Dashboard is already on screen rather than holding it back. `isLoading…` is separate from
+    // the count because "still working" and "could not be read" must not look the same: a dash is a
+    // statement that the read failed.
+    @State private var installomatorLabelCount: Int?
+    @State private var installomatorLabelsUpdated: Date?
+    @State private var isLoadingInstallomator = true
+    @State private var unusedCount: Int?
+    @State private var isLoadingUnused = true
     
     // Data Lists
     @State private var categories: [Category] = []
@@ -51,6 +61,39 @@ struct DashboardView: View {
     @State private var isCategoryManagerExpanded = false
     @State private var expandedDomains: Set<String> = [] // Track which domain groups are expanded
     
+    /// The Installomator tile's second line: what the number counts, and how long ago the upstream
+    /// list last changed.
+    ///
+    /// Given as an age rather than a date, which is what GitHub itself shows against the file and
+    /// what the question actually is — "is this list current?" is answered by "4 days ago" and needs
+    /// arithmetic from "15 Sep". The exact timestamp is the tile's tooltip, for when it matters.
+    ///
+    /// Omitted rather than faked when GitHub would not give a date.
+    private var installomatorDetail: String? {
+        guard !isLoadingInstallomator else { return nil }
+        guard let updated = installomatorLabelsUpdated else { return "Labels" }
+        return "Labels · updated \(updated.formatted(.relative(presentation: .named)))"
+    }
+
+    /// The exact moment behind the tile's "updated 4 days ago".
+    ///
+    /// Never empty: `.help("")` would also blank the spoken hint the card carries, so a tile with no
+    /// date says what it is instead of saying nothing.
+    private var installomatorTooltip: String {
+        guard let updated = installomatorLabelsUpdated else {
+            return "The labels the Installomator project currently publishes."
+        }
+        return "Installomator's label list last changed on "
+            + updated.formatted(date: .long, time: .shortened)
+    }
+
+    /// Says what the Unused number is a count *of*. "Unused: 14" on its own invites the reading
+    /// that fourteen things have been deleted.
+    private var unusedDetail: String? {
+        guard !isLoadingUnused, unusedCount != nil else { return nil }
+        return "Items to review"
+    }
+
     var filteredCategories: [Category] {
         if searchText.isEmpty { return categories }
         return categories.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
@@ -100,6 +143,27 @@ struct DashboardView: View {
 
                         Button(action: { currentModule = .scripts }) {
                             StatCard(title: "Scripts", count: scriptCount, icon: "applescript.fill", color: .moduleLime)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: { currentModule = .installomator }) {
+                            StatCard(title: "Installomator",
+                                     count: installomatorLabelCount,
+                                     icon: "arrow.down.app.fill",
+                                     color: .moduleSpring,
+                                     detail: installomatorDetail,
+                                     isLoading: isLoadingInstallomator)
+                        }
+                        .buttonStyle(.plain)
+                        .help(installomatorTooltip)
+
+                        Button(action: { currentModule = .redundant }) {
+                            StatCard(title: "Unused",
+                                     count: unusedCount,
+                                     icon: "archivebox.fill",
+                                     color: .moduleRose,
+                                     detail: unusedDetail,
+                                     isLoading: isLoadingUnused)
                         }
                         .buttonStyle(.plain)
                     }
@@ -350,6 +414,8 @@ struct DashboardView: View {
     
     func refreshDashboard() async {
         isLoading = true
+        isLoadingInstallomator = true
+        isLoadingUnused = true
 
         // Each count stands or falls on its own. These were previously awaited as a single tuple,
         // so one failure — a throttled request, or the Platform API refusing a Blueprints read —
@@ -388,6 +454,77 @@ struct DashboardView: View {
             hasReportedInitialLoad = true
             onInitialLoadFinished()
         }
+
+        // Deliberately after the Dashboard is on screen and the launch overlay has been dismissed.
+        // The Unused count costs a scan of every policy in the tenant — tens of seconds on a large
+        // instance, and the most expensive thing this app does. Awaiting it above would have moved
+        // that cost onto every launch before anything was usable.
+        await loadHeadlineTiles(profiles: profs, packages: packages, categories: cats)
+    }
+
+    /// The two tiles that cannot be answered by a list fetch, loaded together once the rest of the
+    /// Dashboard is already up. Leaving the module cancels them, which is the right outcome: an
+    /// abandoned scan is waste, and the tiles are rebuilt on the way back in.
+    private func loadHeadlineTiles(profiles: [ConfigProfile]?,
+                                   packages: [JamfPackage]?,
+                                   categories: [Category]?) async {
+        async let installomator: Void = loadInstallomatorTile()
+        async let unused: Void = loadUnusedTile(profiles: profiles,
+                                                packages: packages,
+                                                categories: categories)
+        _ = await (installomator, unused)
+    }
+
+    /// Label count from Installomator's published list, and when that list last changed.
+    ///
+    /// The two are separate requests to separate GitHub hosts and either can fail on its own, so
+    /// they are read concurrently and the tile shows whichever it got. No date is better than a
+    /// wrong one; no count means the tile reads as unavailable, exactly as the Jamf tiles do.
+    private func loadInstallomatorTile() async {
+        async let labels = try? api.fetchInstallomatorLabelsFromGitHub()
+        async let updated = api.fetchInstallomatorLabelsUpdated()
+
+        let (fetchedLabels, fetchedUpdated) = await (labels, updated)
+        installomatorLabelCount = fetchedLabels?.count
+        installomatorLabelsUpdated = fetchedUpdated
+        isLoadingInstallomator = false
+    }
+
+    /// How many objects the Unused audit would list.
+    ///
+    /// Reuses the profiles, packages and categories the Dashboard has already fetched, so the extra
+    /// cost of this tile is one `scanPolicyEstate` rather than a second copy of four fetches. The
+    /// audit rules live in `RedundantAudit` and are not duplicated here — a headline that disagreed
+    /// with the module it links to would be worse than no headline.
+    private func loadUnusedTile(profiles: [ConfigProfile]?,
+                                packages: [JamfPackage]?,
+                                categories: [Category]?) async {
+        defer { isLoadingUnused = false }
+
+        // Any of the three missing means the Dashboard's own read already failed. The tile says
+        // "unavailable" rather than counting an audit built on a partial estate.
+        guard let profiles, let packages, let categories else { return }
+
+        // Widens Installomator detection past "the policy's script is called Installomator", as the
+        // Unused module does. A failure here only narrows detection.
+        let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
+        guard let estate = try? await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs) else {
+            return
+        }
+
+        let categoryNames = Dictionary(
+            categories.map { (String($0.id), $0.name) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        unusedCount = RedundantAudit.items(
+            policies: estate.policies,
+            profiles: profiles,
+            packages: packages,
+            packageUsage: estate.packageUsage,
+            installomatorPolicyIDs: Set(estate.installomator.map(\.policyID)),
+            categoryNames: categoryNames
+        ).count
     }
 
     /// Blueprints are served by the Platform API, which uses its own credentials (see
@@ -470,18 +607,27 @@ struct StatCard: View {
     let count: Int?
     let icon: String
     let color: Color
-    
+    /// An optional second line under the title — what the number counts, or when it was last
+    /// updated. Only the tiles that need one set it.
+    var detail: String? = nil
+    /// Still being read. Distinct from `count == nil`, which says the read *failed*: the tiles that
+    /// cost a full estate scan fill in after the Dashboard is already up, and a dash in the meantime
+    /// would report a failure that has not happened.
+    var isLoading: Bool = false
+
     @State private var isHovering = false
 
     private var countText: String {
         count.map(String.init) ?? "—"
     }
 
-    /// The card is an icon and two pieces of text, none of which names the tile on its own, so the
-    /// whole card is exposed as one element with a spoken summary.
+    /// The card is an icon and two or three pieces of text, none of which names the tile on its
+    /// own, so the whole card is exposed as one element with a spoken summary.
     private var accessibilitySummary: String {
+        if isLoading { return "\(title), still loading" }
         guard let count else { return "\(title), count unavailable" }
-        return "\(title), \(count)"
+        guard let detail else { return "\(title), \(count)" }
+        return "\(title), \(count), \(detail)"
     }
     
     var body: some View {
@@ -496,16 +642,35 @@ struct StatCard: View {
                         .foregroundColor(color)
                 }
                 Spacer()
-                Text(countText)
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundColor(count == nil ? .secondary : .primary)
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.trailing, 4)
+                } else {
+                    Text(countText)
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundColor(count == nil ? .secondary : .primary)
+                }
             }
             
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+
+                if let detail {
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .padding(16)
+        // The tiles sit in one grid row, and only some carry a detail line. Without this the
+        // taller ones would stand proud of their neighbours instead of the row squaring off.
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .liquidGlass(cornerRadius: 12)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
