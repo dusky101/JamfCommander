@@ -20,8 +20,8 @@ shorter than the mistakes it prevents.
 These govern every change. Never relax them to make a feature easier.
 
 1. **Every write hits real production devices.** Deletes, scope changes, category moves, clones, and
-   policy creation affect a live enterprise Jamf instance (default `https://zellis.jamfcloud.com`) and
-   the Macs it manages. The app talks to whatever instance is configured — prefer testing destructive
+   policy creation affect a live enterprise Jamf instance and the Macs it manages. The app ships with
+   no instance configured and talks to whatever is entered in Settings — prefer testing destructive
    flows against a non-production tenant (the project `JamfCommander/README.md` advises this). Treat any
    new write/delete path as high-risk: it MUST be behind an explicit user confirmation (see
    `CommanderConfirmation` / `OperationResultView`) and must report real outcomes, never fake success.

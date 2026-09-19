@@ -51,7 +51,7 @@ struct ConfigurationView: View {
     @ObservedObject var api: JamfAPIService
 
     // MARK: Jamf Pro API (Classic + Pro endpoints)
-    @AppStorage("jamfInstanceURL") private var instanceURL = "https://zellis.jamfcloud.com"
+    @AppStorage("jamfInstanceURL") private var instanceURL = ""
     @AppStorage("clientId") private var clientId = ""
     @AppStorage("clientSecret") private var clientSecret = ""
 
@@ -73,30 +73,9 @@ struct ConfigurationView: View {
     @State private var showAlert = false
     @State private var alertTitle = ""
     @State private var alertMessage = ""
-    @State private var alertType: AlertType = .info
 
     /// Outcome of the last Platform API connection test.
     @State private var platformTest: PlatformTestState = .idle
-
-    enum AlertType {
-        case success, error, info
-
-        var icon: String {
-            switch self {
-            case .success: return "checkmark.circle.fill"
-            case .error: return "exclamationmark.triangle.fill"
-            case .info: return "info.circle.fill"
-            }
-        }
-
-        var color: Color {
-            switch self {
-            case .success: return .green
-            case .error: return .red
-            case .info: return .blue
-            }
-        }
-    }
 
     enum PlatformTestState: Equatable {
         case idle
@@ -285,7 +264,7 @@ struct ConfigurationView: View {
             VStack(alignment: .leading) {
                 Text("Jamf Instance URL")
                     .font(.caption)
-                TextField("https://...", text: $instanceURL)
+                TextField("https://yourcompany.jamfcloud.com", text: $instanceURL)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .accessibilityLabel("Jamf Pro instance URL")
             }
@@ -426,98 +405,63 @@ struct ConfigurationView: View {
         }
     }
 
+    /// The credentials exactly as Settings currently holds them.
+    private var storedCredentials: JamfCredentials {
+        JamfCredentials(
+            instanceURL: instanceURL,
+            clientId: clientId,
+            clientSecret: clientSecret,
+            platformRegion: platformRegion,
+            platformEnvironmentId: platformEnvironmentId,
+            platformClientId: platformClientId,
+            platformClientSecret: platformClientSecret
+        )
+    }
+
+    private func store(_ credentials: JamfCredentials) {
+        instanceURL = credentials.instanceURL
+        clientId = credentials.clientId
+        clientSecret = credentials.clientSecret
+        platformRegion = credentials.platformRegion
+        platformEnvironmentId = credentials.platformEnvironmentId
+        platformClientId = credentials.platformClientId
+        platformClientSecret = credentials.platformClientSecret
+    }
+
     func importSettings() {
-        let result = SettingsService.importSettings()
-
-        switch result {
-        case .success(let config):
-            // Update all settings
-            instanceURL = config.instanceURL
-            clientId = config.clientId
-            clientSecret = config.clientSecret
-
-            // Platform values are optional in the file — a config written before Blueprints
-            // existed leaves whatever is already stored alone rather than blanking it.
-            if let region = config.platformRegion, PlatformRegion(rawValue: region) != nil {
-                platformRegion = region
-            }
-            if let environmentId = config.platformEnvironmentId, !environmentId.isEmpty {
-                platformEnvironmentId = environmentId
-            }
-            if let platformId = config.platformClientId, !platformId.isEmpty {
-                platformClientId = platformId
-            }
-            if let platformSecret = config.platformClientSecret, !platformSecret.isEmpty {
-                platformClientSecret = platformSecret
-            }
+        switch SettingsTransfer.importConfiguration(mergingInto: storedCredentials) {
+        case .imported(let credentials, let outcome):
+            store(credentials)
+            // The previous test result described the previous integration.
             platformTest = .idle
 
-            // Show success message
-            alertType = .success
-            alertTitle = "Import Successful"
-
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
-            let dateString = formatter.string(from: config.exportDate)
-
-            let includedPlatform = (config.platformClientId?.isEmpty == false)
-            alertMessage = """
-            Configuration imported successfully!
-
-            Instance: \(config.instanceURL)
-            Exported: \(dateString)
-            Blueprints credentials: \(includedPlatform ? "included" : "not in this file")
-
-            You can now connect to Jamf.
-            """
+            alertTitle = outcome.title
+            alertMessage = outcome.message
             showAlert = true
 
-        case .failure(let error):
-            if case .userCancelled = error {
-                return // Don't show alert for user cancellation
-            }
+        case .cancelled:
+            return // Dismissing the open panel is not a failure.
 
-            alertType = .error
-            alertTitle = "Import Failed"
-            alertMessage = error.localizedDescription
+        case .failed(let outcome):
+            alertTitle = outcome.title
+            alertMessage = outcome.message
             showAlert = true
         }
     }
 
     func exportSettings() {
-        let result = SettingsService.exportSettings(
-            instanceURL: instanceURL,
-            clientId: clientId,
-            clientSecret: clientSecret,
-            platformRegion: platformRegion,
-            platformEnvironmentId: platformEnvironmentId.isEmpty ? nil : platformEnvironmentId,
-            platformClientId: platformClientId.isEmpty ? nil : platformClientId,
-            platformClientSecret: platformClientSecret.isEmpty ? nil : platformClientSecret
-        )
-
-        switch result {
-        case .success(let url):
-            alertType = .success
-            alertTitle = "Export Successful"
-            alertMessage = """
-            Configuration exported successfully!
-
-            File saved to:
-            \(url.path)
-
-            Share this file with team members to quickly configure their Jamf Commander app.
-            """
+        switch SettingsTransfer.exportConfiguration(storedCredentials) {
+        case .exported(let outcome):
+            alertTitle = outcome.title
+            alertMessage = outcome.message
             showAlert = true
 
-        case .failure(let error):
-            if case .userCancelled = error {
-                return // Don't show alert for user cancellation
-            }
+        case .cancelled:
+            return // Dismissing the save panel is not a failure.
 
-            alertType = .error
-            alertTitle = "Export Failed"
-            alertMessage = error.localizedDescription
+        case .failed(let outcome):
+            alertTitle = outcome.title
+            alertMessage = outcome.message
             showAlert = true
         }
     }
@@ -533,7 +477,6 @@ struct ConfigurationView: View {
         platformRegion = PlatformRegion.eu.rawValue
         platformTest = .idle
 
-        alertType = .info
         alertTitle = "Settings Cleared"
         alertMessage = "All configuration settings have been cleared."
         showAlert = true

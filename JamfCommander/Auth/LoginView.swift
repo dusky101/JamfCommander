@@ -17,7 +17,7 @@ struct LoginView: View {
     @Binding var isBusy: Bool
     
     // Local Access to settings
-    @AppStorage("jamfInstanceURL") private var savedInstanceURL = "https://zellis.jamfcloud.com"
+    @AppStorage("jamfInstanceURL") private var savedInstanceURL = ""
     @AppStorage("clientId") private var savedClientId = ""
     @AppStorage("clientSecret") private var savedClientSecret = ""
     
@@ -28,7 +28,7 @@ struct LoginView: View {
             Text("Connect to Jamf")
                 .font(.headline)
             
-            if savedClientId.isEmpty || savedClientSecret.isEmpty {
+            if savedInstanceURL.isEmpty || savedClientId.isEmpty || savedClientSecret.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")

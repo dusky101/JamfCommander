@@ -79,7 +79,7 @@ struct SettingsService {
             clientId: clientId,
             clientSecret: clientSecret,
             exportDate: Date(),
-            appVersion: "1.0.0", // You can make this dynamic later
+            appVersion: appVersion(),
             platformRegion: platformRegion,
             platformEnvironmentId: platformEnvironmentId,
             platformClientId: platformClientId,
@@ -169,6 +169,12 @@ struct SettingsService {
     
     // MARK: - Helpers
     
+    /// The app's marketing version, so an exported file records the build that wrote it.
+    /// The Info.plist is generated from the build settings, making this `MARKETING_VERSION`.
+    private static func appVersion() -> String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+    }
+
     private static func formatDate() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"

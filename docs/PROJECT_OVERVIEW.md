@@ -15,7 +15,8 @@ JamfCommander is a native **SwiftUI macOS app** used by **Jamf Pro administrator
 manage a Jamf Pro MDM tenant in bulk from the desktop, faster than the Jamf web console allows. It is
 an internal admin tool — not an App Store consumer product.
 
-It connects to a **live, production** Jamf Pro instance (default `https://zellis.jamfcloud.com`) and can:
+It connects to a **live, production** Jamf Pro instance — whichever one is entered in Settings; there
+is no default — and can:
 
 - **List & inspect** Configuration Profiles, Computers (inventory), Scripts, Policies, and Packages.
 - **Bulk-edit** profiles/policies: move to a category, change/clear scope, delete.
@@ -141,8 +142,8 @@ See `.claude/rules/architecture.md` for the precise folder map and the module pa
 
 These are real characteristics of the current code. Respect them; flag before changing.
 
-- **Live tenant by default.** The app points at whatever instance is configured (Zellis production by
-  default); treat all writes as live. The README's disclaimer recommends testing bulk actions against a
+- **Live tenant.** The app points at whatever instance is configured, and no instance is configured
+  until somebody enters one; treat all writes as live. The README's disclaimer recommends testing bulk actions against a
   **non-production** Jamf tenant first — follow that.
 - **Credential storage.** Client ID/secret/URL live in `UserDefaults` (`@AppStorage`) in clear; the
   `.jamfconfig` export is base64 (obfuscation, not encryption). The token is in memory only. The
