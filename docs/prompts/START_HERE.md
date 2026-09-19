@@ -121,12 +121,16 @@ Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
 `docs/roadmap/PROFILE_TO_BLUEPRINT.md`, `docs/roadmap/SHEET_NAVIGATION.md`.
 
 **The next session's work is already written up:** `docs/prompts/CACHING_AND_SHEETS_PROMPT.md`,
-over `CACHING_HANDOVER.md` and `SHEET_NAVIGATION_HANDOVER.md`. Caching first, then the sheets.
+over `CACHING_HANDOVER.md` and `SHEET_NAVIGATION_HANDOVER.md`. **Its caching phase is done** (20
+September 2026) — start at the sheet-navigation phase, then the PDF export.
 
 Five handovers exist in `docs/handovers/`:
 
-- **Caching** and **Sheet navigation** — both written 19 September 2026 for the session that starts
-  next. Neither has any code yet; each says so in its first line.
+- **Caching** — **built, 20 September 2026.** A session cache over every Jamf Pro read, keyed by
+  instance URL, cleared by Refresh and by any write, with a "Read … ago" stamp and a Live/Cached
+  switch in Settings. Its handover has the proven/unproven table; `docs/roadmap/CACHING.md` has been
+  trimmed to the five things still undone.
+- **Sheet navigation** — written 19 September 2026, **no code yet**; it says so in its first line.
 
 
 - **Help overhaul** — **complete**, 19 September 2026. Twenty pages and fourteen figures, each
@@ -144,6 +148,10 @@ Five handovers exist in `docs/handovers/`:
 - **Script category moves and script delete** — `moveScript` is read-modify-write against
   `PUT api/v1/scripts/{id}`; the script's contents survive.
 - **The Blueprints writes** that `BLUEPRINTS_HANDOVER.md` once listed as unexercised.
+- **The session cache collapsing repeat estate scans** (20 September 2026). On a 249-policy tenant,
+  opening the Dashboard and then Installomator printed **one** `[Packages] Estate scan:` line where
+  it used to print two — the second being a duplicate implementation of the same scan, since
+  deleted. Most of the rest of the cache is unproven; see its handover's right-hand column.
 - **`.jamfconfig` export and import** (19 September 2026). An export carries the real instance URL
   and the real app version — it hardcoded `1.0.0` until that date — and importing a file written
   before Blueprints existed leaves existing Platform API credentials in place rather than blanking
