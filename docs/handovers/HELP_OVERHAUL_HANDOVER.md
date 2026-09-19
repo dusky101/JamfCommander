@@ -1,110 +1,122 @@
 # Handover — Help overhaul
 
-**State at handover:** 19 September 2026, app version 8.5. `Modules/Help/HelpView.swift` is 281 lines
-and has not kept pace with the app. Three modules shipped since it was written are absent from it.
+**State at handover:** 19 September 2026, app version 8.5. **Phase 1 is written but NOT committed**
+and NOT run — see the table below before you trust any of it.
 
-Read this before touching `Modules/Help/HelpView.swift`.
+Read this before touching anything in `Modules/Help/` or `Resources/Help/`.
+
+> This file replaces an earlier version written *before* the work started, which is what
+> `.claude/rules/docs-workflow.md` now forbids. Everything below was checked against the code on the
+> day it was written.
 
 ---
 
-## What exists today
+## What was built in phase 1
 
-One scrolling document in a sheet, reachable from the sidebar footer and from ⌘? (the Help menu item
-is replaced in `JamfCommanderApp.swift`, because the app has no help book). Seven `InfoSection`s:
+The single 281-line scrolling document in `Modules/Help/HelpView.swift` was replaced by a
+**searchable index plus a rendered Markdown page**, modelled on the Help feature in the maintainer's
+other app (`~/Codingapps/ssmacos/ssmacos/Features/Help`), which he pointed at as the target.
 
-1. Getting connected
-2. Creating the API client in Jamf
-3. Privileges for full administrative use
-4. Before using Packages: add the Installomator script
-5. Exporting and importing settings
-6. What each section does
-7. If something fails
+Content now lives in Markdown files, one per topic, so a wording fix is a text edit rather than a
+code change, and the same text feeds both the page and the search index.
 
-`HelpPresenter.shared` is the singleton that opens it. `InfoSection` (`SharedUI/InfoSection.swift`) is
-the section container; `HelpView` has private `bullet` and numbered-step helpers.
+| File | Lines | What it is |
+| --- | --- | --- |
+| `Modules/Help/HelpSection.swift` | 38 | The three index sections and their symbols |
+| `Modules/Help/HelpTopic.swift` | 58 | One page: id, title, section, summary, keywords, body |
+| `Modules/Help/HelpMarkdown.swift` | 208 | Block-level Markdown parser → `[HelpBlock]` |
+| `Modules/Help/HelpSearch.swift` | 98 | Ranked search; `groups(for:)` orders sections by relevance |
+| `Modules/Help/HelpLibrary.swift` | 130 | The manifest, and the bundle loader |
+| `Modules/Help/MarkdownView.swift` | 153 | Renders the blocks |
+| `Modules/Help/HelpView.swift` | 184 | `NavigationSplitView`: index left, page right |
+| `Resources/Help/*.md` | 8 files | The content |
 
-The single-document shape was a deliberate early choice — an administrator setting the app up for the
-first time reads it top to bottom once. That reasoning still holds for *setup*. It no longer holds for
-*reference*, which is most of what the file now needs to carry.
+`HelpPresenter.shared` still opens it, and gained `requestedTopic` plus `present(_:)` so a caller can
+deep-link to a page. The existing callers (`SidebarView`, `JamfCommanderApp`) set `isPresented`
+directly and are unchanged.
 
-## Why it needs work
+## Proven — and what is NOT
 
-**It is out of date.** Written before Blueprints, the Unused audit, and the split of Packages into two
-modules. Section 4 still says "Before using Packages", which is now the Installomator module.
-
-**Module names changed underneath it.** The sidebar now reads Installomator (was Packages) and
-Packages (was Add PKG), and the audit reads **Unused** while the code says `redundant`. Help copy must
-use what the sidebar says, not what the folders say. That drift is documented in
-`docs/prompts/SIDEBAR_RESTRUCTURE_HANDOVER.md`.
-
-**The sidebar is about to be restructured**, and may gain groups and a Devices module. Help that
-describes the sidebar item by item will need rewriting again unless it is organised so a module's
-entry can be added without touching the rest.
-
-## What the overhaul should cover
-
-### Connecting, and sharing that connection
-
-The maintainer named this specifically. It is currently thin, and it is the part a *second* person on
-the team hits first.
-
-- The Jamf Pro API client: created in Jamf Pro, `client_credentials` grant, which privileges for which
-  modules. Section 3 has a privilege list — check it against what the app now calls.
-- The **Platform API** integration for Blueprints is a genuinely different thing: created in Jamf
-  Account rather than Jamf Pro, scoped to a platform environment, region-locked, and a Jamf Pro client
-  **cannot** reach it. This trips people up and deserves its own explanation, not a footnote.
-- **Sharing with team members** via the `.jamfconfig` import/export in Settings → Jamf Connections.
-  Both credential sets are included in an export. That has an obvious implication the help must state
-  plainly: **the file contains secrets**. How it should and should not be passed around is help copy,
-  not a security policy, but it has to be said.
-- Settings is now two tabs (General, Jamf Connections). Help should say where things are.
-
-### What each module shows
-
-One entry per module, in sidebar order. Each should answer: what it lists, what you can do to it, and
-the one thing that surprises people. Candidates for that last part, all currently living only in code
-comments or in this handover set:
-
-| Module | The thing worth saying |
+| Proven | Never exercised |
 | --- | --- |
-| Dashboard | Counts are clickable; a count that could not be read shows — rather than 0 |
-| Policies | Bulk actions appear on selection; a single selection gets a different bar |
-| Profiles | Scoped/Unscoped is derived from scope, not stored by Jamf |
-| Blueprints | Different API, different credentials; reads are proven, several writes are not — see `BLUEPRINTS_HANDOVER.md` |
-| Computers | Inventory read, v3 endpoint |
-| Packages | The Jamf package library plus custom uploads; the Deployed tab needs a full policy scan |
-| Scripts | Read and delete only |
-| Installomator | Labels come from GitHub, not Jamf; a **Missing** label means the policy still runs but cannot succeed |
-| Unused | What "not scoped" means, and that packages are report-only |
+| `xcodebuild … build` succeeds, no warnings | **The Help window has never been opened** |
+| All 8 `.md` files reach `JamfCommander.app/Contents/Resources/` | Nothing has been rendered on screen |
+| Markdown resources flatten (see below) | Search has never been run |
+| | The parser has never seen its own content |
 
-### Operational truths that belong in help, not just in comments
+**Nothing in the right-hand column works until somebody looks at it.** The build proves the code
+compiles and the files ship; it proves nothing about whether a page reads correctly, whether the
+index selects, or whether search returns sensible results. Open Help and read every one of the eight
+pages before building on this.
 
-- Several actions read **every policy** in the tenant (the Unused audit, the Packages Deployed tab,
-  Export All). On a large instance that is tens of seconds. People assume the app has hung.
-- Bulk operations are throttled deliberately — batches with gaps — and that is why they are not faster.
-- Export All now writes six CSVs, including the Unused audit.
-- Deletes are permanent from the app's point of view. The README says so; help should too.
+## The bundling trap, confirmed by experiment
+
+This target uses Xcode **synchronised folders** (`fileSystemSynchronizedGroups`, objectVersion 77),
+so a new file in `Resources/Help/` is added to the target automatically — no `.pbxproj` edit.
+
+But resources are **flattened**. `Resources/Help/welcome.md` is copied to
+`Contents/Resources/welcome.md`, *not* into a `Help` folder. Verified by building a probe file and
+looking in the bundle.
+
+Two consequences:
+
+1. `HelpLibrary.markdown(forResource:)` tries the `Help` subdirectory and then the bundle root. **The
+   second lookup is the one that succeeds today.** Do not delete it as dead code.
+2. **A help file's name must be unique across every resource in the app.** `JamfCommander/README.md`
+   is already swept into the same flat directory, so `Resources/Help/README.md` would collide.
+
+## What phase 2 has to do
+
+Phase 1 deliberately ported the *existing* content and invented almost none, so that it is a pure
+mechanism change and any difference on screen is a rendering bug rather than a rewrite. Phase 2 is
+the content the maintainer actually asked for.
+
+**1. Split `modules.md` into one topic per module.** It is currently a single page with nine `##`
+headings — a faithful carry-over plus the modules that were missing, but not the shape he asked for
+("a section/md file for each section"). Nine topics: Dashboard, Policies, Profiles, Blueprints,
+Computers, Packages, Scripts, Installomator, Unused. Each should answer what it lists, what you can
+do to it, and **the one thing that surprises people** — that last part is the value, and most of it
+currently exists only in code comments.
+
+**2. `apis.md` — what APIs the app uses now.** Asked for explicitly. Three of them, which is the
+point: the Jamf **Classic** API (`JSSResource/…`, XML for writes), the Jamf **Pro** API
+(`api/v{n}/…`, JSON, and the version varies per resource — computers are v3), and the **Platform API
+Gateway** for Blueprints, with its own credentials and region lock. Plus the unauthenticated read of
+Installomator's label list from GitHub. `docs/JAMF_API_REFERENCE.md` has all of it; write it for an
+administrator deciding what to grant, not for a developer.
+
+**3. `whats-coming.md` — future versions.** He named **mobile devices** specifically: the app is
+computers-only today. Draw the rest from `docs/roadmap/`: per-domain caching (`CACHING.md`), showing
+which policies run a script (`SCRIPT_USAGE.md`), and multiple Jamf environments
+(`MULTIPLE_ENVIRONMENTS.md`). Say plainly that these are intentions, not commitments.
+
+**4. Add the new topics to `HelpLibrary.topics`** with summaries and keywords. Keywords are the field
+authored for search — the words an administrator types that the title does not contain.
 
 ## Constraints
 
-- **British English**, calm and professional, matching the rest of the app.
-- **Never put a credential, token or instance URL in help copy**, including as an example. Use
-  obviously fake placeholders.
-- Reuse `InfoSection`; do not invent a second section style.
-- Keep it reachable from both the sidebar footer and ⌘?.
-- The sheet is a fixed size — check long sections scroll rather than overflow, the bug class that has
-  already bitten several views in this app.
+- **British English**, calm and professional. Match the existing pages.
+- **Never put a real credential, token or instance URL in help copy**, including as an example. Use
+  obviously fake placeholders (`https://yourcompany.jamfcloud.com`).
+- Callouts are `> **Note:**`, `> **Tip:**`, `> **Warning:**`, `> **Important:**` at the start of a
+  blockquote. `HelpMarkdown.calloutTone(of:)` strips the marker; the view draws the icon and colour.
+- The parser handles headings, paragraphs, `-`/`*` bullets, ordered lists, fenced code, blockquote
+  callouts and `---`. It does **not** do tables, nested lists or images. Inline bold, italic, code
+  spans and links work, because paragraphs go through `AttributedString(markdown:)`.
+- Every page should open with `# Title` matching its `HelpTopic.title`, so the page and the index
+  agree.
 
 ## Open questions
 
-1. **One document, or navigable sections?** At this length a sidebar or tab strip inside the sheet
-   starts to earn its place, and the read-top-to-bottom argument only covers the first three sections.
-   If it becomes navigable, setup should still be a single readable run.
-2. **Does help move out of a sheet?** A sheet cannot be left open beside the thing it describes, which
-   is exactly what reference material is for. A separate window would let somebody keep it open while
-   they work. Bigger change; worth deciding before restructuring the content.
-3. **Per-module help.** The Installomator sidebar row already carries a dismissible hint
-   (`SidebarHint`, resettable from Settings → General). If that pattern spreads, help and hints must
-   not drift apart — decide which is the source of truth.
-4. **Does help need to say the app is unofficial?** It is not affiliated with Jamf and it performs
-   destructive operations against production. The README carries a disclaimer; help may need one too.
+1. **Sheet or window?** Help is still a sheet, so it cannot be left open beside the thing it
+   describes — which is what reference material is for. The reference app uses a separate `Window`
+   scene. Deliberately not changed in phase 1: it affects both entry points (sidebar footer and ⌘?)
+   and is a decision, not a detail.
+2. **Figures.** The reference app renders live in-app diagrams from a ```figure``` fence, so the
+   guide shows the real thing and cannot drift. ~300 lines plus one view per figure. Omitted from
+   phase 1; `HelpBlock` has no `figure` case, so adding it means touching the parser.
+3. **Deep links from the app.** `HelpPresenter.present(_:)` takes a topic id and nothing calls it
+   yet. A "?" on each module's header would be the obvious use, and would overlap with the sidebar
+   hover hints (`SidebarHint`) — decide which is the source of truth before both exist.
+4. **Does help need the unofficial/disclaimer note?** `welcome.md` currently carries one paragraph
+   saying the app is not affiliated with Jamf. Check that is the wording he wants.
