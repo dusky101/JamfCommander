@@ -418,17 +418,19 @@ private struct HelpPage: View {
                 // A reference page is read *and* copied from — a privilege name into a Jamf role, a
                 // documentation URL into a browser — so the text has to be selectable.
                 .textSelection(.enabled)
-                .padding(.horizontal, 28)
-                .padding(.top, 24)
+                .padding(.horizontal, 32)
+                .padding(.top, 28)
                 // Room under the last block, so the page does not end flush against the bar.
                 .padding(.bottom, 40)
-                // A measure, not a margin. The guide is now as wide as the window, and body text set
-                // the full width of a 1100pt pane runs to well over a hundred characters a line,
-                // which is tiring to read and easy to lose your place in. 620 keeps a line near
-                // ninety characters at `.callout`. Centred, because a column pinned to the left of a
-                // pane this wide looks like a layout accident.
-                .frame(maxWidth: 620, alignment: .leading)
-                .frame(maxWidth: .infinity)
+                // A measure, and then the **left edge**.
+                //
+                // This was centred, and centring is what made the page look like it was wasting the
+                // window: a capped column in the middle of a wide pane leaves two gaps, and two gaps
+                // read as emptiness. The same column pinned left leaves one, and one gap reads as a
+                // margin. The reference app caps at 640 — *narrower* than this — and looks like it
+                // fills its window for exactly that reason.
+                .frame(maxWidth: 760, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($position)
         .onScrollGeometryChange(for: Metrics.self) { geometry in

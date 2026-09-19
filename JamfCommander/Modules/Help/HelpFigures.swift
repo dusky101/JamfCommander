@@ -94,6 +94,8 @@ struct HelpFigureView: View {
     var body: some View {
         if HelpFigures.chromelessIDs.contains(id) {
             figure
+            // The one centred thing in the guide, and deliberately: the icon and version are the
+            // welcome page's masthead, not an illustration in the run of the text.
                 .frame(maxWidth: .infinity, alignment: .center)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(HelpFigures.accessibilityLabel(for: id))
@@ -134,7 +136,9 @@ struct HelpFigureCard<Content: View>: View {
     var body: some View {
         content
             .padding(14)
-            .frame(maxWidth: .infinity, alignment: .center)
+            // Left, with the text. A figure centred inside a left-aligned column is a second
+            // alignment on the page, and two alignments read as an accident.
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5),
                         in: .rect(cornerRadius: 12))
             .overlay(
