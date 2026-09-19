@@ -65,10 +65,16 @@ struct ContentView: View {
         !storedURL.isEmpty && !storedClientId.isEmpty && !storedClientSecret.isEmpty
     }
 
-    /// Restoring a saved session on launch. Only ever true when there are credentials to restore —
-    /// somebody who has not connected yet should meet the login screen, not a loading curtain.
-    private var isRestoringSession: Bool {
-        isBusy && !isLoggedIn && hasStoredCredentials
+    /// Whether the first module has finished fetching. Set once, by the Dashboard.
+    @State private var hasCompletedInitialLoad = false
+
+    /// The app is not ready to be used yet — either the saved session is still being restored, or it
+    /// has been and the Dashboard is still fetching. Only ever true when there is a connection to
+    /// wait on; somebody who has not connected yet should meet the login screen, not a curtain.
+    private var isPreparing: Bool {
+        guard hasStoredCredentials else { return false }
+        if isBusy && !isLoggedIn { return true }
+        return isLoggedIn && !hasCompletedInitialLoad
     }
     
     var body: some View {
@@ -170,17 +176,16 @@ struct ContentView: View {
             // going quickly down the sidebar.
             .animation(reduceMotion ? nil : .smooth(duration: 0.34), value: selection.module)
         }
-        // Covers both columns while the session is restored, so the sidebar cannot be clicked into a
-        // module whose data has not started loading. It ends when authentication and the shared
-        // profile/category fetch finish — deliberately not when the first module finishes loading,
-        // which on a large tenant is most of a minute and would be a curtain rather than a wait.
+        // Covers both columns until the app can actually answer. Leaving a module mid-fetch cancels
+        // every request it had in flight, so somebody clicking through the sidebar during the first
+        // load throws away a scan of the whole tenant and starts another.
         .overlay {
-            if isRestoringSession {
-                RestoringSessionOverlay()
+            if isPreparing {
+                PreparingOverlay(instanceURL: storedURL)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: isRestoringSession)
+        .animation(.easeInOut(duration: 0.25), value: isPreparing)
         .sheet(isPresented: $settingsPresenter.isPresented) {
             ConfigurationView(api: api)
         }
@@ -202,7 +207,11 @@ struct ContentView: View {
     private var moduleContent: some View {
         switch selection.module {
         case .dashboard:
-            DashboardView(api: api, currentModule: currentModule)
+            DashboardView(
+                api: api,
+                currentModule: currentModule,
+                onInitialLoadFinished: { hasCompletedInitialLoad = true }
+            )
 
         case .policies:
             PoliciesDashboardView(api: api)
@@ -283,40 +292,64 @@ struct ContentView: View {
     }
 }
 
-/// What the window shows while a saved session is being restored.
+/// What the window shows until the app has its data.
 ///
-/// Opaque and hit-testable on purpose: it is not decoration, it is the thing stopping somebody
-/// clicking into a module before the app can answer.
-private struct RestoringSessionOverlay: View {
+/// A modal card over a dimmed app, not a spinner in the detail pane: the sidebar has to be
+/// unreachable, and it has to be obvious *why*. It names the instance being read, because somebody
+/// with more than one tenant configured needs to know which one they are waiting on.
+private struct PreparingOverlay: View {
+    let instanceURL: String
+
     @State private var animateIcon = false
+
+    /// Tidied for display only — a trailing slash is stored but reads as a typo on screen.
+    private var instanceDisplay: String {
+        let trimmed = instanceURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasSuffix("/") ? String(trimmed.dropLast()) : trimmed
+    }
 
     var body: some View {
         ZStack {
-            AppBackground()
+            Rectangle()
+                .fill(.black.opacity(0.55))
                 .ignoresSafeArea()
 
             VStack(spacing: 18) {
                 Image(systemName: "command.circle.fill")
-                    .font(.system(size: 52))
+                    .font(.system(size: 46))
                     .foregroundColor(.blue)
                     .symbolEffect(.pulse, options: .repeating, value: animateIcon)
 
-                Text("Connecting to Jamf")
+                Text("Please wait until the data is fetched to display the Dashboard for")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(instanceDisplay)
                     .font(.title3)
                     .fontWeight(.semibold)
+                    .textSelection(.enabled)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 ProgressView()
-                    .controlSize(.small)
+                    .progressViewStyle(.linear)
+                    .frame(width: 220)
 
-                Text("Restoring your saved session.")
-                    .font(.caption)
+                Text("Reading every policy takes a moment on a large instance.")
+                    .font(.caption2)
                     .foregroundColor(.secondary)
             }
+            .padding(32)
+            .frame(width: 420)
+            .appBarBackground(cornerRadius: 18)
         }
         // Swallows every click underneath, which is the point.
         .contentShape(Rectangle())
         .onAppear { animateIcon = true }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Connecting to Jamf. Restoring your saved session.")
+        .accessibilityLabel("Please wait. Fetching data from \(instanceDisplay) to display the Dashboard.")
     }
 }

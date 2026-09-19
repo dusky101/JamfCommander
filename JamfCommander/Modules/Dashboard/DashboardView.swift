@@ -12,6 +12,12 @@ struct DashboardView: View {
     
     // NEW: Binding to control navigation from the stats
     @Binding var currentModule: AppModule
+
+    /// Called once, when the first load finishes — successfully or not. The app blocks interaction
+    /// until then, so this must fire on every path out of that first refresh.
+    var onInitialLoadFinished: () -> Void = {}
+
+    @State private var hasReportedInitialLoad = false
     
     // Stats State. Optional, not zero: a section of Jamf that could not be read shows "—" on its
     // tile, which is the truth — a 0 would read as "you have none of these".
@@ -374,6 +380,11 @@ struct DashboardView: View {
         if let cats { categories = cats.sorted { $0.name < $1.name } }
 
         isLoading = false
+
+        if !hasReportedInitialLoad {
+            hasReportedInitialLoad = true
+            onInitialLoadFinished()
+        }
     }
 
     /// Blueprints are served by the Platform API, which uses its own credentials (see

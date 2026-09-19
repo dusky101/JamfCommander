@@ -168,6 +168,10 @@ extension JamfAPIService {
                                     )
                                 )
                             } catch {
+                                // A cancelled request cannot succeed on a retry — see fetchPolicies.
+                                if Task.isCancelled || (error as NSError).code == NSURLErrorCancelled {
+                                    return .none
+                                }
                                 if attempt == 3 { return .none }
                                 try? await Task.sleep(
                                     nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000)

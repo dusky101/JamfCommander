@@ -226,9 +226,19 @@ class JamfAPIService: ObservableObject {
                                         scope: detail.scope,
                                         scopeTargetsAnything: detail.scopeTargets.targetsAnything
                                     )
+                                } catch is CancellationError {
+                                    return nil
                                 } catch {
+                                    // Leaving a module cancels its in-flight requests. Retrying a
+                                    // cancelled request three times with backoff is pure waste, and
+                                    // it filled the console with one failure per policy.
+                                    if Task.isCancelled || (error as NSError).code == NSURLErrorCancelled {
+                                        return nil
+                                    }
                                     if attempt == 3 {
-                                        print("Failed to hydrate policy \(item.id) after 3 attempts: \(error)")
+                                        // The error object carries the full request URL, and the
+                                        // instance URL is never logged (root CLAUDE.md, invariant 4).
+                                        print("Failed to hydrate policy \(item.id) after 3 attempts")
                                         return nil
                                     }
                                     // Wait with exponential backoff: 0.5s, 1s, 2s
