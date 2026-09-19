@@ -8,6 +8,10 @@ Jamf’s Platform API Gateway, which is a different host with its own credential
 filled in, this module says so and offers a button straight to Settings. See *Creating the Blueprints
 integration*.
 
+```figure
+blueprint-row
+```
+
 ## What you can do
 
 - **List** every blueprint with its name, description, last-updated date, and the deployment state
@@ -24,12 +28,14 @@ integration*.
 - **Edit** an existing blueprint — its current definition is loaded into the editor.
 - **Deploy, undeploy and delete** from the row menu, each behind a confirmation.
 
-## Creating a blueprint does not apply anything
+## Three things that catch people out
+
+### Creating a blueprint does not apply anything
 
 Blueprints are created **undeployed**. Nothing reaches a Mac until you choose **Deploy**, which is
 deliberate: it gives you a chance to read the definition back before it is live.
 
-## Deploy and undeploy are reported as *requested*
+### Deploy and undeploy are reported as *requested*
 
 The server answers a deploy or undeploy by accepting the job, not by finishing it — the work
 completes afterwards. So the app reports these as requested rather than completed, and never claims a
@@ -37,7 +43,7 @@ deployment succeeded on the strength of the response.
 
 **The deployment state in the list is what confirms the outcome.** Refresh and read it.
 
-## Editing changes only the keys you leave in
+### Editing changes only the keys you leave in
 
 An edit sends a merge: any key you remove from the JSON is **left as it is on the server**, not
 deleted. If you want to clear something, set it explicitly rather than deleting the line.

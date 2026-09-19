@@ -15,6 +15,10 @@ bottom of the sidebar because it is housekeeping rather than somewhere you work 
 Every row gives the reason it was listed. Alongside the usual category filter there is a row of
 reason filters — All, Not enabled, Not scoped, Not attached — and a Select All button.
 
+```figure
+unused-reasons
+```
+
 ## What you can do about it
 
 - **Move to Category** is the primary action, because it is the one you can undo by hand. It files

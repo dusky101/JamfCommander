@@ -7,6 +7,10 @@ it. Three tabs:
 - **Uploaded** — every package this Jamf instance holds, searchable and grouped A–Z or by category.
 - **Deployed** — only the packages a policy actually installs, with the policy named on the row.
 
+```figure
+package-tabs
+```
+
 ## Uploading a package
 
 Drop a `.pkg`, `.mpkg`, `.dmg` or `.zip` onto the page, or choose it, fill in the details, and the

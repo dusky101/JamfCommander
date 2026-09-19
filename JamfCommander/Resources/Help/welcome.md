@@ -25,7 +25,11 @@ help-index
   the error code Jamf gave you, the word on a badge, the field you are filling in. Arrow keys move
   through the results, Return opens one.
 - **The index** is grouped into three sections, closed until you open one. **Using the app** has a
-  page for every item in the sidebar, in the order they appear there.
+  page for every item in the sidebar, in the order they appear there:
+```figure
+sidebar
+```
+
 - **⌘?** opens this guide from anywhere, and it is in the sidebar footer beside Settings.
 
 The illustrations are drawn with the app’s own code, so they show what you are actually running and

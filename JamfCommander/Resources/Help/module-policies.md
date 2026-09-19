@@ -4,6 +4,10 @@ Every policy in the tenant, grouped by category. This is the module most of the 
 in: the actions here are the ones that would otherwise be a long afternoon of clicking through the
 Jamf web console one policy at a time.
 
+```figure
+bulk-actions
+```
+
 ## What you can do
 
 - **Find** a policy by name or ID, or filter the list down to a single category. Category groups

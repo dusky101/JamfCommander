@@ -3,6 +3,10 @@
 The managed Mac fleet, read from Jamf’s computer inventory. This module is **read-only** — nothing in
 it writes to your tenant.
 
+```figure
+computer-row
+```
+
 ## What you can do
 
 - **Search** by computer name, serial number, assigned user or email address.

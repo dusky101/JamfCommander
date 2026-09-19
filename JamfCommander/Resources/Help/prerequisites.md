@@ -6,7 +6,9 @@ are not using Installomator or Blueprints.
 
 ## Installomator — a script inside your Jamf instance
 
-**What it is.** Installomator is an open-source shell script, maintained by the Mac admin community.
+### What it is
+
+Installomator is an open-source shell script, maintained by the Mac admin community.
 Give it a short label such as `googlechrome` and it works out where that vendor publishes the current
 version, downloads it, checks it is signed by the developer it expects, and installs it. There are
 over a thousand labels.
@@ -15,12 +17,16 @@ The point of it is that you stop hosting and re-uploading installers. The Mac fe
 version from the vendor at the moment it runs, so a policy written once keeps installing the latest
 release without anybody repackaging anything.
 
-**Why this app needs it.** The Installomator module does not upload package files. It creates and
+### Why this app needs it
+
+The Installomator module does not upload package files. It creates and
 maintains the Jamf **policies that run the Installomator script**, each one passing a label in
 parameter 4. If the script is not in your Jamf instance, the deployment sheet has nothing to select
 and no policies can be created.
 
-**Where to get it.** The Installomator project publishes releases at
+### Where to get it
+
+The Installomator project publishes releases at
 [https://github.com/Installomator/Installomator](https://github.com/Installomator/Installomator).
 Download the current release and add `Installomator.sh` to Jamf as a script.
 
@@ -32,7 +38,9 @@ Download the current release and add `Installomator.sh` to Jamf as a script.
 
 ## DDM Explorer — an app on your own Mac
 
-**What it is.** DDM Explorer is a free Mac app from Jamf. It browses Apple’s published declaration
+### What it is
+
+DDM Explorer is a free Mac app from Jamf. It browses Apple’s published declaration
 types — what each one is for, which operating systems support it, which channels it can be scoped to
 — and it has an editor that builds a declaration key by key while showing you the resulting JSON in
 real time.
@@ -41,14 +49,18 @@ Declarative device management is Apple’s successor to the configuration profil
 payload and hoping it applied, you declare the state you want and the device maintains it and reports
 back. A **blueprint** is how Jamf packages those declarations for delivery.
 
-**Why this app needs it.** Jamf Commander has **no graphical blueprint builder**. Blueprints are
+### Why this app needs it
+
+Jamf Commander has **no graphical blueprint builder**. Blueprints are
 authored as JSON and brought here — you build the declaration in DDM Explorer, copy the payload, and
 paste it into the Blueprints editor, which wraps it into a complete blueprint for you.
 
 You can write the JSON by hand instead. DDM Explorer simply saves you from guessing at a declaration’s
 key structure, which is the part that is easy to get wrong and tedious to debug.
 
-**Where to get it.** Free on the Mac App Store —
+### Where to get it
+
+Free on the Mac App Store —
 [https://apps.apple.com/app/id6754861743](https://apps.apple.com/app/id6754861743). The source is
 published at
 [https://github.com/Jamf-Concepts/ddm-explorer](https://github.com/Jamf-Concepts/ddm-explorer).

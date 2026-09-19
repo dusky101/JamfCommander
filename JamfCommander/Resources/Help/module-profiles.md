@@ -19,6 +19,10 @@ macOS configuration profiles, grouped by category, with the same shape of bulk a
 Jamf does not store a “scoped” flag on a configuration profile, so the badge on each row is derived
 from the profile’s actual scope every time the list is built.
 
+```figure
+status-badges
+```
+
 That has one consequence worth holding on to: **a configuration profile has no enabled or disabled
 state at all**. Policies do; profiles do not. If you are looking for a way to switch a profile off
 without unscoping it, there isn’t one — in this app or in Jamf.

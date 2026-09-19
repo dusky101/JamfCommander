@@ -213,6 +213,41 @@ DDM Explorer (`Jamf-Concepts/ddm-explorer`) is what that was taken to mean, conf
 repository rather than assumed. Placed **second in Getting started**, straight after *Welcome*, with
 a first line making clear neither is needed to connect the app or to use the other seven modules.
 
+## Phase B — figures, and the index rebuild that preceded it
+
+The maintainer's verdict on the nineteen-topic guide was that it was "too wordy" and "will turn
+people away", set against SSMacOS's guide, and that what was missing was "actual images from the
+app". Two phases answered it.
+
+**The index stopped showing summaries while browsing.** Nineteen titles under three headings is a
+list you take in at a glance; the same nineteen with a grey two-line summary under each is a wall of
+secondary text. Summaries now appear only in search results, where you need them to judge a hit.
+This was the single biggest cause of the wordiness, and it is what the reference app does.
+
+**Sections collapse**, all but the one holding the page you are on — an index that showed no sign of
+where you were would be worse than a long one. Headers took their own colours, kept clear of the
+nine in `ModulePalette` so a module's colour still means that module.
+
+**Search became a panel.** ⌘F or click, a large field, ranked results, arrows to move and Return to
+open. As a field in the corner of the sidebar it was being ignored; the guide's whole case is that
+you look things up.
+
+**The welcome page lost about two thirds of its text** and gained the app icon, the version, and a
+figure of the index. The maintainer asked for exactly that.
+
+**Every module page now carries a figure**, plus `installomator-setup`. Prose-heavy pages —
+`prerequisites`, `blueprints-integration`, `module-blueprints`, `module-dashboard` — were broken up
+with level-3 headings rather than left as runs of bold-led paragraphs.
+
+### Still not done
+
+- **"Prerequisites in larger type"** was asked for and interpreted rather than implemented: the
+  renderer has no lead-paragraph concept, so the section was given prominence by position instead.
+  A `lead` block would be a small parser change if it is still wanted.
+- **The search panel is a sheet presented from inside the help sheet.** It works, and the maintainer
+  says it "works well", but sheet-on-sheet remains the thing most likely to behave oddly if the help
+  window ever becomes a `Window` scene (open question 1).
+
 ## Constraints
 
 - **British English**, calm and professional. Match the existing pages.
@@ -243,9 +278,21 @@ a first line making clear neither is needed to connect the app or to use the oth
    ⌘?) and is a decision, not a detail. Phase 2a fixed the *size* complaint without touching this:
    the sheet now tracks the window. `HostWindowSizeReader` already falls back to `window` when there
    is no `sheetParent`, so it keeps working if this ever becomes a scene.
-2. **Figures.** The reference app renders live in-app diagrams from a ```figure``` fence, so the
-   guide shows the real thing and cannot drift. ~300 lines plus one view per figure. Omitted from
-   phase 1; `HelpBlock` has no `figure` case, so adding it means touching the parser.
+2. ~~**Figures.**~~ **Built** (19 September 2026). `HelpBlock` gained a `figure(id:)` case, a
+   ```figure``` fence resolves to `HelpFigureView(id:)`, and `HelpFigures.swift` holds the registry
+   and eleven figures. They are drawn from the app's own types — `AppModule.navigationModules` for
+   the sidebar, `RedundantReason.allCases` with its own `icon`, `colour` and `explanation` for the
+   Unused reasons, `PackageViewMode.allCases` for the Installomator views, `JamfItemStatus` for the
+   badges — so adding a module or a reason updates the picture without anyone remembering to. The
+   app icon and version come from `NSApplication` and the bundle.
+
+   **Nothing in a figure may read the tenant.** They are presentational only: an illustration
+   showing somebody's real policy names would be a privacy problem and a support problem at once.
+
+   `HelpMarkdown.figureIDs(in:)` lists every id a page references. The scratch checker run over all
+   twenty pages asserts each one resolves *and* that no registered figure is unused — a typo should
+   be caught by whoever changes the content, not found by a reader. There is no test target, so that
+   check is a script rather than a test; it is worth re-running after any content change.
 3. **Deep links from the app.** `HelpPresenter.present(_:)` takes a topic id and nothing calls it
    yet. A "?" on each module's header would be the obvious use, and would overlap with the sidebar
    hover hints (`SidebarHint`) — decide which is the source of truth before both exist.

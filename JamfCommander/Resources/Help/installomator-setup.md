@@ -12,6 +12,10 @@ deployment sheet has nothing to select and no policies can be created.
 5. On the **Options** tab, set the parameter labels so the values are readable later: parameter 4
    “Label”, 5 “Option”, 6 “Option”, and 7 to 11 “Override”.
 
+```figure
+script-parameters
+```
+
 ## What the app passes
 
 When it creates a policy, the app fills in:

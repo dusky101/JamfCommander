@@ -3,6 +3,8 @@
 Where you land once the app has connected. Eight tiles count what your tenant holds, and each one is
 a button: clicking a tile opens that module.
 
+### The six totals
+
 Six of them are simple totals — computers, policies, profiles, blueprints, packages and scripts. The
 other two answer a question rather than count a list:
 
@@ -12,6 +14,10 @@ other two answer a question rather than count a list:
   exact date.
 - **Unused** counts what the Unused audit would list: policies and profiles that look like they do
   nothing, and packages no policy installs.
+
+```figure
+dashboard-tiles
+```
 
 ## What you can do
 

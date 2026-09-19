@@ -9,6 +9,10 @@ with a label in parameter 4, and the labels Installomator currently publishes.
 Before any of this works, the Installomator script has to exist in Jamf — see *Before using
 Installomator*.
 
+```figure
+label-states
+```
+
 ## What you can do
 
 - **See labels four ways** — deployed, missing, available, or all.
