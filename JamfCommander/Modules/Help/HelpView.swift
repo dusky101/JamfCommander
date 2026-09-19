@@ -190,44 +190,34 @@ struct HelpView: View {
         .listStyle(.sidebar)
     }
 
-    /// One index row. While searching, the row also names the section the page lives in — the
-    /// grouping that a flat result list gives up.
-    ///
-    /// A module's row carries that module's symbol and colour, so finding Policies in the guide
-    /// looks like finding Policies in the sidebar rather than like reading a list of filenames.
     private func row(for topic: HelpTopic) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            if let module = topic.module {
-                Image(systemName: module.icon)
-                    .font(.caption)
-                    .foregroundStyle(module.accentColour)
-                    .frame(width: 16, alignment: .center)
-                    // The title already says which module this is; the symbol would only repeat it.
-                    .accessibilityHidden(true)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(topic.title)
-                    .font(.callout)
-                Text(isSearching ? "\(topic.section.title) · \(topic.summary)" : topic.summary)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.vertical, 2)
-        .tag(topic.id)
+        HelpIndexRow(topic: topic,
+                     isSelected: topic.id == selectedTopicID,
+                     showsSection: isSearching)
+            .tag(topic.id)
     }
 
     /// A section's header in the index.
     ///
-    /// The default sidebar-header treatment drew this in `.secondary` at caption size, which made it
-    /// the dimmest thing in the window — quieter than the summaries under every row it was meant to
-    /// introduce. It carries `.primary` weight now, with the symbol left in the accent colour.
+    /// The default sidebar-header treatment draws this in `.secondary` at caption size, which made
+    /// it the dimmest thing in the window — quieter than the summaries under every row it was meant
+    /// to introduce.
+    ///
+    /// Built from an `Image` and a `Text` with their own styles rather than from a `Label` with one
+    /// applied over it: `.listStyle(.sidebar)` re-applies its own header treatment to a `Label`, so
+    /// a single `.foregroundStyle(.primary)` on the outside was simply ignored. `.textCase(nil)`
+    /// stops the list uppercasing it for the same reason.
     private func sectionHeader(_ section: HelpSection) -> some View {
-        Label(section.title, systemImage: section.systemImage)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.primary)
+        HStack(spacing: 6) {
+            Image(systemName: section.systemImage)
+                .font(.caption)
+                .foregroundStyle(.tint)
+            Text(section.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.primary)
+        }
+        .textCase(nil)
+        .padding(.top, 4)
     }
 
     private var resultsSummary: String {
@@ -297,6 +287,79 @@ struct HelpView: View {
                 description: Text("Pick a page from the index, or search for what you need.")
             )
         }
+    }
+}
+
+// MARK: - Index row
+
+/// One row in the help index.
+///
+/// Its own view because it owns hover state, and because it answers the same way the app's sidebar
+/// does: the pointer becomes a link pointer, the row lights in a colour and nudges a little. A
+/// module's row uses **that module's colour**, so finding Policies in the guide looks like finding
+/// Policies in the sidebar; the setup and reference pages use the neutral wash the sidebar footer
+/// uses for Settings and Help.
+private struct HelpIndexRow: View {
+    let topic: HelpTopic
+    let isSelected: Bool
+    /// While searching the row also names the section the page lives in — the grouping a flat
+    /// result list gives up.
+    let showsSection: Bool
+
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The module's colour, or the app's standard neutral hover.
+    private var highlight: Color { topic.module?.accentColour ?? .primary }
+
+    /// A selected row already wears the list's own highlight. Drawing a second one inside it reads
+    /// as a box in a box, so hover only paints when the row is not the selected one.
+    private var showsHoverFill: Bool { isHovering && !isSelected }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            if let module = topic.module {
+                Image(systemName: module.icon)
+                    .font(.caption)
+                    .foregroundStyle(module.accentColour)
+                    .frame(width: 16, alignment: .center)
+                    // The title already says which module this is; the symbol would only repeat it.
+                    .accessibilityHidden(true)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(topic.title)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    // Only a module row recolours its title, and only on hover — the same trade the
+                    // sidebar makes. A selected row keeps the list's own foreground so the text
+                    // stays legible against the selection fill.
+                    .foregroundStyle(showsHoverFill && topic.module != nil ? highlight : Color.primary)
+
+                Text(showsSection ? "\(topic.section.title) · \(topic.summary)" : topic.summary)
+                    .font(.caption)
+                    // `.secondary` left this fainter than the summaries were worth: they are what
+                    // tells you which of nineteen pages you want, and at that weight they read as
+                    // disabled text rather than as the answer.
+                    .foregroundStyle(Color.primary.opacity(0.75))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(highlight.opacity(showsHoverFill ? 0.10 : 0))
+        }
+        .contentShape(Rectangle())
+        .pointerStyle(.link)
+        // A nudge rather than a scale: scaling a row this small softens its text.
+        .offset(x: isHovering && !reduceMotion ? 3 : 0)
+        .animation(.snappy(duration: 0.18), value: isHovering)
+        .onHover { isHovering = $0 }
     }
 }
 

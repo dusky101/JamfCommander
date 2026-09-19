@@ -45,7 +45,10 @@ struct DashboardView: View {
     @State private var isExporting = false
     @State private var showExportProgress = false
     @StateObject private var exportProgress = ExportProgress()
-    @State private var isCategoryManagerExpanded = true
+    /// Collapsed to begin with. Expanded, the category grid is tall enough on a real tenant to push
+    /// the totals and Device Status off the screen, so the Dashboard opened on a list of categories
+    /// rather than on the overview it exists to give. Opening it is one click.
+    @State private var isCategoryManagerExpanded = false
     @State private var expandedDomains: Set<String> = [] // Track which domain groups are expanded
     
     var filteredCategories: [Category] {
