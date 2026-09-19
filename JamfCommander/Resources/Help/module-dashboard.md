@@ -6,9 +6,10 @@ a button: clicking a tile opens that module.
 Six of them are simple totals — computers, policies, profiles, blueprints, packages and scripts. The
 other two answer a question rather than count a list:
 
-- **Installomator** counts the labels Installomator currently publishes, and says how long ago that
-  list last changed upstream — the same age GitHub shows against the file. A list that has not moved
-  in months is the thing worth noticing. Hover the tile for the exact date.
+- **Installomator** counts the labels Installomator currently publishes — the ones available to
+  deploy — and says how long ago that list last changed upstream, the same age GitHub shows against
+  the file. A list that has not moved in months is the thing worth noticing. Hover the tile for the
+  exact date.
 - **Unused** counts what the Unused audit would list: policies and profiles that look like they do
   nothing, and packages no policy installs.
 
@@ -38,6 +39,10 @@ the rest of the Dashboard is already on screen — they spin while they work, an
 categories and Device Status are usable throughout.
 
 A spinner means still working. A dash means the read failed. They are deliberately not the same.
+
+When the answer arrives the tile counts up to it and settles. Every number on the way is between
+where the tile was and the figure Jamf returned — there is no count climbing while the scan runs,
+because until it comes back nobody knows the total.
 
 Leaving the Dashboard before they finish cancels them, which is the right outcome; they are read
 again next time you come back.

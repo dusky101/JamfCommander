@@ -71,8 +71,10 @@ struct DashboardView: View {
     /// Omitted rather than faked when GitHub would not give a date.
     private var installomatorDetail: String? {
         guard !isLoadingInstallomator else { return nil }
-        guard let updated = installomatorLabelsUpdated else { return "Labels" }
-        return "Labels · updated \(updated.formatted(.relative(presentation: .named)))"
+        guard let updated = installomatorLabelsUpdated else { return "Available labels" }
+        // Two deliberate lines rather than one that wraps raggedly: at tile width this runs to about
+        // thirty-seven characters, which no sensible column fits on one line.
+        return "Available labels\nUpdated \(updated.formatted(.relative(presentation: .named)))"
     }
 
     /// The exact moment behind the tile's "updated 4 days ago".
@@ -152,7 +154,8 @@ struct DashboardView: View {
                                      icon: "arrow.down.app.fill",
                                      color: .moduleSpring,
                                      detail: installomatorDetail,
-                                     isLoading: isLoadingInstallomator)
+                                     isLoading: isLoadingInstallomator,
+                                     animatesArrival: true)
                         }
                         .buttonStyle(.plain)
                         .help(installomatorTooltip)
@@ -163,7 +166,8 @@ struct DashboardView: View {
                                      icon: "archivebox.fill",
                                      color: .moduleRose,
                                      detail: unusedDetail,
-                                     isLoading: isLoadingUnused)
+                                     isLoading: isLoadingUnused,
+                                     animatesArrival: true)
                         }
                         .buttonStyle(.plain)
                     }
@@ -614,11 +618,23 @@ struct StatCard: View {
     /// cost a full estate scan fill in after the Dashboard is already up, and a dash in the meantime
     /// would report a failure that has not happened.
     var isLoading: Bool = false
+    /// Roll the number up to its answer and give it one pulse when it lands.
+    ///
+    /// Only the two tiles that arrive late set this. The six that come back with the first load
+    /// would all roll at once, which is noise rather than emphasis.
+    var animatesArrival: Bool = false
 
     @State private var isHovering = false
+    /// What the tile is currently showing while the roll-up runs. Only consulted when
+    /// `animatesArrival` is set.
+    @State private var displayedCount = 0
+    @State private var isPulsing = false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var countText: String {
-        count.map(String.init) ?? "—"
+        guard let count else { return "—" }
+        return String(animatesArrival ? displayedCount : count)
     }
 
     /// The card is an icon and two or three pieces of text, none of which names the tile on its
@@ -650,6 +666,7 @@ struct StatCard: View {
                     Text(countText)
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundColor(count == nil ? .secondary : .primary)
+                        .scaleEffect(isPulsing ? 1.18 : 1.0)
                 }
             }
             
@@ -678,10 +695,52 @@ struct StatCard: View {
         .scaleEffect(isHovering ? 1.02 : 1.0)
         .animation(.spring(response: 0.3), value: isHovering)
         .onHover { isHovering = $0 }
+        // Restarts whenever the count changes, and is cancelled when the tile goes away — so a
+        // half-finished roll-up on a Dashboard the reader has left simply stops.
+        .task(id: count) {
+            guard let count else { return }
+            await rollUp(to: count)
+        }
         // Declarative, and balanced by the system. The old NSCursor push/pop pair called into AppKit
         // from a hover callback — which can land inside a Core Animation commit — and popped on
         // hover-out whether or not a matching push had happened, so the cursor stack could drift.
         .pointerStyle(.link)
+    }
+
+    /// Counts the tile up to its answer, then pulses once.
+    ///
+    /// Every number shown on the way is between where the tile was and the figure Jamf returned, so
+    /// nothing invented ever appears. That is also why there is no count climbing *during* the read:
+    /// until the scan comes back nobody knows the total, and a number rising on a tile where a dash
+    /// means "this failed" would be a claim rather than a flourish. The spinner says "working"; this
+    /// says "here it is".
+    ///
+    /// Rolls from whatever is on screen rather than from zero, so a refresh moves from the old
+    /// figure to the new one instead of dropping to nothing first.
+    private func rollUp(to target: Int) async {
+        guard animatesArrival, !reduceMotion else {
+            displayedCount = target
+            return
+        }
+
+        let start = displayedCount
+        guard start != target else { return }
+
+        let steps = 18
+        let step = Duration.seconds(0.5 / Double(steps))
+
+        for tick in 1...steps {
+            let progress = Double(tick) / Double(steps)
+            // Ease out, so it slows into the answer rather than stopping dead on it.
+            let eased = 1 - pow(1 - progress, 3)
+            displayedCount = start + Int((Double(target - start) * eased).rounded())
+            do { try await Task.sleep(for: step) } catch { return }
+        }
+        displayedCount = target
+
+        withAnimation(.spring(response: 0.26, dampingFraction: 0.4)) { isPulsing = true }
+        try? await Task.sleep(for: .seconds(0.16))
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.7)) { isPulsing = false }
     }
 }
 
