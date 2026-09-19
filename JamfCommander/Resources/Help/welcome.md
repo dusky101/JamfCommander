@@ -10,7 +10,8 @@ Two of the nine modules need something that lives outside this app: the **Instal
 your Jamf instance, and **DDM Explorer** on your Mac for authoring blueprints. Neither is needed to
 connect, and neither is needed for the other seven.
 
-*Prerequisites* says what each one is, why it is needed, and where to get it.
+*Prerequisites* says what each one is, why it is needed, and where to get it, and *Before using
+Installomator* has the exact steps for the script.
 
 Setting the app up for the first time? *Getting connected*, then *Creating the API client in Jamf
 Pro*, then *Privileges*, in that order.

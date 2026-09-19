@@ -50,6 +50,15 @@ nonisolated enum HelpLibrary {
                        "blueprints", "app store", "download", "github", "install", "authoring"]),
 
         HelpTopic(
+            id: "installomator-setup",
+            title: "Before using Installomator",
+            section: .gettingStarted,
+            summary: "Add the Installomator script to Jamf, and label its parameters.",
+            keywords: ["installomator", "script", "label", "parameter 4", "parameter4", "debug",
+                       "notify", "silent", "github", "raw.githubusercontent.com", "prerequisite",
+                       "setup", "overrides", "version pinning", "no labels"]),
+
+        HelpTopic(
             id: "getting-connected",
             title: "Getting connected",
             section: .gettingStarted,
@@ -193,15 +202,6 @@ nonisolated enum HelpLibrary {
                        "version pinning", "pin", "github", "labels.txt"],
             resource: "module-installomator",
             module: .installomator),
-
-        HelpTopic(
-            id: "installomator-setup",
-            title: "Before using Installomator",
-            section: .modules,
-            summary: "The prerequisite: add the Installomator script to Jamf, and label its parameters.",
-            keywords: ["installomator", "script", "label", "parameter 4", "parameter4", "debug",
-                       "notify", "silent", "github", "raw.githubusercontent.com", "prerequisite",
-                       "setup", "overrides", "version pinning", "no labels"]),
 
         HelpTopic(
             id: "unused",

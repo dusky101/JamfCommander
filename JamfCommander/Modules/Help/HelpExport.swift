@@ -118,6 +118,15 @@ enum HelpPDFWriter {
                                          width: contentWidth)
 
         let hosting = NSHostingView(rootView: document)
+        // **This line is what makes the export legible**, and the SwiftUI one is not enough.
+        //
+        // The app forces `.preferredColorScheme(.dark)`, so `NSApp.effectiveAppearance` is dark and
+        // a hosting view created from it inherits that. `.environment(\.colorScheme, .light)` sets
+        // SwiftUI's *value*, but `.primary`, `.secondary` and every `Color(nsColor:)` resolve
+        // against the AppKit appearance — so the first exports came out as white text on a white
+        // page, with only the explicitly-tinted things visible. Forcing `.aqua` here is what makes
+        // body text black.
+        hosting.appearance = NSAppearance(named: .aqua)
         hosting.frame = NSRect(origin: .zero,
                                size: NSSize(width: contentWidth, height: 1))
         // Let the content decide how tall it is, then give the view that height so the print
