@@ -15,12 +15,15 @@ import SwiftUI
 /// One help page: its parsed blocks, in order.
 struct MarkdownView: View {
     let blocks: [HelpBlock]
+    /// The module this page documents, when it documents one. Its colour and symbol dress the page's
+    /// level-1 heading, so a module looks the same in the guide as it does in the sidebar.
+    var module: AppModule?
 
     var body: some View {
         // Spacing is per block rather than per stack — see `HelpRhythm`.
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
-                HelpBlockView(block: block)
+                HelpBlockView(block: block, module: module)
                     .padding(.top, HelpRhythm.space(before: block,
                                                     after: index == 0 ? nil : blocks[index - 1]))
             }
@@ -32,6 +35,9 @@ struct MarkdownView: View {
 /// A single block. Recursive, because a callout contains blocks of its own.
 private struct HelpBlockView: View {
     let block: HelpBlock
+    /// Only the page's own title is dressed in the module's colour; headings inside the page stay
+    /// neutral, or nine pages would each be a wall of one hue.
+    var module: AppModule?
 
     /// The width reserved for a list marker. Bullets and numbers share it so an unordered list and an
     /// ordered one start their text on the same line, and a wrapped line hangs under the text rather
@@ -42,11 +48,24 @@ private struct HelpBlockView: View {
     var body: some View {
         switch block {
         case .heading(let level, let text):
-            Text(text)
-                .font(headingFont(level))
-                .fontWeight(level <= 2 ? .bold : .semibold)
+            if level == 1, let module {
+                Label {
+                    Text(text)
+                } icon: {
+                    Image(systemName: module.icon)
+                }
+                .font(headingFont(1))
+                .fontWeight(.bold)
+                .foregroundStyle(module.accentColour)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityAddTraits(.isHeader)
+            } else {
+                Text(text)
+                    .font(headingFont(level))
+                    .fontWeight(level <= 2 ? .bold : .semibold)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+            }
 
         case .paragraph(let text):
             inline(text)
@@ -104,7 +123,7 @@ private struct HelpBlockView: View {
                     .accessibilityLabel(tone.accessibilityLabel)
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(inner.enumerated()), id: \.offset) { index, block in
-                        HelpBlockView(block: block)
+                        HelpBlockView(block: block, module: nil)
                             .padding(.top, HelpRhythm.space(before: block,
                                                             after: index == 0 ? nil : inner[index - 1]))
                     }

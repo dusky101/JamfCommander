@@ -23,15 +23,13 @@ Connection**. Once saved, the app reconnects automatically each launch.
 
 ## Blueprints needs different credentials
 
-The Blueprints module does **not** use the API client above. Blueprints are served by Jamf’s Platform
-API Gateway, which is a different host with its own integration, created in **Jamf Account** rather
-than in Jamf Pro. A Jamf Pro API client cannot reach it, whatever privileges you give it.
+The Blueprints module does **not** use the API client above, and no amount of Jamf Pro privileges
+will make it. Blueprints are served by Jamf’s Platform API Gateway: a different host, with its own
+integration created in **Jamf Account** rather than in Jamf Pro.
 
 Its settings live under **Settings → Jamf Connections → Platform API — Blueprints**, and there is a
 **Test Connection** button there that proves the credentials, the region and the environment ID in
-one go. Until those are filled in, the Blueprints module says so and offers a button straight to
-Settings.
+one go.
 
-> **Warning:** Platform API tokens are region-locked. A token issued for one region is refused by
-> another, so the region must match where your instances are actually hosted or every call fails with
-> a 401.
+*Creating the Blueprints integration* is the whole of it, start to finish. Skip that page if you are
+not using Blueprints — nothing else in the app needs these credentials.

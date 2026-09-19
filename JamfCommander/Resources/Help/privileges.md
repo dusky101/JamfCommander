@@ -21,9 +21,9 @@ These cover everything the app currently does. Reduce them to match the work you
 
 ## Blueprints is separate
 
-Blueprints does not use this role at all. Its integration is created in Jamf Account and granted
-capabilities rather than Jamf Pro privileges: `blueprints:read`, `create`, `update`, `delete` and
-`deploy`, plus `device-groups:read`. See *Getting connected*.
+Blueprints does not use this role at all, and cannot be reached with it. Its integration is created
+in Jamf Account and granted **capabilities** rather than Jamf Pro privileges. See *Creating the
+Blueprints integration*.
 
 ## What a missing privilege looks like
 

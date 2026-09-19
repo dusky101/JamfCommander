@@ -27,6 +27,12 @@ nonisolated struct HelpTopic: Identifiable, Sendable, Hashable {
     let keywords: [String]
     /// The bundled Markdown resource's base name, without extension. Defaults to `id`.
     let resource: String
+    /// The sidebar module this topic documents, when it documents one.
+    ///
+    /// Carries the module's colour and symbol into the index row and the page's heading, so a module
+    /// is the same colour in the guide as it is in the app. `nil` for the setup and reference pages,
+    /// which are not about one module.
+    let module: AppModule?
     /// The raw Markdown body, filled by `HelpLibrary.loadTopics()`. Empty in the static manifest.
     var body: String
 
@@ -36,6 +42,7 @@ nonisolated struct HelpTopic: Identifiable, Sendable, Hashable {
          summary: String,
          keywords: [String] = [],
          resource: String? = nil,
+         module: AppModule? = nil,
          body: String = "") {
         self.id = id
         self.title = title
@@ -43,6 +50,7 @@ nonisolated struct HelpTopic: Identifiable, Sendable, Hashable {
         self.summary = summary
         self.keywords = keywords
         self.resource = resource ?? id
+        self.module = module
         self.body = body
     }
 

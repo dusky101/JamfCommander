@@ -1,4 +1,4 @@
-# Creating the API client in Jamf
+# Creating the API client in Jamf Pro
 
 In Jamf Pro, go to **Settings → System → API roles and clients**.
 
@@ -13,6 +13,9 @@ In Jamf Pro, go to **Settings → System → API roles and clients**.
 > invalidates the old secret.
 
 Copy the Client ID from the same screen, and use your Jamf URL as the instance URL.
+
+Jamf’s own documentation for this screen is at
+[https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/API_Roles_and_Clients](https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/API_Roles_and_Clients).
 
 Grant only the privileges you actually intend to use. The role is what Jamf enforces, so a narrower
 role is a real safeguard rather than a cosmetic one — an app that cannot delete policies cannot

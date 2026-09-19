@@ -182,7 +182,7 @@ struct HelpView: View {
                             row(for: topic)
                         }
                     } header: {
-                        Label(group.section.title, systemImage: group.section.systemImage)
+                        sectionHeader(group.section)
                     }
                 }
             }
@@ -192,18 +192,42 @@ struct HelpView: View {
 
     /// One index row. While searching, the row also names the section the page lives in — the
     /// grouping that a flat result list gives up.
+    ///
+    /// A module's row carries that module's symbol and colour, so finding Policies in the guide
+    /// looks like finding Policies in the sidebar rather than like reading a list of filenames.
     private func row(for topic: HelpTopic) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(topic.title)
-                .font(.callout)
-            Text(isSearching ? "\(topic.section.title) · \(topic.summary)" : topic.summary)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: 8) {
+            if let module = topic.module {
+                Image(systemName: module.icon)
+                    .font(.caption)
+                    .foregroundStyle(module.accentColour)
+                    .frame(width: 16, alignment: .center)
+                    // The title already says which module this is; the symbol would only repeat it.
+                    .accessibilityHidden(true)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(topic.title)
+                    .font(.callout)
+                Text(isSearching ? "\(topic.section.title) · \(topic.summary)" : topic.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.vertical, 2)
         .tag(topic.id)
+    }
+
+    /// A section's header in the index.
+    ///
+    /// The default sidebar-header treatment drew this in `.secondary` at caption size, which made it
+    /// the dimmest thing in the window — quieter than the summaries under every row it was meant to
+    /// introduce. It carries `.primary` weight now, with the symbol left in the accent colour.
+    private func sectionHeader(_ section: HelpSection) -> some View {
+        Label(section.title, systemImage: section.systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.primary)
     }
 
     private var resultsSummary: String {
@@ -305,7 +329,10 @@ private struct HelpPage: View {
 
     var body: some View {
         ScrollView {
-            MarkdownView(blocks: HelpMarkdown.parse(topic.body))
+            MarkdownView(blocks: HelpMarkdown.parse(topic.body), module: topic.module)
+                // A reference page is read *and* copied from — a privilege name into a Jamf role, a
+                // documentation URL into a browser — so the text has to be selectable.
+                .textSelection(.enabled)
                 .padding(.horizontal, 28)
                 .padding(.top, 24)
                 // Room under the last block, so the page does not end flush against the bar.

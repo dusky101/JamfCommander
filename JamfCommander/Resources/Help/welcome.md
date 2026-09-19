@@ -26,10 +26,15 @@ to find online and nothing to keep in step.
 ## Where to start
 
 - **Setting the app up for the first time?** Read *Getting connected*, then *Creating the API client
-  in Jamf* and *Privileges*, in that order.
+  in Jamf Pro* and *Privileges*, in that order.
+- **Approving it before anyone points it at production?** *Which APIs this app uses* is the whole
+  surface in one page, written for exactly that.
+- **Using Blueprints?** They need a second, separate credential — *Creating the Blueprints
+  integration*.
 - **Setting it up for a colleague?** *Sharing your settings* covers moving a connection to another
   Mac, and what that file contains.
-- **Want the lie of the land?** *What each section does* is a tour of the sidebar.
+- **Want the lie of the land?** **Using the app** has a page for every item in the sidebar, in the
+  order they appear there.
 
 ## A note on what this is
 

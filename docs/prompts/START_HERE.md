@@ -146,5 +146,6 @@ Three handovers exist in `docs/handovers/`:
   keyboard paging exercised. Phase 2a fixed what that reading found. Still unexercised:
   `HelpPresenter.present(_:)`, which nothing calls.
 
-Not proven: the guide's new per-module content, which has not been written yet — see
-`docs/handovers/HELP_OVERHAUL_HANDOVER.md`.
+Not proven: **the twelve help pages phase 2b added have never been rendered.** They build, they
+bundle, and all nineteen pages parse — but the maintainer now runs the app himself, so nothing in
+that content has been looked at. See `docs/handovers/HELP_OVERHAUL_HANDOVER.md`.

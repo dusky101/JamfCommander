@@ -1,8 +1,9 @@
 # Handover — Help overhaul
 
-**State at handover:** 19 September 2026, app version 8.5. Phase 1 is **committed**. **Phase 2a** —
-the layout and search defects found the first time all eight pages were read on screen — is done and
-verified but **not yet committed**. Phase 2b, the new content, has not started.
+**State at handover:** 19 September 2026, app version 8.5. Phase 1 is **committed**. **Phase 2a**
+(layout and search) and **phase 2b** (the content) are both done. The overhaul is complete as
+specified; what remains is the four open questions at the bottom, all of which are the maintainer's
+calls.
 
 Read this before touching anything in `Modules/Help/` or `Resources/Help/`.
 
@@ -38,13 +39,29 @@ directly and are unchanged.
 
 ## Proven — and what is NOT
 
-| Proven on screen | Still never exercised |
+| Proven on screen | Never seen on screen |
 | --- | --- |
-| All eight pages read end to end, at 900×900 and at 1500×1204 | `HelpPresenter.present(_:)` — nothing calls it |
-| Search run for "403", "unscoped", "client secret" and a miss | Printing, and Save as PDF (deferred — see below) |
-| The empty-search-result state | A light-appearance rendering (the app forces dark) |
-| Keyboard paging: Page Down and Home move the page | |
-| The sheet tracks the window it is presented on | |
+| The eight **phase 1** pages, read end to end at 900×900 and at 1500×1204 | **Every one of the twelve pages phase 2b added** |
+| Search run for "403", "unscoped", "client secret" and a miss | **Module colour on an index row and on a page's H1** |
+| The empty-search-result state | The index at nineteen topics — it was eight when it was last seen |
+| Keyboard paging: Page Down and Home move the page | Whether a Markdown link renders as a clickable link |
+| The sheet tracks the window it is presented on | `HelpPresenter.present(_:)` — nothing calls it |
+
+**Read the right-hand column before trusting anything about phase 2b.** The maintainer asked that
+this session stop launching the app — it costs him time and money — so phase 2b was verified by
+other means and **not once looked at**. What *was* checked:
+
+- It builds, and all nineteen `.md` files reach `Contents/Resources/` with no name collision
+  (`README.md` is the only other Markdown in that flat directory).
+- Every topic in the manifest resolves to a file on disk, every file is in the manifest, and every
+  page's `# Title` matches its `HelpTopic.title` exactly — checked by script, not by eye.
+- All nineteen pages were run through `HelpMarkdown` compiled standalone: every page opens with an
+  H1, every paragraph and list item parses as inline Markdown, no unbalanced `**`, and none of the
+  three unsupported shapes (tables, images, indented sub-bullets) appears anywhere.
+- No straight quotes or apostrophes, and no American spellings, anywhere in the content.
+
+None of that proves a *rendering*. A block can parse perfectly and still look wrong, which is the
+lesson phase 1 already paid for once.
 
 Every page now parses with balanced inline emphasis, checked by compiling `HelpMarkdown.swift`
 standalone and running it over all eight files. That proves the *parser*, not the *rendering*: a
@@ -122,33 +139,65 @@ Reference section became `book.closed`; straight quotes and apostrophes across a
 typographic ones; and `modules.md` said a failed Dashboard read "shows — rather than 0", which is not
 a sentence.
 
-## What phase 2b has to do
+## What phase 2b built
 
-Phase 1 deliberately ported the *existing* content and invented almost none, so that it is a pure
-mechanism change and any difference on screen is a rendering bug rather than a rewrite. Phase 2 is
-the content the maintainer actually asked for.
+The guide went from eight topics to **nineteen**, and the index now mirrors the sidebar.
 
-**1. Split `modules.md` into one topic per module.** It is currently a single page with nine `##`
-headings — a faithful carry-over plus the modules that were missing, but not the shape he asked for
-("a section/md file for each section"). Nine topics: Dashboard, Policies, Profiles, Blueprints,
-Computers, Packages, Scripts, Installomator, Unused. Each should answer what it lists, what you can
-do to it, and **the one thing that surprises people** — that last part is the value, and most of it
-currently exists only in code comments.
+**One topic per sidebar module.** `modules.md` — a single page with nine `##` headings — is deleted
+and replaced by nine pages: `module-dashboard`, `-policies`, `-profiles`, `-blueprints`,
+`-computers`, `-packages`, `-scripts`, `-installomator`, `-unused`, listed in **sidebar order**. Each
+answers what it lists, what you can do to it, and the one thing that surprises people — the last of
+which is the part that is worth anything, and most of it existed only in code comments and
+`JamfCommander/README.md` before this.
 
-**2. `apis.md` — what APIs the app uses now.** Asked for explicitly. Three of them, which is the
-point: the Jamf **Classic** API (`JSSResource/…`, XML for writes), the Jamf **Pro** API
-(`api/v{n}/…`, JSON, and the version varies per resource — computers are v3), and the **Platform API
-Gateway** for Blueprints, with its own credentials and region lock. Plus the unauthenticated read of
-Installomator's label list from GitHub. `docs/JAMF_API_REFERENCE.md` has all of it; write it for an
-administrator deciding what to grant, not for a developer.
+They are named `module-…` on purpose. The bundle is flat (see the trap above), so `packages.md` or
+`scripts.md` are exactly the names something else in the app might one day claim.
 
-**3. `whats-coming.md` — future versions.** He named **mobile devices** specifically: the app is
-computers-only today. Draw the rest from `docs/roadmap/`: per-domain caching (`CACHING.md`), showing
-which policies run a script (`SCRIPT_USAGE.md`), and multiple Jamf environments
-(`MULTIPLE_ENVIRONMENTS.md`). Say plainly that these are intentions, not commitments.
+**Modules carry their colour into the guide.** `HelpTopic` gained `module: AppModule?`. When it is
+set, the index row shows the module's SF Symbol in `AppModule.accentColour` and `MarkdownView` draws
+the page's level-1 heading in the same colour with the same symbol. Headings *inside* a page stay
+neutral — nine pages each a solid wall of one hue would be worse than no colour at all. The
+maintainer asked for this directly: "each of the section headers should have the same colour as the
+section in the app".
 
-**4. Add the new topics to `HelpLibrary.topics`** with summaries and keywords. Keywords are the field
-authored for search — the words an administrator types that the title does not contain.
+**The index section headers were the dimmest thing in the window** — `.secondary` at caption size,
+quieter than the summaries under the rows they introduced. They are `.primary` and semibold now, with
+the symbol left in the accent colour. Also his ask.
+
+**`apis.md` — which APIs this app uses.** Written for whoever approves the app before it is pointed
+at production, not for a developer: the Classic API, the Pro API (with the per-resource version
+number spelled out), the Platform API Gateway, and the unauthenticated GitHub read, plus a short
+allowlist section naming the three hostnames and saying everything is outbound HTTPS.
+
+**`blueprints-integration.md` — a page of its own.** He said the guide "only glances on the account
+section api settings needed". It now walks through creating the integration in **Jamf Account**:
+scope level *platform environment*, the six capabilities, where the environment ID is hidden, and the
+four fields in Settings. Four traps are called out — the region lock, the fact that a 403 here most
+often means the scope level rather than a capability, that **Jamf integrations expire after six
+months**, and that the values travel inside a `.jamfconfig`.
+
+`getting-connected.md` and `privileges.md` stopped half-explaining Blueprints and now point at it.
+
+**Two external links, both verified to resolve** on 19 September 2026 rather than guessed:
+
+- `https://developer.jamf.com/platform-api/reference/getting-started-with-platform-api` — Jamf's own
+  walkthrough of creating an integration; it is where the six-month expiry is documented.
+- `https://learn.jamf.com/r/en-US/jamf-pro-documentation-current/API_Roles_and_Clients` — the Jamf
+  Pro screen `api-client.md` describes. The `-current` form is used deliberately; the
+  version-numbered URLs rot.
+
+  **Unverified:** whether a Markdown link renders as a clickable link in `Text(AttributedString)`
+  here. Both are written with the full URL as the link *text* so they are readable and copyable
+  either way, and page text is now `.textSelection(.enabled)` so a URL or a privilege name can be
+  copied out.
+
+**`whats-coming.md`.** Mobile devices first, because he named it: the app is Macs only. Then the
+three open roadmap entries — caching, script usage, multiple environments — plus the PDF, and a
+closing section separating what is *deliberate* from what is *missing*. Stated as intentions, with a
+callout saying so and no dates.
+
+**`api-client.md` is now "Creating the API client in Jamf Pro"**, because there is a second
+credential-creation page beside it and "in Jamf" no longer distinguishes them.
 
 ## Constraints
 
