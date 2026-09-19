@@ -231,48 +231,67 @@ struct RedundantDashboardView: View {
     }
 
     private var errorView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.largeTitle)
-                .foregroundColor(.orange)
+        centredState {
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                    .foregroundColor(.orange)
 
-            Text("Couldn't complete the audit")
-                .font(.headline)
+                Text("Couldn't complete the audit")
+                    .font(.headline)
 
-            Text("The audit needs every policy, profile and package to be read before it can call anything redundant, and one of those reads failed. Check your connection to Jamf, and that this API client can read policies, configuration profiles, packages and categories, then try again. Nothing has been changed.")
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 460)
-                .fixedSize(horizontal: false, vertical: true)
+                Text("The audit needs every policy, profile and package to be read before it can call anything redundant, and one of those reads failed. Check your connection to Jamf, and that this API client can read policies, configuration profiles, packages and categories, then try again. Nothing has been changed.")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 460)
+                    .lineLimit(6)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Button("Try Again") { Task { await load() } }
-                .buttonStyle(.borderedProminent)
+                Button("Try Again") { Task { await load() } }
+                    .buttonStyle(.borderedProminent)
+            }
+            .accessibilityElement(children: .combine)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
-        .accessibilityElement(children: .combine)
     }
 
     private func emptyView(title: String, detail: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "checkmark.seal")
-                .font(.largeTitle)
-                .foregroundColor(.green)
+        centredState {
+            VStack(spacing: 12) {
+                Image(systemName: "checkmark.seal")
+                    .font(.largeTitle)
+                    .foregroundColor(.green)
 
-            Text(title)
-                .font(.headline)
+                Text(title)
+                    .font(.headline)
 
-            Text(detail)
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(detail)
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    /// A centred message that cannot affect the window's layout.
+    ///
+    /// These states previously sat directly in the view's `VStack` with `maxHeight: .infinity` and an
+    /// unbounded `fixedSize`, so on a narrow window the text's ideal height propagated outwards and
+    /// pushed the whole app around — the sidebar widened and the content slid under the title bar.
+    /// A `ScrollView` accepts whatever height it is handed and never asks for more, which is the same
+    /// reason the list below it has never done this.
+    @ViewBuilder
+    private func centredState<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            content()
+                .frame(maxWidth: .infinity)
+                .padding(40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
-        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Derived

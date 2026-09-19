@@ -103,6 +103,8 @@ struct PoliciesDashboardView: View {
             // --- Content ---
             if isLoading {
                 ProgressView("Loading Policies...").frame(maxHeight: .infinity)
+            } else if groupedPolicies.isEmpty {
+                emptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: 20) {
@@ -140,6 +142,57 @@ struct PoliciesDashboardView: View {
         }
     }
     
+    /// Nothing to show. Told apart so the message can say which it is: an empty tenant and a search
+    /// that matched nothing look identical otherwise, and only one of them is fixed by clearing the
+    /// search. Inside a ScrollView so the text can never demand height and push the module around.
+    private var emptyState: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                Image(systemName: policies.isEmpty ? "scroll" : "magnifyingglass")
+                    .font(.largeTitle)
+                    .foregroundColor(.secondary)
+
+                Text(policies.isEmpty ? "No policies in this instance" : "No matches")
+                    .font(.headline)
+
+                Text(emptyDetail)
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !searchText.isEmpty || selectedCategory != nil {
+                    Button("Clear Filters") {
+                        searchText = ""
+                        selectedCategory = nil
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(40)
+            .accessibilityElement(children: .combine)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyDetail: String {
+        if policies.isEmpty {
+            return "This Jamf instance has no policies, or none this API client may read."
+        }
+        if !searchText.isEmpty, let selectedCategory {
+            return "No policy in \(selectedCategory.name) matches “\(searchText)”."
+        }
+        if !searchText.isEmpty {
+            return "No policy matches “\(searchText)”."
+        }
+        if let selectedCategory {
+            return "No policy is filed under \(selectedCategory.name)."
+        }
+        return "Nothing matches the current filters."
+    }
+
     // MARK: - Actions
     
     func loadData() async {

@@ -12,29 +12,74 @@ struct ScriptsDashboardView: View {
     @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
 
     @State private var scripts: [ScriptRecord] = []
+    @State private var categories: [Category] = []
     @State private var searchText = ""
+    @State private var selectedCategory: Category?
     @State private var isLoading = true
     @State private var inspectorSelection: InspectorSelection?
-    
-    var groupedScripts: [(key: String, value: [ScriptRecord])] {
-        let filtered = scripts.filter { script in
-            searchText.isEmpty ||
-            script.name.localizedCaseInsensitiveContains(searchText)
+
+    // Selection
+    @State private var selectedScriptIDs = Set<String>()
+    @State private var isBusy = false
+    @State private var confirmation: ConfirmationData?
+    @State private var results: [OperationResult] = []
+    @State private var showResults = false
+
+    var filteredScripts: [ScriptRecord] {
+        scripts.filter { script in
+            let matchesText = searchText.isEmpty
+                || script.name.localizedCaseInsensitiveContains(searchText)
+                || script.id == searchText
+            let matchesCategory = selectedCategory == nil || script.safeCategory == selectedCategory?.name
+            return matchesText && matchesCategory
         }
-        let grouped = Dictionary(grouping: filtered) { $0.safeCategory }
+    }
+
+    var groupedScripts: [(key: String, value: [ScriptRecord])] {
+        let grouped = Dictionary(grouping: filteredScripts) { $0.safeCategory }
         return grouped.sorted { $0.key < $1.key }
+    }
+
+    private var selectedScripts: [ScriptRecord] {
+        scripts.filter { selectedScriptIDs.contains($0.id) }
     }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Search and the actions live in the window toolbar rather than a control row inside
-            // the content, so the title bar earns its space and every module's controls sit in the
-            // same place. See docs/cleanup.md.
-            //
-            // Content
+            // --- Top Bar --- the swap every other module makes: filters until something is
+            // selected, then what you can do to it.
+            if !selectedScriptIDs.isEmpty {
+                ScriptActionBar(
+                    selectedScripts: selectedScripts,
+                    isBusy: isBusy,
+                    onClearSelection: { withAnimation { selectedScriptIDs.removeAll() } },
+                    onConfirmedDelete: { targets in performDelete(targets) }
+                )
+                .frame(height: 180)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(2)
+            } else {
+                FilterBar(
+                    searchText: $searchText,
+                    categories: categories,
+                    selectedCategory: $selectedCategory,
+                    customCount: { category in
+                        scripts.filter { $0.safeCategory == category.name }.count
+                    },
+                    customTotal: scripts.count,
+                    onRefresh: { Task { await refreshData() } },
+                    onExport: { exportScripts() }
+                )
+                .zIndex(1)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // --- Content ---
             if isLoading {
                 ProgressView("Loading Scripts...")
                     .frame(maxHeight: .infinity)
+            } else if groupedScripts.isEmpty {
+                emptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: 20) {
@@ -42,6 +87,7 @@ struct ScriptsDashboardView: View {
                             ScriptCategorySection(
                                 title: group.key,
                                 scripts: group.value,
+                                selectedIDs: $selectedScriptIDs,
                                 onInspect: { id in
                                     inspectorSelection = InspectorSelection(id: id)
                                 }
@@ -49,29 +95,19 @@ struct ScriptsDashboardView: View {
                         }
                     }
                     .padding()
+                    .padding(.bottom, 50)
                 }
             }
         }
-        .searchable(text: $searchText, prompt: "Search scripts")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    exportScripts()
-                } label: {
-                    Label("Export CSV", systemImage: "square.and.arrow.up")
-                }
-                .help("Export to CSV")
-                .disabled(scripts.isEmpty)
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task { await refreshData() }
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .help("Refresh scripts")
-                .disabled(isLoading)
+        // Pin to the top, as the other modules do: content taller than the pane would otherwise be
+        // centred and its overflow split above and below.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(.easeInOut(duration: 0.2), value: selectedScriptIDs.isEmpty)
+        .commanderConfirmation(data: $confirmation)
+        .sheet(isPresented: $showResults) {
+            OperationResultView(title: "Delete Scripts", results: results) {
+                showResults = false
+                Task { await refreshData() }
             }
         }
         .task {
@@ -87,11 +123,119 @@ struct ScriptsDashboardView: View {
     
     private func refreshData() async {
         do {
-            self.scripts = try await api.fetchScripts()
+            async let scriptsResult = api.fetchScripts()
+            // Advisory: the filter bar's chips need these, but a failure to read them only costs the
+            // category filter, so it must not fail the whole load.
+            let fetchedCategories = try? await api.fetchCategories()
+
+            self.scripts = try await scriptsResult
+            self.categories = (fetchedCategories ?? []).sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            // A script that has gone is no longer selectable.
+            self.selectedScriptIDs = selectedScriptIDs.intersection(Set(scripts.map(\.id)))
             self.isLoading = false
         } catch {
-            print("Error fetching scripts: \(error)")
+            // No error body in the log — see root CLAUDE.md, invariant 4.
+            print("[Scripts] Script load failed")
             self.isLoading = false
+        }
+    }
+
+    /// Nothing to show, and which kind of nothing it is.
+    private var emptyState: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                Image(systemName: scripts.isEmpty ? "applescript" : "magnifyingglass")
+                    .font(.largeTitle)
+                    .foregroundColor(.secondary)
+
+                Text(scripts.isEmpty ? "No scripts in this instance" : "No matches")
+                    .font(.headline)
+
+                Text(emptyDetail)
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+                    .lineLimit(4)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !searchText.isEmpty || selectedCategory != nil {
+                    Button("Clear Filters") {
+                        searchText = ""
+                        selectedCategory = nil
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(40)
+            .accessibilityElement(children: .combine)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyDetail: String {
+        if scripts.isEmpty {
+            return "This Jamf instance has no scripts, or none this API client may read."
+        }
+        if !searchText.isEmpty, let selectedCategory {
+            return "No script in \(selectedCategory.name) matches “\(searchText)”."
+        }
+        if !searchText.isEmpty {
+            return "No script matches “\(searchText)”."
+        }
+        if let selectedCategory {
+            return "No script is filed under \(selectedCategory.name)."
+        }
+        return "Nothing matches the current filters."
+    }
+
+    /// Deletes the confirmed scripts, one batch at a time, reporting the real outcome of each.
+    private func performDelete(_ targets: [ScriptRecord]) {
+        guard !targets.isEmpty, !isBusy else { return }
+        isBusy = true
+
+        Task {
+            var outcome: [OperationResult] = []
+
+            // Same pacing as every other bulk write in the app.
+            let batchSize = 5
+            let batches = stride(from: 0, to: targets.count, by: batchSize).map {
+                Array(targets[$0..<min($0 + batchSize, targets.count)])
+            }
+
+            for (index, batch) in batches.enumerated() {
+                for script in batch {
+                    do {
+                        try await api.deleteScript(id: script.id)
+                        outcome.append(OperationResult(itemName: script.name, success: true, error: nil))
+                    } catch {
+                        outcome.append(
+                            OperationResult(
+                                itemName: script.name,
+                                success: false,
+                                error: "Jamf rejected the delete. Check this API client may delete scripts, and that nothing still uses it."
+                            )
+                        )
+                    }
+                }
+                if index < batches.count - 1 {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+            }
+
+            await MainActor.run {
+                selectedScriptIDs.subtract(Set(outcome.filter(\.success).compactMap { result in
+                    targets.first(where: { $0.name == result.itemName })?.id
+                }))
+                results = outcome.sorted { lhs, rhs in
+                    if lhs.success != rhs.success { return !lhs.success }
+                    return lhs.itemName.localizedCaseInsensitiveCompare(rhs.itemName) == .orderedAscending
+                }
+                isBusy = false
+                showResults = true
+            }
         }
     }
     
@@ -108,6 +252,7 @@ struct ScriptsDashboardView: View {
 struct ScriptCategorySection: View {
     let title: String
     let scripts: [ScriptRecord]
+    @Binding var selectedIDs: Set<String>
     var onInspect: (Int) -> Void
     
     @State private var isExpanded = true
@@ -137,17 +282,33 @@ struct ScriptCategorySection: View {
             if isExpanded {
                 VStack(spacing: 8) {
                     ForEach(scripts) { script in
-                        // FIX: Pass osRequirements here
-                        ScriptCardView(
-                            script: script,
-                            categoryName: title,
-                            osRequirements: script.osRequirements ?? "Any"
-                        )
-                        .onTapGesture {
-                            onInspect(script.intId)
-                        }
-                        .contextMenu {
-                            Button("Inspect") { onInspect(script.intId) }
+                        HStack(spacing: 12) {
+                            Button {
+                                toggle(script)
+                            } label: {
+                                Image(systemName: selectedIDs.contains(script.id) ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(selectedIDs.contains(script.id) ? .blue : .secondary.opacity(0.4))
+                            }
+                            .buttonStyle(.plain)
+                            .pointerStyle(.link)
+                            .accessibilityLabel(selectedIDs.contains(script.id) ? "Deselect \(script.name)" : "Select \(script.name)")
+
+                            ScriptCardView(
+                                script: script,
+                                categoryName: title,
+                                osRequirements: script.osRequirements ?? "Any"
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.blue.opacity(selectedIDs.contains(script.id) ? 0.7 : 0), lineWidth: 2)
+                            )
+                            .onTapGesture {
+                                onInspect(script.intId)
+                            }
+                            .contextMenu {
+                                Button("Inspect") { onInspect(script.intId) }
+                            }
                         }
                     }
                 }
@@ -155,5 +316,87 @@ struct ScriptCategorySection: View {
                 .padding(.horizontal, 4)
             }
         }
+    }
+
+    private func toggle(_ script: ScriptRecord) {
+        if selectedIDs.contains(script.id) {
+            selectedIDs.remove(script.id)
+        } else {
+            selectedIDs.insert(script.id)
+        }
+    }
+}
+
+/// The Scripts module's bulk action bar, in place of the filter bar once something is selected.
+///
+/// One action, because deleting is the only thing this app does to a script — it reads them and
+/// removes them, and nothing else. Built from the same pieces as the other bars so the module does
+/// not look like it belongs to a different app.
+struct ScriptActionBar: View {
+    let selectedScripts: [ScriptRecord]
+    let isBusy: Bool
+
+    var onClearSelection: () -> Void
+    var onConfirmedDelete: ([ScriptRecord]) -> Void
+
+    @State private var confirmation: ConfirmationData?
+
+    var body: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Bulk Actions", systemImage: "checklist")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+
+                Text("\(selectedScripts.count) selected")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fontDesign(.monospaced)
+
+                Spacer()
+
+                Button(action: onClearSelection) {
+                    Label("Cancel Selection", systemImage: "xmark.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+            }
+            .frame(width: 170, alignment: .leading)
+
+            Divider()
+
+            ActionBarColumn(title: "Delete Selection") {
+                SoftIconButton(
+                    systemImage: "trash.fill",
+                    tint: .red,
+                    role: .destructive,
+                    isDisabled: isBusy || selectedScripts.isEmpty,
+                    help: "Permanently remove the selected scripts from Jamf"
+                ) {
+                    requestDelete()
+                }
+            }
+
+            Spacer()
+        }
+        .padding(20)
+        .appBarBackground(cornerRadius: 16)
+        .padding(.horizontal)
+        .padding(.bottom, 10)
+        .commanderConfirmation(data: $confirmation)
+    }
+
+    private func requestDelete() {
+        let targets = selectedScripts
+        guard !targets.isEmpty else { return }
+
+        confirmation = ConfirmationData(
+            title: "Delete \(targets.count) script\(targets.count == 1 ? "" : "s") from Jamf?",
+            message: "This permanently removes them from this Jamf instance and cannot be undone. Any policy that runs one of them will fail from the next time it tries.",
+            actionTitle: "Delete \(targets.count)",
+            role: .destructive,
+            action: { onConfirmedDelete(targets) }
+        )
     }
 }
