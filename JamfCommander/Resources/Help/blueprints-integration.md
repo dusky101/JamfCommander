@@ -39,14 +39,19 @@ Jamf’s own instructions, with screenshots, are at
 
 ## Putting it into Jamf Commander
 
-Open **Settings → Jamf Connections** and find **Platform API — Blueprints**. Four fields:
+Open **Settings → Jamf Connections** and find **Platform API — Blueprints**.
 
-- **Region** — `us`, `eu` or `apac`. It must match where your Jamf instances are actually hosted.
-- **Environment ID** — the UUID from step 6.
-- **Client ID** and **Client Secret** — from step 5.
+```figure
+platform-settings
+```
 
-Then press **Test Connection**. It proves all four at once, which is worth doing before you go
-looking for a fault in the module.
+- **Region** (**1**) — it must match where your Jamf instances are actually hosted, not where you
+  are.
+- **Environment ID** (**2**) — the UUID from step 6 above.
+- **Client ID** (**3**) and **Client Secret** (**4**) — from step 5 above.
+
+Then press **Test Connection** (**5**). It proves all four at once, which is worth doing before you
+go looking for a fault in the module.
 
 ## Four things that catch people out
 

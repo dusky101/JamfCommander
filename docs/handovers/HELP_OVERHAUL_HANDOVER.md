@@ -248,6 +248,32 @@ with level-3 headings rather than left as runs of bold-led paragraphs.
   says it "works well", but sheet-on-sheet remains the thing most likely to behave oddly if the help
   window ever becomes a `Window` scene (open question 1).
 
+## Phase C — annotated figures
+
+The maintainer's note on phase B was that the figures were "random images from that page" rather
+than design: what he wanted was figures that explain a **job**, with numbered markers the prose can
+point at — "*see 2b*".
+
+**`FigureMarker` and `MarkedRow`.** A figure carries small numbered capsules; the page refers to them
+in bold — "the label goes in **2**". The text cannot render a badge inline (the parser has no custom
+inline views and `AttributedString` carries no colour), so bold is the convention. It is consistent
+across every annotated figure, which is what makes it readable.
+
+**The Installomator deployment sheet's markers are not invented.** The sheet itself is labelled
+"1. Select Target Category" through "6. Version Pinning", so the figure uses the app's own numbers
+and a reader can match the picture to the screen without translating. Version pinning is broken out
+as 6a–6d for the same reason.
+
+Nine workflow figures were added: `connection-settings`, `platform-settings`, `installomator-deploy`,
+`version-pinning`, `package-upload`, `clone-options`, `unused-actions`, `blueprint-editor`,
+`computer-inspector`. Twenty figures now, across fourteen pages.
+
+**The app icon is drawn chromeless.** `HelpFigures.chromelessIDs` lists figures with no card: a
+bordered box around the app's own icon reads as a screenshot of something, when the point is that it
+*is* the app. Everything else keeps the card.
+
+**Tagline:** "Two hundred policies, one action." — proposed, not settled.
+
 ## Constraints
 
 - **British English**, calm and professional. Match the existing pages.

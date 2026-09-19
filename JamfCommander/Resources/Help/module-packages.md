@@ -14,15 +14,19 @@ package-tabs
 ## Uploading a package
 
 Drop a `.pkg`, `.mpkg`, `.dmg` or `.zip` onto the page, or choose it, fill in the details, and the
-app runs three steps and reports each one separately:
+app runs three steps — reporting each one separately, which matters when one of them fails.
 
-1. **Creates the package record** in Jamf — display name, file name, category, priority, restart
-   requirement, and optional info and notes. Everything else is created switched off and can be
-   changed on the package in Jamf afterwards.
-2. **Uploads the file** to that record, with a progress bar and a Cancel button.
-3. **Creates the install policy** — name, category, Self Service options, icon and scope, exactly as
-   the Installomator flow does. It is created enabled and offered in Self Service; turn it off if you
-   only wanted the package filed in Jamf.
+```figure
+package-upload
+```
+
+- **1 — The package record.** Display name, file name, category, priority, restart requirement, and
+  optional info and notes. Everything else is created switched off and can be changed on the package
+  in Jamf afterwards.
+- **2 — The file.** Uploaded to that record, with a progress bar and a Cancel button.
+- **3 — The install policy.** Name, category, Self Service options, icon and scope, exactly as the
+  Installomator flow does. It is created enabled and offered in Self Service; turn it off if you
+  only wanted the package filed in Jamf.
 
 Package names must be unique in Jamf, so the display name is checked against the library **before**
 the file is sent rather than after. The policy name is checked too, but only warns — a rejected

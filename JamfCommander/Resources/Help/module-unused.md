@@ -21,14 +21,21 @@ unused-reasons
 
 ## What you can do about it
 
-- **Move to Category** is the primary action, because it is the one you can undo by hand. It files
-  the selection under a category — one called “Unused”, say — and changes nothing else. They stay
-  enabled, stay scoped, and keep running.
-- **Disable** applies to policies only, and only to ones currently enabled. They stay in Jamf with
-  scope and payload intact but stop running. Reversible from the *Policies* module.
-- **Delete** is permanent, confirmed separately and named by count.
-- **Export** writes the currently filtered list to CSV — a record to circulate before anything is
-  acted on.
+The three actions are ordered by how easily each can be undone, and that order is deliberate.
+
+```figure
+unused-actions
+```
+
+- **a — Move to Category** is the primary action, because it is the one you can undo by hand. It
+  files the selection under a category — one called “Unused”, say — and changes nothing else. They
+  stay enabled, stay scoped, and keep running.
+- **b — Disable** applies to policies only, and only to ones currently enabled. They stay in Jamf
+  with scope and payload intact but stop running. Reversible from the *Policies* module.
+- **c — Delete** is permanent, confirmed separately and named by count.
+
+**Export** writes the currently filtered list to CSV — a record to circulate before anything is
+acted on.
 
 Packages are **reported only**. Removing a package record is done in Jamf.
 

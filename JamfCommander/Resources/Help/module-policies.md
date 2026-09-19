@@ -24,10 +24,16 @@ bulk-actions
 
 ## Clones are created switched off
 
-A clone is named `Copy of [Original Name]` and is **disabled**, deliberately: a copy that started
-running the moment it was made would be a copy you had not finished configuring. The clone options
-also let you strip scope, strip triggers, set the frequency to *Once per computer*, and turn Self
-Service off.
+A clone is named `Copy of [Original Name]` and is **disabled**, always: a copy that started running
+the moment it was made would be a copy you had not finished configuring.
+
+```figure
+clone-options
+```
+
+Four more things can be stripped on the way — scope (**a**), triggers (**b**), the frequency
+(**c**) and Self Service (**d**). Each is there for the same reason as the disabled state: a clone
+is a starting point, not a deployment.
 
 Turn the clone on in Jamf, or in this module, when you are satisfied with it.
 
