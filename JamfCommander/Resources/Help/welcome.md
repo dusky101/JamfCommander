@@ -32,9 +32,6 @@ sidebar
 ```
 
 - **⌘?** opens this guide from anywhere, and it is in the sidebar footer beside Settings.
-- **Export** saves this page, or the whole guide, as a PDF — for handing *Privileges* to a security
-  team, or the setup pages to a customer, without them needing the app. Every export carries the app
-  version and the date, because a PDF is a copy and stops matching the app the moment either moves.
 
 The illustrations are drawn with the app’s own code, so they show what you are actually running and
 cannot go stale.

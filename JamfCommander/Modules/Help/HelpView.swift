@@ -47,15 +47,6 @@ struct HelpView: View {
     /// Whether the search panel is up. Search is a panel rather than a field in the index: as a
     /// field it sat in the corner being ignored, and the index underneath it was doing the work.
     @State private var isSearchPresented = false
-    /// What an export did, once it has done it. A save that reported nothing would leave the reader
-    /// guessing whether the file exists.
-    @State private var exportOutcome: ExportOutcome?
-
-    private struct ExportOutcome: Identifiable {
-        let id = UUID()
-        let title: String
-        let message: String
-    }
 
 
     private var selectedTopic: HelpTopic? {
@@ -79,16 +70,6 @@ struct HelpView: View {
         // Spotlight and does not behave like it is worse than something that looks like neither.
         .overlay { searchOverlay }
         .appBackground()
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                exportMenu
-            }
-        }
-        .alert(item: $exportOutcome) { outcome in
-            Alert(title: Text(outcome.title),
-                  message: Text(outcome.message),
-                  dismissButton: .default(Text("OK")))
-        }
         .task {
             // Reading a dozen files is cheap, but it is still file I/O on every open, so it happens
             // once here rather than in `body`.
@@ -102,47 +83,6 @@ struct HelpView: View {
         }
     }
 
-    /// Save this page, or the whole guide, as a PDF.
-    ///
-    /// For sending a page to somebody who does not have the app — the *Privileges* page to a
-    /// security team, the setup pages to a customer. Every export carries the app version and the
-    /// date, because a PDF is a copy and stops matching the build the moment one of them moves.
-    private var exportMenu: some View {
-        Menu {
-            Button("Export This Page…") {
-                guard let topic = selectedTopic else { return }
-                save([topic], named: HelpPDFWriter.fileName(for: topic))
-            }
-            .disabled(selectedTopic == nil)
-
-            Button("Export the Whole Guide…") {
-                save(topics, named: HelpPDFWriter.fileName(for: nil))
-            }
-            .disabled(topics.isEmpty)
-        } label: {
-            Label("Export", systemImage: "square.and.arrow.up")
-        }
-        .menuIndicator(.hidden)
-        .help("Save this page, or the whole guide, as a PDF")
-    }
-
-    private func save(_ topics: [HelpTopic], named name: String) {
-        HelpPDFWriter.export(topics, suggestedName: name) { result in
-            switch result {
-            case .success(let url):
-                exportOutcome = ExportOutcome(
-                    title: "Guide exported",
-                    message: "Saved to \(url.lastPathComponent). It carries the app version and "
-                        + "today's date, because a PDF stops matching the app the moment either moves.")
-            case .failure:
-                // No error body: it can carry a path the reader did not choose to share.
-                exportOutcome = ExportOutcome(
-                    title: "Could not export",
-                    message: "The PDF could not be written. Check you can write to that folder and "
-                        + "try again.")
-            }
-        }
-    }
 
     /// Open on the requested topic, or hold the reader's place, or start at the top of the index.
     private func selectInitialTopic() {

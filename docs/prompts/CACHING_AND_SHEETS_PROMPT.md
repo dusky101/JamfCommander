@@ -1,6 +1,6 @@
-# Prompt — caching, then windows instead of sheets
+# Prompt — caching, then windows instead of sheets, then the PDF
 
-Paste this into a fresh session. It covers two pieces of work, in order, and the order matters.
+Paste this into a fresh session. It covers three pieces of work, in order, and the order matters.
 
 ---
 
@@ -63,6 +63,37 @@ See HELP_OVERHAUL_HANDOVER.md, phase D, and do not re-draw a figure by hand.
 
 ---
 
+```
+Phase 3. Read:
+  docs/roadmap/HELP_PDF_EXPORT.md
+
+The guide needs to export a page, or the whole thing, as a PDF — for handing the Privileges
+page to a security team without them needing the app.
+
+Do NOT use NSPrintOperation. That was tried on 19 September 2026 and removed: it printed
+white text on a white page, then printed nothing at all, then paginated forty pages for
+twenty topics. The roadmap entry has the three failures and why.
+
+Build the PDF as Data and write it the way the CSV exports already do — compose in memory,
+then one NSSavePanel that asks where to save, writes, and reports. ExportService
+.saveCSVToFile(content:defaultName:) is the door to copy, and exportAllDataToZip does the
+same for a ZIP.
+
+Try ImageRenderer: its render { size, context in … } gives a CGContext, so a CGPDFContext can
+be driven a page at a time, and the figures survive because they are still views.
+
+Prove the body text is black before building anything on top of it. That is the trap that
+cost the first attempt, and it cost it twice.
+
+Pagination is the real work: measure each HelpBlock and start a new page rather than letting
+a callout or a numbered list be cut in half.
+
+Stamp every export with the app version and the date. The guide's claim is that it matches
+the build; a PDF is a copy that stops being true the moment either moves.
+```
+
+---
+
 ## What phase 1 must not skip
 
 `docs/handovers/CACHING_HANDOVER.md` has one line that matters more than the rest: **key the cache
@@ -71,6 +102,9 @@ serve one tenant's policies while connected to the other — in an app whose nex
 bulk delete.
 
 ## Why this order
+
+The PDF is last because it is the least urgent and the only one with no working starting point —
+the first attempt was removed, so phase 3 begins from an empty file and a list of what not to do.
 
 The cache is what the maintainer feels every day: four full estate scans are reachable in one session
 and nothing stops a session doing all four with no change between them. The sheet work is a shape

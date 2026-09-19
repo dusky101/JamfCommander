@@ -374,10 +374,16 @@ them. That is real work in the modules, not in the guide, and it should be decid
    hover hints (`SidebarHint`) — decide which is the source of truth before both exist.
 4. **Does help need the unofficial/disclaimer note?** `welcome.md` currently carries one paragraph
    saying the app is not affiliated with Jamf. Check that is the wording he wants.
-5. ~~**Print, and Save as PDF.**~~ **Built** (19 September 2026) — he changed his mind and asked
-   for it. `HelpExport.swift`, an Export menu in the guide's toolbar, page or whole guide, stamped
-   with version and date. Pagination is AppKit's and can cut a callout in half; see the roadmap
-   entry for what that would cost to fix. Original note kept below.
+5. **Print, and Save as PDF.** **Attempted and reverted** (19 September 2026). `HelpExport.swift`
+   built it on `NSPrintOperation`; it printed white text on a white page, then — once the appearance
+   was forced — printed nothing at all, over forty pages for twenty topics. It was **removed rather
+   than shipped as a button that writes a blank document**, and the guide's welcome page no longer
+   advertises it.
+
+   `docs/roadmap/HELP_PDF_EXPORT.md` now carries the three failures, why printing a live SwiftUI
+   hierarchy is the wrong approach, and the route to take instead: build the PDF as `Data` with
+   `ImageRenderer` and write it through the same `NSSavePanel` door the CSV exports use. Phase 3 of
+   `docs/prompts/CACHING_AND_SHEETS_PROMPT.md`.
 
    **Previously: asked and answered on 19 September 2026: not now.** The maintainer
    was offered a `⌘P` Print command in phase 2 and said to leave it and make the guide complete
