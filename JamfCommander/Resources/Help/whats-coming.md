@@ -34,6 +34,21 @@ The intention is to show, for each script, the policies that actually run it —
 find a script by the policy that uses it, the way Jamf Pro’s own search does. Until then, check in
 Jamf before deleting a script you did not create.
 
+## Which profiles should be blueprints
+
+Apple is moving management from the configuration profile to declarative device management, and keeps
+publishing declarative replacements for payloads that used to need a profile. Nobody has a list of
+which of *their own* profiles that applies to — Jamf Pro does not offer one, and working it out by
+hand means reading every profile against a catalogue that changes every year.
+
+The intention is for the *Profiles* module to say which profiles have a declarative equivalent and
+ought to move to Blueprints, and which are fine where they are. This app already reads every profile
+and creates blueprints, which is an unusual pair of halves to have open at once.
+
+It would have to be advice rather than action: a migration is a delete and a create against
+production, and a blueprint is created undeployed, so anything automatic could leave a Mac managed by
+neither.
+
 ## More than one Jamf environment
 
 The app holds exactly one tenant’s settings. Working against a second means overwriting the first, or

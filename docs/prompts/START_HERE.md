@@ -117,7 +117,8 @@ Read `docs/README.md` and `.claude/rules/docs-workflow.md`. In short: a new idea
 the day work starts, never in advance.
 
 Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
-`docs/roadmap/MULTIPLE_ENVIRONMENTS.md`, `docs/roadmap/HELP_PDF_EXPORT.md`.
+`docs/roadmap/MULTIPLE_ENVIRONMENTS.md`, `docs/roadmap/HELP_PDF_EXPORT.md`,
+`docs/roadmap/PROFILE_TO_BLUEPRINT.md`.
 
 Three handovers exist in `docs/handovers/`:
 
