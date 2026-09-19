@@ -198,6 +198,30 @@ enum RedundantAudit {
     ///   - packageUsage: Package id → the policies installing it, from `scanPolicyEstate`.
     ///   - installomatorPolicyIDs: Ids of the policies that install through Installomator.
     ///   - categoryNames: Jamf category id → name, for package rows, whose record carries only an id.
+    /// Why this policy would be listed, or an empty set if it would not.
+    ///
+    /// Split out so the Dashboard's running count and this audit cannot drift apart: a headline that
+    /// disagreed with the module it links to would be worse than no headline. Decidable from the
+    /// policy alone, which is what lets the tile count them as the scan finds them.
+    /// `nonisolated` because the Dashboard's running count calls this from the estate scan's own
+    /// task, off the main actor. It is a pure function over one `Sendable` value, so there is
+    /// nothing for the isolation to protect. `items(_:)` below is deliberately *not* nonisolated:
+    /// it reads `JamfPackage.displayName`, which is main-actor isolated, and every caller of it is
+    /// already on the main actor.
+    nonisolated static func reasons(for policy: Policy) -> Set<RedundantReason> {
+        var reasons: Set<RedundantReason> = []
+        if !policy.enabled { reasons.insert(.notEnabled) }
+        if !policy.scopeTargetsAnything { reasons.insert(.notScoped) }
+        return reasons
+    }
+
+    /// Whether this policy alone would put it in the audit.
+    nonisolated static func isRedundant(_ policy: Policy) -> Bool { !reasons(for: policy).isEmpty }
+
+    /// Whether this profile would be listed. Also decidable on its own — a profile is judged by its
+    /// own scope and nothing else.
+    nonisolated static func isRedundant(_ profile: ConfigProfile) -> Bool { !profile.isActive }
+
     static func items(
         policies: [Policy],
         profiles: [ConfigProfile],
@@ -209,9 +233,7 @@ enum RedundantAudit {
         var items: [RedundantItem] = []
 
         for policy in policies {
-            var reasons: Set<RedundantReason> = []
-            if !policy.enabled { reasons.insert(.notEnabled) }
-            if !policy.scopeTargetsAnything { reasons.insert(.notScoped) }
+            let reasons = reasons(for: policy)
             guard !reasons.isEmpty else { continue }
 
             items.append(
@@ -227,7 +249,7 @@ enum RedundantAudit {
             )
         }
 
-        for profile in profiles where !profile.isActive {
+        for profile in profiles where isRedundant(profile) {
             items.append(
                 RedundantItem(
                     kind: .profile,

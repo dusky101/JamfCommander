@@ -40,9 +40,14 @@ categories and Device Status are usable throughout.
 
 A spinner means still working. A dash means the read failed. They are deliberately not the same.
 
-When the Unused answer arrives the tile counts up to it and settles. Every number on the way is
-between where the tile was and the figure Jamf returned — there is no count climbing while the scan
-runs, because until it comes back nobody knows the total.
+**The Unused tile counts as it goes.** It opens on the number of unscoped profiles, which is known
+before the scan starts, and climbs as the scan reads each policy — a policy is disabled or scoped to
+nobody on its own evidence, so one can be counted the moment it is read. The spinner stays beside the
+number while that is happening.
+
+Packages are the exception: nothing can be called unattached until *every* policy has been read. So
+they arrive with the final figure, and the tile glides up to it as the spinner goes. Every number you
+see on the way is a real count of real objects — it is simply not finished yet.
 
 Leaving the Dashboard before they finish cancels them, which is the right outcome; they are read
 again next time you come back.

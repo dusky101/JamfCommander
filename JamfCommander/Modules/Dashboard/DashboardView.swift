@@ -508,10 +508,30 @@ struct DashboardView: View {
         // "unavailable" rather than counting an audit built on a partial estate.
         guard let profiles, let packages, let categories else { return }
 
+        // Profiles are judged on their own scope, so their contribution is known before the scan
+        // starts and the tile can open on a real number instead of an empty spinner.
+        unusedCount = profiles.filter(RedundantAudit.isRedundant).count
+
         // Widens Installomator detection past "the policy's script is called Installomator", as the
         // Unused module does. A failure here only narrows detection.
         let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
-        guard let estate = try? await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs) else {
+
+        // The running total, climbing as the scan reads each policy. A policy is decidable on its
+        // own — disabled, or scoped to nobody — so counting one the moment it arrives is a fact, not
+        // a guess. Packages are the exception: nothing can be called unattached until *every* policy
+        // has been read, so they land in the final figure below and the tile glides up to it.
+        let bump: @Sendable (Policy) -> Void = { policy in
+            guard RedundantAudit.isRedundant(policy) else { return }
+            Task { @MainActor in
+                unusedCount = (unusedCount ?? 0) + 1
+            }
+        }
+
+        guard let estate = try? await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs,
+                                                           onPolicy: bump) else {
+            // The running total counted real policies, but the scan did not finish, so it is not an
+            // answer. A dash says so; a half-count would read as one.
+            unusedCount = nil
             return
         }
 
@@ -636,10 +656,20 @@ struct StatCard: View {
         return String(animatesArrival ? displayedCount : count)
     }
 
+    /// What a change to the tile's number *means* — a new figure, or the end of the count. Both
+    /// matter: the roll-up runs when the counting stops, not on every increment along the way.
+    private struct ArrivalKey: Equatable {
+        let count: Int?
+        let isLoading: Bool
+    }
+
     /// The card is an icon and two or three pieces of text, none of which names the tile on its
     /// own, so the whole card is exposed as one element with a spoken summary.
     private var accessibilitySummary: String {
-        if isLoading { return "\(title), still loading" }
+        if isLoading {
+            guard let count else { return "\(title), still loading" }
+            return "\(title), \(count) so far, still counting"
+        }
         guard let count else { return "\(title), count unavailable" }
         guard let detail else { return "\(title), \(count)" }
         return "\(title), \(count), \(detail)"
@@ -657,15 +687,22 @@ struct StatCard: View {
                         .foregroundColor(color)
                 }
                 Spacer()
-                if isLoading {
-                    TileSpinner()
-                        .padding(.trailing, 4)
-                } else {
-                    Text(countText)
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundColor(count == nil ? .secondary : .primary)
-                        .scaleEffect(isPulsing ? 1.18 : 1.0)
+                // Spinner *beside* the number rather than instead of it: while the Unused scan runs
+                // the tile already has a real running total to show, and a climbing number with a
+                // spinner next to it says "still counting" far better than a spinner alone for
+                // thirty seconds. With no number yet, the spinner stands on its own.
+                HStack(spacing: 8) {
+                    if isLoading {
+                        TileSpinner()
+                    }
+                    if !isLoading || count != nil {
+                        Text(countText)
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundColor(count == nil ? .secondary : .primary)
+                            .scaleEffect(isPulsing ? 1.18 : 1.0)
+                    }
                 }
+                .padding(.trailing, isLoading ? 4 : 0)
             }
             
             VStack(alignment: .leading, spacing: 2) {
@@ -693,10 +730,16 @@ struct StatCard: View {
         .scaleEffect(isHovering ? 1.02 : 1.0)
         .animation(.spring(response: 0.3), value: isHovering)
         .onHover { isHovering = $0 }
-        // Restarts whenever the count changes, and is cancelled when the tile goes away — so a
-        // half-finished roll-up on a Dashboard the reader has left simply stops.
-        .task(id: count) {
+        // Restarts whenever the number or the counting state changes, and is cancelled when the
+        // tile goes away — so a half-finished roll-up on a Dashboard the reader has left stops.
+        .task(id: ArrivalKey(count: count, isLoading: isLoading)) {
             guard let count else { return }
+            // While the scan is still running the number is a live total: follow it exactly. Rolling
+            // on every increment would queue an 18-step animation per policy found.
+            guard !isLoading else {
+                displayedCount = count
+                return
+            }
             await rollUp(to: count)
         }
         // Declarative, and balanced by the system. The old NSCursor push/pop pair called into AppKit

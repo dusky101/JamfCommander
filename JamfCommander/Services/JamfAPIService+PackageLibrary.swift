@@ -123,7 +123,12 @@ extension JamfAPIService {
     ///
     /// - Parameter knownScriptIDs: Additional script ids to treat as Installomator, so a renamed
     ///   script is still detected (see `fetchInstallomatorScriptIDs()`).
-    func scanPolicyEstate(knownScriptIDs: Set<String> = []) async throws -> PolicyEstateScan {
+    /// - Parameter onPolicy: Called with each policy as it is read, on whatever task the scan is
+    ///   running on. The Dashboard uses it to count unused policies while the scan is still going,
+    ///   rather than leaving a spinner up for tens of seconds with nothing to show. Optional, so the
+    ///   callers that only want the finished estate are unaffected.
+    func scanPolicyEstate(knownScriptIDs: Set<String> = [],
+                          onPolicy: (@Sendable (Policy) -> Void)? = nil) async throws -> PolicyEstateScan {
         let listResponse = try await genericFetch(
             endpoint: "JSSResource/policies",
             responseType: PolicyListResponse.self
@@ -191,6 +196,7 @@ extension JamfAPIService {
                     }
                     if let policy = findings.policy {
                         policies.append(policy)
+                        onPolicy?(policy)
                     }
                 }
             }
