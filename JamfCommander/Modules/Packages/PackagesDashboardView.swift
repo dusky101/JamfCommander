@@ -282,7 +282,7 @@ struct PackagesDashboardView: View {
                 }
                 
                 Button(action: {
-                    Task { await loadData() }
+                    Task { await loadData(bypassingCache: true) }
                 }) {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
@@ -488,15 +488,17 @@ struct PackagesDashboardView: View {
     
     // MARK: - Data Loading
     
-    func loadData() async {
+    /// - Parameter bypassingCache: `true` re-reads the labels and every policy from Jamf. Passed by
+    ///   Refresh only.
+    func loadData(bypassingCache: Bool = false) async {
         isLoading = true
         loadError = nil
         selection.removeAll()
         lastSelectedID = nil
         
         do {
-            async let labelsResult = api.fetchInstallomatorLabelsFromGitHub()
-            async let scriptIDsResult = api.fetchInstallomatorScriptIDs()
+            async let labelsResult = api.fetchInstallomatorLabelsFromGitHub(bypassingCache: bypassingCache)
+            async let scriptIDsResult = api.fetchInstallomatorScriptIDs(bypassingCache: bypassingCache)
 
             // Script ids widen detection beyond "the policy's script is called Installomator".
             // A failure here only narrows detection, so it degrades rather than failing the load.
@@ -505,7 +507,8 @@ struct PackagesDashboardView: View {
                 knownScriptIDs.insert(lastUsedScriptID)
             }
 
-            let scan = try await api.fetchInstallomatorPolicies(knownScriptIDs: knownScriptIDs)
+            let scan = try await api.fetchInstallomatorPolicies(knownScriptIDs: knownScriptIDs,
+                                                                bypassingCache: bypassingCache)
             let allLabels = try await labelsResult
 
             let deployed = scan.deployed

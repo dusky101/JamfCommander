@@ -377,7 +377,7 @@ struct AddPackageView: View {
         packagesLoadFailed = false
 
         do {
-            let fetched = try await api.fetchJamfPackages()
+            let fetched = try await api.fetchJamfPackages(bypassingCache: bypassingCache)
             await MainActor.run {
                 packages = fetched
                 isLoadingPackages = false
@@ -406,7 +406,7 @@ struct AddPackageView: View {
 
         // Widens Installomator detection past "the policy's script is called Installomator". A
         // failure here only narrows detection, so it degrades rather than failing the scan.
-        let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
+        let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs(bypassingCache: bypassingCache)) ?? []
 
         do {
             let scan = try await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs,

@@ -69,7 +69,21 @@ class JamfAPIService: ObservableObject {
     
     // MARK: - Data Fetching
     
-    func fetchProfiles() async throws -> [ConfigProfile] {
+    /// Every configuration profile, hydrated with its category and whether it is scoped.
+    ///
+    /// The second most expensive read in the app after the policy estate — it fetches a detail for
+    /// every profile — and the Unused module waits on it as well as on the estate, which is why
+    /// caching the estate alone did not make that module feel any faster.
+    func fetchProfiles(bypassingCache: Bool = false) async throws -> [ConfigProfile] {
+        if let cached = cachedValue(.profiles, as: [ConfigProfile].self, bypassingCache: bypassingCache) {
+            return cached
+        }
+        let fresh = try await fetchProfilesUncached()
+        storeInCache(fresh, as: .profiles)
+        return fresh
+    }
+
+    private func fetchProfilesUncached() async throws -> [ConfigProfile] {
         // STRATEGY: "Profile First Crawl" (Bulletproof)
         // 1. Fetch the Basic List (Reliable).
         // 2. Hydrate details (Category & Scoped Status) in parallel.
@@ -126,15 +140,21 @@ class JamfAPIService: ObservableObject {
         return richProfiles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
-    func fetchCategories() async throws -> [Category] {
+    func fetchCategories(bypassingCache: Bool = false) async throws -> [Category] {
         // We still fetch the category list for the Filter Bar chips
         struct CategoryListResponse: Codable { let categories: [Category] }
-        return try await genericFetch(endpoint: "JSSResource/categories", responseType: CategoryListResponse.self).categories
+        if let cached = cachedValue(.categories, as: [Category].self, bypassingCache: bypassingCache) {
+            return cached
+        }
+        let fresh = try await genericFetch(endpoint: "JSSResource/categories",
+                                           responseType: CategoryListResponse.self).categories
+        storeInCache(fresh, as: .categories)
+        return fresh
     }
     
     // MARK: - Computer Groups (for scope targeting)
     
-    func fetchComputerGroups() async throws -> [ComputerGroup] {
+    func fetchComputerGroups(bypassingCache: Bool = false) async throws -> [ComputerGroup] {
         struct ComputerGroupResponse: Codable {
             let groups: [ComputerGroup]
             
@@ -166,31 +186,42 @@ class JamfAPIService: ObservableObject {
             }
         }
         
+        if let cached = cachedValue(.computerGroups, as: [ComputerGroup].self, bypassingCache: bypassingCache) {
+            return cached
+        }
+
+        let fresh: [ComputerGroup]
         do {
-            return try await genericFetch(
+            fresh = try await genericFetch(
                 endpoint: "api/v1/computer-groups",
                 responseType: ComputerGroupResponse.self
             ).groups
         } catch {
-            return try await genericFetch(
+            fresh = try await genericFetch(
                 endpoint: "JSSResource/computergroups",
                 responseType: ComputerGroupResponse.self
             ).groups
         }
+        storeInCache(fresh, as: .computerGroups)
+        return fresh
     }
     
     // MARK: - Script Functions (Pro API)
         
-    func fetchScripts() async throws -> [ScriptRecord] {
+    func fetchScripts(bypassingCache: Bool = false) async throws -> [ScriptRecord] {
         // We request specific fields to ensure we get Category and Contents for the inspector
         // Using page-size=2000 to get all scripts in one request
         let endpoint = "api/v1/scripts?page-size=2000&sort=name:asc"
-        
-        let response = try await genericFetch(
+
+        if let cached = cachedValue(.scripts, as: [ScriptRecord].self, bypassingCache: bypassingCache) {
+            return cached
+        }
+        let fresh = try await genericFetch(
             endpoint: endpoint,
             responseType: ScriptListResponse.self
-        )
-        return response.results
+        ).results
+        storeInCache(fresh, as: .scripts)
+        return fresh
     }
     
     func deleteScript(id: String) async throws {
@@ -439,17 +470,22 @@ class JamfAPIService: ObservableObject {
     // MARK: - Computer Functions
         
     // Pro API (v3) - Returns detailed inventory records for the Dashboard
-    func fetchComputers() async throws -> [ComputerInventoryRecord] {
+    func fetchComputers(bypassingCache: Bool = false) async throws -> [ComputerInventoryRecord] {
         // Request GENERAL + HARDWARE for name/serial/managed status, plus USER_AND_LOCATION so the
         // list view and CSV export can surface the assigned user and location details.
         let endpoint = "api/v3/computers-inventory?section=GENERAL&section=HARDWARE&section=USER_AND_LOCATION&page-size=2000"
-        
+
+        if let cached = cachedValue(.computers, as: [ComputerInventoryRecord].self, bypassingCache: bypassingCache) {
+            return cached
+        }
         let response = try await genericFetch(
             endpoint: endpoint,
             responseType: JamfProComputerListResponse.self
         )
         // Sort by name for a nice list
-        return response.results.sorted { ($0.general?.name ?? "") < ($1.general?.name ?? "") }
+        let fresh = response.results.sorted { ($0.general?.name ?? "") < ($1.general?.name ?? "") }
+        storeInCache(fresh, as: .computers)
+        return fresh
     }
     
     // Pro API (v3) - Fetch single computer detail for the Inspector

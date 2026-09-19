@@ -90,18 +90,23 @@ extension JamfAPIService {
     ///
     /// One request. `page-size=2000` matches the ceiling the rest of the app uses for Pro API lists;
     /// a library larger than that would need paging, which no tenant this app targets has needed.
-    func fetchJamfPackages() async throws -> [JamfPackage] {
+    func fetchJamfPackages(bypassingCache: Bool = false) async throws -> [JamfPackage] {
         struct PackageListResponse: Codable {
             let results: [JamfPackage]?
         }
 
+        if let cached = cachedValue(.packages, as: [JamfPackage].self, bypassingCache: bypassingCache) {
+            return cached
+        }
         let response = try await genericFetch(
             endpoint: "api/v1/packages?page-size=2000&sort=packageName:asc",
             responseType: PackageListResponse.self
         )
-        return (response.results ?? [])
+        let fresh = (response.results ?? [])
             .filter { !$0.id.isEmpty }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        storeInCache(fresh, as: .packages)
+        return fresh
     }
 
     /// Every package display name in the tenant, for the pre-flight uniqueness check before an upload.

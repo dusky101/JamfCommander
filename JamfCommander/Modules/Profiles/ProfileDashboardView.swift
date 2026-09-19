@@ -13,6 +13,8 @@ struct ProfileDashboardView: View {
     let categories: [Category]
     @ObservedObject var api: JamfAPIService
     @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
+    /// Observed only for the "read at" stamp — the profiles themselves are passed in.
+    @ObservedObject private var cache = SessionCache.shared
 
     // Filter State
     @State private var searchText = ""
@@ -20,7 +22,11 @@ struct ProfileDashboardView: View {
     @Binding var selectedProfileIDs: Set<ConfigProfile.ID>
     
     // New: Refresh Capability (Restored)
-    var refreshAction: () async -> Void
+    //
+    // Takes a flag rather than nothing, because the two reasons to refresh want different things:
+    // Refresh must go to Jamf whatever this session already holds, while a reload after a write or
+    // a `RefreshCoordinator` bump follows an invalidation and can simply read normally.
+    var refreshAction: (_ bypassingCache: Bool) async -> Void
     
     // Selection Logic State
     @State private var lastSelectedID: Int? // Tracks the last clicked item for Shift-Select ranges
@@ -67,7 +73,7 @@ struct ProfileDashboardView: View {
                     statusMessage: $actionStatus,
                     onEdit: { id in inspectorSelection = InspectorSelection(id: id) },
                     onClearSelection: { withAnimation { selectedProfileIDs.removeAll() } },
-                    onRefresh: { await refreshAction() }
+                    onRefresh: { await refreshAction(true) }
                 )
                 .frame(height: 180)
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -83,7 +89,7 @@ struct ProfileDashboardView: View {
                     isBusy: $isBusy,
                     statusMessage: $actionStatus,
                     onRefresh: {
-                        await refreshAction()
+                        await refreshAction(true)
                     }
                 )
                 .frame(height: 180)
@@ -97,11 +103,12 @@ struct ProfileDashboardView: View {
                     selectedCategory: $selectedCategory,
                     profiles: profiles,
                     onRefresh: {
-                        Task { await refreshAction() }
+                        Task { await refreshAction(true) }
                     },
                     onExport: {
                         exportProfiles()
-                    }
+                    },
+                    readAt: cache.readAt[.profiles]
                 )
                 .zIndex(1)
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -145,7 +152,7 @@ struct ProfileDashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.clear)
         .animation(.easeInOut(duration: 0.2), value: selectedProfileIDs.isEmpty)
-        .onChange(of: refreshCoordinator.token) { Task { await refreshAction() } }
+        .onChange(of: refreshCoordinator.token) { Task { await refreshAction(false) } }
         .sheet(item: $inspectorSelection) { selection in
             ProfileInspectorView(profileId: selection.id, api: api)
         }
@@ -162,7 +169,7 @@ struct ProfileDashboardView: View {
             if selectedProfileIDs.contains(id) {
                 selectedProfileIDs.remove(id)
             }
-            await refreshAction() // Refresh after single delete
+            await refreshAction(false) // Refresh after single delete
         }
     }
     
@@ -171,7 +178,7 @@ struct ProfileDashboardView: View {
             do {
                 try await api.moveProfile(id, toCategoryID: targetCatId)
                 print("Moved profile \(id) to category \(targetCatId)")
-                await refreshAction() // Refresh after single move
+                await refreshAction(false) // Refresh after single move
             } catch {
                 print("Failed to move profile: \(error)")
             }

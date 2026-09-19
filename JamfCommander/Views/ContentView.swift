@@ -152,7 +152,7 @@ struct ContentView: View {
                         isLoggedIn: $isLoggedIn,
                         statusMessage: $statusMessage,
                         isBusy: $isBusy,
-                        onLoginSuccess: refreshAllData
+                        onLoginSuccess: { await refreshAllData() }
                     )
                     .frame(maxWidth: 400)
                     // The login form stays centred; only the modules pin to the top.
@@ -270,10 +270,13 @@ struct ContentView: View {
         }
     }
     
-    func refreshAllData() async {
+    /// - Parameter bypassingCache: `true` reads from Jamf regardless of what this session already
+    ///   holds. Passed by the Profiles module's Refresh button; left `false` after a write, which
+    ///   has already invalidated the cache on its own.
+    func refreshAllData(bypassingCache: Bool = false) async {
         do {
-            async let fetchedProfiles = api.fetchProfiles()
-            async let fetchedCategories = api.fetchCategories()
+            async let fetchedProfiles = api.fetchProfiles(bypassingCache: bypassingCache)
+            async let fetchedCategories = api.fetchCategories(bypassingCache: bypassingCache)
             
             let (p, c) = try await (fetchedProfiles, fetchedCategories)
             

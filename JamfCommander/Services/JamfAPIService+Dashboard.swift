@@ -42,18 +42,25 @@ extension JamfAPIService {
     
     // MARK: - Computer Functions
     
-    func fetchDashboardComputers() async throws -> [BasicComputerRecord] {
+    func fetchDashboardComputers(bypassingCache: Bool = false) async throws -> [BasicComputerRecord] {
         // First, get the list of all computers (fast, basic info only)
         let endpoint = "api/v3/computers-inventory?section=GENERAL&section=USER_AND_LOCATION&page-size=2000"
-        
+
+        // A lighter read than the Computers module's `fetchComputers()`, and a different type, so
+        // it has a cache entry of its own. Both live in the `.computers` domain and fall together.
+        if let cached = cachedValue(.dashboardComputers, as: [BasicComputerRecord].self, bypassingCache: bypassingCache) {
+            return cached
+        }
         let response = try await genericFetch(
             endpoint: endpoint,
             responseType: JamfProComputerListResponse.self
         )
-        
+
         // Convert to BasicComputerRecord with user info
-        return response.results.map { BasicComputerRecord(from: $0) }
+        let fresh = response.results.map { BasicComputerRecord(from: $0) }
             .sorted { $0.name < $1.name }
+        storeInCache(fresh, as: .dashboardComputers)
+        return fresh
     }
     
     // MARK: - Category Management Functions

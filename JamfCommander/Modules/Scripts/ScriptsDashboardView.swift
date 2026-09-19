@@ -83,7 +83,7 @@ struct ScriptsDashboardView: View {
                         scripts.filter { $0.safeCategory == category.name }.count
                     },
                     customTotal: scripts.count,
-                    onRefresh: { Task { await refreshData() } },
+                    onRefresh: { Task { await refreshData(bypassingCache: true) } },
                     onExport: { exportScripts() }
                 )
                 .zIndex(1)
@@ -140,12 +140,13 @@ struct ScriptsDashboardView: View {
     
     // MARK: - Actions
     
-    private func refreshData() async {
+    /// - Parameter bypassingCache: `true` reads from Jamf regardless. Passed by Refresh only.
+    private func refreshData(bypassingCache: Bool = false) async {
         do {
-            async let scriptsResult = api.fetchScripts()
+            async let scriptsResult = api.fetchScripts(bypassingCache: bypassingCache)
             // Advisory: the filter bar's chips need these, but a failure to read them only costs the
             // category filter, so it must not fail the whole load.
-            let fetchedCategories = try? await api.fetchCategories()
+            let fetchedCategories = try? await api.fetchCategories(bypassingCache: bypassingCache)
 
             self.scripts = try await scriptsResult
             self.categories = (fetchedCategories ?? []).sorted {

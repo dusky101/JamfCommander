@@ -1,8 +1,8 @@
 # Handover — per-domain caching
 
-**State at handover:** 19 September 2026, app version 9.0. **Phase 1 is written and builds. Nothing
-in it has been run against a tenant yet** — the proven column below is empty, and it stays empty
-until the maintainer has used it and said what he saw.
+**State at handover:** 19 September 2026, app version 9.0. **Phases 1 and 2 are written and build.**
+Phase 1 (policies only) has been run once by the maintainer; phase 2 (every other domain, plus the
+Live/Cached setting) has not.
 
 Read `docs/roadmap/CACHING.md` first — it holds the intent and the maintainer's own words. This file
 holds what is true about the code today.
@@ -13,18 +13,38 @@ holds what is true about the code today.
 
 | Proven against a live tenant | Built and compiles, but unproven |
 | --- | --- |
-| *(nothing yet)* | The cache serves a second read of the policies domain |
-| | The Dashboard → Unused path runs **one** estate scan instead of two |
-| | Refresh bypasses the cache on Policies, Unused and Packages |
-| | A write clears the cache and the next read goes to Jamf |
-| | The "Read … ago" stamp appears, and is correct |
-| | Switching Settings to the other tenant discards the first tenant's data |
-| | A cancelled or incomplete scan is **not** cached |
+| **The estate scan is cached and shared.** On a 249-policy tenant, Dashboard → Unused → Dashboard printed `[Packages] Estate scan:` **once**. Before, that was three scans. | Every other domain's cache (phase 2) |
+| **Phase 1 alone did not make the Unused module feel faster** — because it waits on four reads and only one was cached. See below. | The Live/Cached switch, and the Refresh Data button |
+| | Refresh bypassing the cache on any module |
+| | A write clearing the cache and the next read going to Jamf |
+| | The "Read … ago" stamp appearing, and being right |
+| | A cancelled or incomplete scan **not** being cached |
+| | **Anything to do with a second tenant** — the maintainer has one instance today. Multiple tenants are future work (`docs/roadmap/MULTIPLE_ENVIRONMENTS.md`), and the instance-keying here is written for it but cannot be exercised yet. |
 
-The build is the only thing actually verified: `xcodebuild -scheme JamfCommander -destination
-"platform=macOS" clean build` succeeds with **no Swift warnings**. There is no test target, so
-nothing else has been exercised automatically. **"It builds" is not "it works"** — and this is a
-cache in front of destructive actions, so the distinction matters more here than usual.
+`xcodebuild -scheme JamfCommander -destination "platform=macOS" clean build` succeeds with **no
+Swift warnings**. There is no test target, so nothing else is exercised automatically. **"It builds"
+is not "it works"** — and this is a cache in front of destructive actions, so the distinction
+matters more here than usual.
+
+## Why phase 1 looked like it had failed
+
+The maintainer ran it and reported the Unused module still loading rather than appearing instantly.
+The cache was working; the module simply does not wait on the estate alone:
+
+```
+RedundantDashboardView.load()
+  fetchInstallomatorScriptIDs()   → fetchScripts()      ← uncached in phase 1
+  scanPolicyEstate()                                    ← cached ✓
+  fetchProfiles()                                       ← uncached, and a detail call per profile
+  fetchJamfPackages()                                   ← uncached
+  fetchCategories()                                     ← uncached
+```
+
+`fetchProfiles` is the second most expensive read in the app — it hydrates every profile
+individually — so four of the five reads still went to Jamf and the screen took about as long as
+before. **A cache that covers one read of a screen that makes five is invisible.** That is the whole
+lesson of phase 1, and it is why phase 2 widened to every domain rather than adding them one at a
+time.
 
 ## What phase 1 built
 
@@ -121,11 +141,82 @@ whether or not the app can read its id.
 This was not scope creep: "any write invalidates" is the requirement, and a write that does not
 signal is a cache that goes stale silently — the failure mode that matters.
 
+## Phase 2 — every domain, and the Live/Cached setting
+
+### Everything now cached
+
+| Entry | Method | Domain |
+| --- | --- | --- |
+| `.policies` | `fetchPolicies` | policies |
+| `.policyEstate` | `scanPolicyEstate` | policies |
+| `.profiles` | `fetchProfiles` | profiles |
+| `.computers` | `fetchComputers` | computers |
+| `.dashboardComputers` | `fetchDashboardComputers` | computers |
+| `.scripts` | `fetchScripts` | scripts |
+| `.packages` | `fetchJamfPackages` | packages |
+| `.categories` | `fetchCategories` | categories |
+| `.computerGroups` | `fetchComputerGroups` | groups |
+| `.installomatorScan` | `fetchInstallomatorPolicies` | installomator |
+| `.installomatorLabels` | Installomator's GitHub label list | installomator |
+| `.buildings` / `.departments` | `fetchBuildings` / `fetchDepartments` | userLocation |
+
+`fetchInstallomatorScriptIDs()` needed no entry — it filters `fetchScripts()`, so caching that made
+it free everywhere it is called, which is every screen that widens Installomator detection.
+
+`.computers` and `.dashboardComputers` are separate entries because they are different reads
+returning different types; they share one domain and fall together.
+
+**The Dashboard now primes everything the Unused module needs.** All five of that module's reads are
+cache hits on a second visit.
+
+### Blueprints are deliberately excluded
+
+They come from the Platform API Gateway — a different host with credentials set separately in
+Settings — so the Jamf Pro instance URL the cache rebases on says nothing about which Platform tenant
+a blueprint came from. Changing only the Platform credentials would not rebase the cache and it would
+serve the previous tenant's blueprints. One list read is not worth that hole. It stays live until the
+cache can key Platform data by its own identity.
+
+### Live or Cached — Settings → General
+
+A segmented **Live / Cached** control, and beneath it, in Cached mode only, a **Refresh Data** button.
+
+- **Cached is the default.** Reading the whole tenant again on every module switch is the app's
+  largest source of waiting, and the switch is there for anyone who would rather pay that cost.
+- **Live holds nothing at all** rather than holding it and declining to serve it — `store` refuses in
+  Live mode, and switching to Live discards what is already held. Choosing Live should not leave the
+  tenant's records in memory, served again the moment the switch goes back.
+- The setting lives in `UserDefaults` under `SessionCache.cachingEnabledKey`, whose default is
+  registered by `SessionCache.init()` so the switch and the cache cannot disagree about it.
+- **Refresh Data** sends the same signal a write sends: discard everything, and ask whatever module
+  is on screen to reload. It is disabled when nothing is held.
+
+### Two things phase 2 had to change to be correct
+
+**The Dashboard now observes `RefreshCoordinator.token`**, so Refresh Data works while looking at it.
+But its own category actions already refresh it the instant they finish, and the signal they send
+arrives 0.6s later debounced — so that observer would have reloaded the Dashboard twice for one
+change. It therefore refreshes **quietly** (`refreshDashboard(showingLoadingState: false)`): the tiles
+keep their figures until new ones arrive. Replacing a Dashboard somebody is reading with a
+full-screen spinner because a write finished elsewhere is worse than letting the numbers change.
+
+**`ProfileDashboardView.refreshAction` now takes a `Bool`.** The two reasons to refresh want
+different things: the Refresh button must go to Jamf whatever is held, while a reload after a write
+follows an invalidation and can read normally.
+
+### A compiler detail worth knowing before touching this
+
+The obvious helper — `cachedRead(entry, bypassingCache:) { try await genericFetch(…) }` — **does not
+work here** and was written, tried and removed. Wrapping a `genericFetch` in a closure moves the
+decode into a context the compiler treats as concurrent, and every response type in this module has a
+main-actor-isolated `Decodable` conformance (`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`). It produced
+nine `#IsolatedConformances` warnings — *"an error in the Swift 6 language mode"* — and annotating
+the closure `@MainActor` did not clear them. The shape that works is two plain calls, `cachedValue`
+then `storeInCache`, three lines per read and no closure. Don't reintroduce the tidier version.
+
 ## What was deliberately not done
 
-- **Only the policies domain.** Profiles, computers, scripts, packages, categories and blueprints
-  still read from Jamf every time. Widening is mechanical once this one is proven; doing it first
-  would have meant proving seven paths at once.
+- **Blueprints**, for the reason above.
 - **No max age.** The maintainer named exactly two invalidators — Refresh and any write — and age is
   not one of them. The consequence is real and unresolved: leave the app open all day, let somebody
   else change Jamf in the console, and the app will not know. The visible stamp is the mitigation,
@@ -135,30 +226,53 @@ signal is a cache that goes stale silently — the failure mode that matters.
 - **No second overlay.** `CACHING.md` open question 5 asked what it says and whether it blocks; the
   phase 1 brief replaced it with the on-screen stamp, which does not block anything.
 
-## One judgement call that is the maintainer's, not mine
+## Export All — decided
 
-**Export All reads from the cache.** It is one of the four scans he named, so leaving it out would
-have missed a quarter of the point. But a CSV outlives the session and carries no "read at" stamp,
-so the staleness rule — *it must say on screen when the data was read* — does not follow the file out
-of the app. Either stamp the exports, or make Export All bypass the cache. His call.
+**It reads from the cache, and asks first.** It is one of the four scans the maintainer named, so
+excluding it would have missed a quarter of the point — but a CSV leaves the app carrying no record
+of when it was true, and the reader cannot tell. Everywhere else the app shows staleness on screen
+next to a Refresh button; this is the one place it cannot, so it asks beforehand instead.
+
+`ExportFreshnessPrompt` appears when the ZIP would be built from data already held, naming how old
+that data is. Two answers, no third — Escape and the window's own dismissal already cancel, and a
+third button would bury the common answer.
+
+- **No, Use Current Data** — exports what is held.
+- **Yes, Refresh First** — the prompt swaps to a "Refreshing data…" state, `refreshForExport()`
+  discards everything and re-reads what the export leans on hardest, and the export starts when it
+  finishes. Nothing is read twice: the export then finds those reads in the cache. Buildings and
+  departments are not primed and are simply read by the computers sheet as it always was.
+
+In **Live** mode the prompt never appears — nothing is held, so the export reads from Jamf anyway
+and there is nothing to ask about.
+
+The export sheet is raised from the prompt sheet's `onDismiss`, not from its buttons. Presenting one
+sheet while another is still on screen does not reliably work on macOS, which is what the
+`exportOncePromptCloses` flag is for.
 
 ## What to look at, in order
 
-1. **Dashboard, then Unused.** The console should print `[Packages] Estate scan:` **once**, not
-   twice. Unused should appear more or less instantly, with "Read … ago" beside its Refresh button.
-   This is the complaint that started all of this.
-2. **Policies, away, back.** Instant the second time, with a stamp whose age keeps climbing.
-3. **Refresh on Policies.** The stamp resets to "0 sec"; a scan runs.
+1. **Dashboard, then Unused.** Unused should now appear near-instantly — all five of its reads are
+   cache hits. "Read … ago" sits beside its Refresh button, and under the Dashboard's tiles.
+2. **Back to the Dashboard.** No `[Installomator] Parsed 1268 …` a second time, and no second
+   `[Packages] Estate scan:`.
+3. **Refresh on any module.** The stamp resets; the console shows the read actually happening.
 4. **Delete a policy, or move one to a category.** The list must come back *without* it. If it comes
-   back with it, trap 2 above is not actually closed.
-5. **Settings → the other tenant → reconnect.** `[Cache] Instance changed — cached data discarded`,
-   and every count belongs to the tenant now connected. **Nothing else in this phase matters if this
-   one is wrong.**
-6. **Packages → Deployed, then Unused** (or the reverse). One scan between them.
+   back with it, the `requestRefresh()` isolation fix is not actually closed.
+5. **Settings → General.** Switch to **Live** — every module should read from Jamf again on every
+   visit, and the stamps should vanish. Switch back to **Cached**, then use **Refresh Data**: the
+   held-data count drops to nothing and the module on screen reloads.
+6. **Add or rename a category on the Dashboard.** It should reload **once**, not twice, and should
+   not flash the full-screen spinner a second time.
+7. **Export All.** The prompt should name how old the data is. **No** exports straight away; **Yes**
+   shows "Refreshing data…" and then starts the export on its own. In Live mode neither happens —
+   the export begins immediately.
 
 ## Where this goes next
 
-Widening is one entry per domain and one `bypassingCache` parameter per fetch method — the shape is
-set. Blueprints is the exception worth thinking about separately: it is the Platform API with its own
-credentials and its own host, so "keyed by instance URL" means a *different* URL, and it should not
-share the Jamf Pro instance's key.
+- **Blueprints**, once Platform data can be keyed by its own identity.
+- **A max age**, if the maintainer decides one is wanted.
+- **Multiple tenants** (`docs/roadmap/MULTIPLE_ENVIRONMENTS.md`). The instance-keying is already
+  written for it: `SessionCache.rebase(to:)` discards everything when the Jamf Pro URL changes, so
+  one tenant's records can never be served to another. It has never been exercised, because there is
+  only one tenant today.

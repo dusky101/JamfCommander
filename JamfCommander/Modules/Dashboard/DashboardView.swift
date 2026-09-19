@@ -9,6 +9,9 @@ import SwiftUI
 
 struct DashboardView: View {
     @ObservedObject var api: JamfAPIService
+    @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
+    /// Observed for the "read at" stamp under the tiles.
+    @ObservedObject private var cache = SessionCache.shared
     
     // NEW: Binding to control navigation from the stats
     @Binding var currentModule: AppModule
@@ -54,6 +57,15 @@ struct DashboardView: View {
     @State private var showDeleteConfirmation = false
     @State private var isExporting = false
     @State private var showExportProgress = false
+    /// Asked before Export All when the ZIP would be built from data already held — see
+    /// `ExportFreshnessPrompt`. Never shown in Live mode, where the export reads from Jamf anyway.
+    @State private var showExportFreshnessPrompt = false
+    /// Set by the prompt's two answers, read once it has actually gone.
+    ///
+    /// The export sheet cannot be raised while the prompt is still on screen — presenting one sheet
+    /// from inside another's dismissal is the reliable way round it, and it is why this flag exists
+    /// rather than the buttons simply calling `beginExportAll()` themselves.
+    @State private var exportOncePromptCloses = false
     @StateObject private var exportProgress = ExportProgress()
     /// Collapsed to begin with. Expanded, the category grid is tall enough on a real tenant to push
     /// the totals and Device Status off the screen, so the Dashboard opened on a list of categories
@@ -94,6 +106,19 @@ struct DashboardView: View {
     private var unusedDetail: String? {
         guard !isLoadingUnused, unusedCount != nil else { return nil }
         return "Items to review"
+    }
+
+    /// When the Dashboard's figures were read.
+    ///
+    /// The **oldest** of the reads behind the tiles, not the newest: the row is only as current as
+    /// its stalest number, and claiming otherwise would be the kind of reassuring half-truth this
+    /// label exists to prevent. `nil` in Live mode, where nothing is held and every figure on screen
+    /// was read moments ago.
+    private var dashboardReadAt: Date? {
+        let entries: [CacheEntry] = [
+            .dashboardComputers, .profiles, .scripts, .policies, .categories, .packages, .policyEstate
+        ]
+        return entries.compactMap { cache.readAt[$0] }.min()
     }
 
     var filteredCategories: [Category] {
@@ -185,7 +210,18 @@ struct DashboardView: View {
                 }
                 .padding(.horizontal)
                 .padding(.top)
-                
+
+                // When these counts were read. The Dashboard has no Refresh button of its own —
+                // Settings → General has the one that clears everything — so this is the only place
+                // it can say whether the tiles are this minute's truth or this morning's.
+                if let readAt = dashboardReadAt {
+                    HStack {
+                        Spacer()
+                        DataFreshnessLabel(readAt: readAt)
+                    }
+                    .padding(.horizontal)
+                }
+
                 Divider().padding(.horizontal)
                 
                 // MARK: - 2. Category Manager
@@ -372,6 +408,13 @@ struct DashboardView: View {
         } // end else (not loading)
         } // end Group
         .task { await refreshDashboard() }
+        // Picks up Settings → General → Refresh Data, and any write made while the Dashboard is on
+        // screen. Quietly: the Dashboard's own category actions already refresh it the moment they
+        // finish, and the signal they send arrives 0.6s later debounced — so this is usually that
+        // write's own echo, and it must not throw the screen back to a spinner for it.
+        .onChange(of: refreshCoordinator.token) {
+            Task { await refreshDashboard(showingLoadingState: false) }
+        }
         
         // MARK: - Sheets
         .sheet(isPresented: $showCategorySheet) {
@@ -411,14 +454,39 @@ struct DashboardView: View {
         .sheet(isPresented: $showExportProgress) {
             ExportProgressSheet(isPresented: $showExportProgress, progress: exportProgress)
         }
+        .sheet(isPresented: $showExportFreshnessPrompt, onDismiss: {
+            guard exportOncePromptCloses else { return }
+            exportOncePromptCloses = false
+            beginExportAll()
+        }) {
+            ExportFreshnessPrompt(
+                readAt: exportReadAt ?? Date(),
+                onUseCurrent: {
+                    exportOncePromptCloses = true
+                    showExportFreshnessPrompt = false
+                },
+                onRefreshThenExport: {
+                    await refreshForExport()
+                    exportOncePromptCloses = true
+                    showExportFreshnessPrompt = false
+                }
+            )
+        }
     }
     
     // MARK: - Actions
     
-    func refreshDashboard() async {
-        isLoading = true
-        isLoadingInstallomator = true
-        isLoadingUnused = true
+    /// - Parameter showingLoadingState: `false` refreshes without blanking the Dashboard — the
+    ///   tiles keep their current figures until the new ones arrive. Used for a refresh nobody
+    ///   asked for *on this screen*: the `RefreshCoordinator` signal below. Replacing a Dashboard
+    ///   somebody is looking at with a full-screen spinner because a write finished elsewhere is
+    ///   worse than letting the numbers change under them a moment later.
+    func refreshDashboard(showingLoadingState: Bool = true) async {
+        if showingLoadingState {
+            isLoading = true
+            isLoadingInstallomator = true
+            isLoadingUnused = true
+        }
 
         // Each count stands or falls on its own. These were previously awaited as a single tuple,
         // so one failure — a throttled request, or the Platform API refusing a Blueprints read —
@@ -602,7 +670,47 @@ struct DashboardView: View {
         }
     }
     
+    /// Export All, which reads the whole tenant.
+    ///
+    /// Asks first when the ZIP would be built from data already held. In Live mode nothing is held
+    /// and the export reads from Jamf regardless, so there is nothing to ask about and it starts
+    /// straight away.
     func exportAllData() {
+        if exportReadAt != nil {
+            showExportFreshnessPrompt = true
+        } else {
+            beginExportAll()
+        }
+    }
+
+    /// When the oldest of the reads this export would use was taken, or `nil` if none are held.
+    ///
+    /// The oldest, not the newest: the ZIP is only as current as its stalest sheet.
+    private var exportReadAt: Date? {
+        let entries: [CacheEntry] = [.computers, .scripts, .policyEstate, .profiles, .categories, .packages]
+        return entries.compactMap { cache.readAt[$0] }.min()
+    }
+
+    /// Discards everything held and reads back what the export leans on hardest, so the ZIP is built
+    /// from this moment rather than from whenever the session last looked.
+    ///
+    /// The reads are the export's own, done here so the wait has something on screen explaining it.
+    /// Nothing is read twice: the export then finds them in the cache. Anything not primed here —
+    /// buildings and departments, for the computers sheet — simply misses and is read by the export.
+    private func refreshForExport() async {
+        SessionCache.shared.invalidateAll()
+
+        let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs(bypassingCache: true)) ?? []
+        async let estate: Void = { _ = try? await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs,
+                                                                       bypassingCache: true) }()
+        async let profiles: Void = { _ = try? await api.fetchProfiles(bypassingCache: true) }()
+        async let computers: Void = { _ = try? await api.fetchComputers(bypassingCache: true) }()
+        async let packages: Void = { _ = try? await api.fetchJamfPackages(bypassingCache: true) }()
+        async let categories: Void = { _ = try? await api.fetchCategories(bypassingCache: true) }()
+        _ = await (estate, profiles, computers, packages, categories)
+    }
+
+    private func beginExportAll() {
         isExporting = true
         exportProgress.reset()
         showExportProgress = true

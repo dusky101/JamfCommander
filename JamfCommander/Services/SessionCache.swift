@@ -41,8 +41,22 @@ import Combine
 /// Unused tile and the Unused module ask the same question of the same data, and if their answers
 /// could be invalidated separately they could disagree on screen — where the headline would be the
 /// one that is wrong.
+/// **Blueprints are deliberately absent.** They come from the Jamf Platform API Gateway — a
+/// different host, with its own credentials set separately in Settings — so the Jamf Pro instance
+/// URL this cache rebases on says nothing about which Platform tenant a blueprint came from.
+/// Changing only the Platform credentials would not rebase the cache, and it would serve the
+/// previous tenant's blueprints. One list read is not worth that hole; it stays live until the
+/// cache can key Platform data by its own identity.
 enum CacheDomain: String, CaseIterable, Sendable {
     case policies
+    case profiles
+    case computers
+    case scripts
+    case packages
+    case categories
+    case groups
+    case installomator
+    case userLocation
 }
 
 /// One thing the cache holds, and the unit of **lookup**.
@@ -50,16 +64,48 @@ enum CacheDomain: String, CaseIterable, Sendable {
 /// The policies domain is read in two shapes by different screens, so it has two entries. Both are
 /// invalidated together, because both are answers about the same policies.
 enum CacheEntry: String, CaseIterable, Sendable {
-    /// `[Policy]` — `JamfAPIService.fetchPolicies()`. The Policies module, the Dashboard's policy
-    /// count, and the computer inspector's policy list.
+    /// `[Policy]` — `fetchPolicies()`. Policies module, Dashboard count, computer inspector.
     case policies
-    /// `CachedPolicyEstate` — `JamfAPIService.scanPolicyEstate(knownScriptIDs:)`. The expensive one:
-    /// the Unused module, the Dashboard's Unused tile, the Packages "Deployed" tab and Export All.
+    /// `CachedPolicyEstate` — `scanPolicyEstate(knownScriptIDs:)`. The most expensive read in the
+    /// app: the Unused module, the Dashboard's Unused tile, Packages **Deployed**, Export All.
     case policyEstate
+    /// `[ConfigProfile]` — `fetchProfiles()`. Hydrates every profile with a detail call, so it is
+    /// the second most expensive read, and the Unused module waits on it as well as on the estate.
+    case profiles
+    /// `[ComputerInventoryRecord]` — `fetchComputers()`. The Computers module.
+    case computers
+    /// `[BasicComputerRecord]` — `fetchDashboardComputers()`. A lighter read than `.computers` and
+    /// a different type, so it is a separate entry; both are invalidated together.
+    case dashboardComputers
+    /// `[ScriptRecord]` — `fetchScripts()`. Also what `fetchInstallomatorScriptIDs()` filters, so
+    /// caching this makes that free everywhere it is called.
+    case scripts
+    /// `[JamfPackage]` — `fetchJamfPackages()`.
+    case packages
+    /// `[Category]` — `fetchCategories()`. Read by nearly every module for its filter chips.
+    case categories
+    /// `[ComputerGroup]` — `fetchComputerGroups()`. The scope pickers.
+    case computerGroups
+    /// `CachedInstallomatorScan` — `fetchInstallomatorPolicies(knownScriptIDs:)`.
+    case installomatorScan
+    /// `[String]` — Installomator's published label list. From GitHub, not Jamf.
+    case installomatorLabels
+    /// `[String: String]` — `fetchBuildings()`.
+    case buildings
+    /// `[String: String]` — `fetchDepartments()`.
+    case departments
 
     var domain: CacheDomain {
         switch self {
         case .policies, .policyEstate: .policies
+        case .profiles: .profiles
+        case .computers, .dashboardComputers: .computers
+        case .scripts: .scripts
+        case .packages: .packages
+        case .categories: .categories
+        case .computerGroups: .groups
+        case .installomatorScan, .installomatorLabels: .installomator
+        case .buildings, .departments: .userLocation
         }
     }
 }
@@ -75,7 +121,30 @@ enum CacheEntry: String, CaseIterable, Sendable {
 @MainActor
 final class SessionCache: ObservableObject {
     static let shared = SessionCache()
-    private init() {}
+
+    private init() {
+        // So `@AppStorage("dataCacheEnabled") var x = true` in Settings and `UserDefaults.bool`
+        // here agree about the default. Without registering it, an unset key reads as `false` on
+        // this side and `true` on that one, and the switch would lie about its own state.
+        UserDefaults.standard.register(defaults: [Self.cachingEnabledKey: true])
+    }
+
+    // MARK: - Live or Cached
+
+    /// The Settings key behind the **Live / Cached** switch in Settings → General.
+    ///
+    /// Owned here rather than by the view, because this is the type whose behaviour it changes and
+    /// the default has to be registered alongside it.
+    static let cachingEnabledKey = "dataCacheEnabled"
+
+    /// Whether the app is in **Cached** mode. `false` is **Live**: every read goes to Jamf, exactly
+    /// as the app behaved before any of this existed.
+    ///
+    /// Read from `UserDefaults` on each call rather than held, so flipping the switch takes effect
+    /// on the next read with nothing to keep in sync.
+    var isCaching: Bool {
+        UserDefaults.standard.bool(forKey: Self.cachingEnabledKey)
+    }
 
     /// When each entry was last read from Jamf.
     ///
@@ -99,6 +168,8 @@ final class SessionCache: ObservableObject {
     /// that throws data away is unusual, and it is deliberate: it means no path into this type can
     /// leave another tenant's records sitting in memory.
     func value<T>(_ entry: CacheEntry, as type: T.Type, instanceURL: String) -> T? {
+        // Live mode: there is nothing to serve, by choice.
+        guard isCaching else { return nil }
         // Not connected to anything yet: never serve, never store.
         guard !instanceURL.isEmpty else { return nil }
         rebase(to: instanceURL)
@@ -113,7 +184,9 @@ final class SessionCache: ObservableObject {
     /// `JamfAPIService.fetchPolicies(bypassingCache:)`. This type cannot tell a partial answer from
     /// a complete one, so that judgement belongs at the point of the read.
     func store<T>(_ value: T, as entry: CacheEntry, instanceURL: String) {
-        guard !instanceURL.isEmpty else { return }
+        // Live mode holds nothing at all, rather than holding it and declining to serve it. Someone
+        // who has chosen Live should not have the tenant's records sitting in memory regardless.
+        guard isCaching, !instanceURL.isEmpty else { return }
         rebase(to: instanceURL)
         values[entry] = value
         readAt[entry] = Date()
@@ -169,5 +242,35 @@ final class SessionCache: ObservableObject {
         values.removeAll()
         readAt.removeAll()
         self.instanceURL = instanceURL
+    }
+}
+
+// MARK: - How a read consults the cache
+
+extension JamfAPIService {
+
+    /// The cached value for `entry`, or `nil` — because nothing is held, because this is a Refresh,
+    /// or because the app is in Live mode.
+    ///
+    /// Deliberately two calls (this and `storeInCache`) rather than one helper taking a closure.
+    /// A closure would read better, but wrapping a `genericFetch` in one moves the decode into a
+    /// context the compiler treats as concurrent, and every response type in this module has a
+    /// main-actor-isolated `Decodable` conformance — a warning today and an error in the Swift 6
+    /// language mode. Three plain lines per read cost less than working around that.
+    func cachedValue<T>(_ entry: CacheEntry, as type: T.Type, bypassingCache: Bool) -> T? {
+        guard !bypassingCache else { return nil }
+        return SessionCache.shared.value(entry, as: type, instanceURL: baseURL)
+    }
+
+    /// Files a freshly read value, unless the read was cancelled.
+    ///
+    /// Leaving a module cancels its in-flight work, and whatever a cancelled read returned is not
+    /// an answer worth keeping for the rest of the session. A read that can come back *short*
+    /// without throwing — `fetchPolicies`, `scanPolicyEstate`, `fetchInstallomatorPolicies` all
+    /// skip an item they cannot hydrate rather than failing the pass — must check its own
+    /// completeness as well; those three do, in full, at their own call sites.
+    func storeInCache<T>(_ value: T, as entry: CacheEntry) {
+        guard !Task.isCancelled else { return }
+        SessionCache.shared.store(value, as: entry, instanceURL: baseURL)
     }
 }

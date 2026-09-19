@@ -454,13 +454,16 @@ struct RedundantDashboardView: View {
 
         // Widens Installomator detection past "the policy's script is called Installomator". A
         // failure here only narrows detection, so it degrades rather than failing the scan.
-        let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
+        let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs(bypassingCache: bypassingCache)) ?? []
 
+        // All four, not just the estate. This module waits on the slowest of them, so caching the
+        // estate alone made no visible difference — `fetchProfiles` hydrates every profile and is
+        // the second most expensive read in the app.
         async let estateResult = api.scanPolicyEstate(knownScriptIDs: knownScriptIDs,
                                                       bypassingCache: bypassingCache)
-        async let profilesResult = api.fetchProfiles()
-        async let packagesResult = api.fetchJamfPackages()
-        async let categoriesResult = api.fetchCategories()
+        async let profilesResult = api.fetchProfiles(bypassingCache: bypassingCache)
+        async let packagesResult = api.fetchJamfPackages(bypassingCache: bypassingCache)
+        async let categoriesResult = api.fetchCategories(bypassingCache: bypassingCache)
 
         do {
             let estate = try await estateResult

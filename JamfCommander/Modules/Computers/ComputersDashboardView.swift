@@ -91,7 +91,7 @@ struct ComputersDashboardView: View {
                     .buttonStyle(.plain)
                     .help("Export to CSV")
 
-                    Button(action: { Task { await refreshData() } }) {
+                    Button(action: { Task { await refreshData(bypassingCache: true) } }) {
                         Image(systemName: "arrow.clockwise")
                             .frame(height: 18)
                     }
@@ -261,9 +261,11 @@ struct ComputersDashboardView: View {
 
     // MARK: - Actions
 
-    func refreshData() async {
+    /// - Parameter bypassingCache: `true` reads the inventory from Jamf regardless of what this
+    ///   session already holds. Passed by Refresh only.
+    func refreshData(bypassingCache: Bool = false) async {
         do {
-            let list = try await api.fetchComputers()
+            let list = try await api.fetchComputers(bypassingCache: bypassingCache)
             self.computers = list
             self.isLoading = false
         } catch {
