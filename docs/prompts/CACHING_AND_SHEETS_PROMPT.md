@@ -1,4 +1,4 @@
-# Prompt — caching, then sheets that navigate
+# Prompt — caching, then windows instead of sheets
 
 Paste this into a fresh session. It covers two pieces of work, in order, and the order matters.
 
@@ -8,9 +8,9 @@ Paste this into a fresh session. It covers two pieces of work, in order, and the
 Read docs/prompts/START_HERE.md and follow it, then read CLAUDE.md's safety invariants and
 treat them as binding. This app writes to a live production Jamf instance.
 
-Then read, in this order:
-  docs/roadmap/CACHING.md
-  docs/handovers/CACHING_HANDOVER.md
+Then read these two, in this order, and treat them as the specification:
+  docs/roadmap/CACHING.md              — the intent, and my own words about what I want
+  docs/handovers/CACHING_HANDOVER.md   — the state of the code today, and the traps
 
 Phase 1 is the cache, and it is the whole of what I want first. Do not start the sheet work.
 
@@ -46,8 +46,8 @@ Phase 2. Read:
   docs/roadmap/SHEET_NAVIGATION.md
   docs/handovers/SHEET_NAVIGATION_HANDOVER.md
 
-Read the "Correct the premise" section first — the idea arrived with two wrong assumptions in
-it and the handover says which.
+I want windows, not sheets — the help guide was converted on 19 September 2026 and it is the
+worked example. Copy that pattern. The handover names the four files it touched.
 
 Do ConfigurationView first, not the deployment sheet. It is the rehearsal, and it is the only
 candidate where a mistake cannot reach a Mac. Show me that before going near Installomator.
@@ -62,6 +62,13 @@ See HELP_OVERHAUL_HANDOVER.md, phase D, and do not re-draw a figure by hand.
 ```
 
 ---
+
+## What phase 1 must not skip
+
+`docs/handovers/CACHING_HANDOVER.md` has one line that matters more than the rest: **key the cache
+by instance URL.** Settings can be pointed at another tenant, and a cache that is not keyed will
+serve one tenant's policies while connected to the other — in an app whose next action might be a
+bulk delete.
 
 ## Why this order
 

@@ -1,13 +1,35 @@
-# Roadmap — sheets that navigate
+# Roadmap — windows instead of sheets
 
 ## What
 
-Give the app's larger sheets a sidebar-and-detail shape instead of one long scrolling column.
+Turn the app's larger sheets into **windows**, with a sidebar-and-detail shape instead of one long
+scrolling column.
 
 In the maintainer's words: *"in the installomator DeploymentConfigSheet we can have sections on the
-left to add details on the right. i think it will look a lot better."*
+left to add details on the right"*, and then, having seen the guide converted: *"so thats the setup
+we need to use. use windows instead of sheets for the popover windows. like the blueprint setup and
+so on."*
 
-## Why
+Two changes, and the first is the one that carries the second.
+
+## Why a window, not a sheet
+
+This was settled by doing it to the help guide on 19 September 2026, and the difference was larger
+than expected. A sheet has **no title bar** — no traffic lights, no title, no sidebar toggle — so its
+content begins flush against the top edge and reads as cramped. The maintainer diagnosed it himself
+before anyone proposed it: *"why don't i have the red green and yellow buttons and the minimise side
+bar like ssmacos then … mine seems squashed up"*.
+
+And a sheet is **modal**. It cannot be left open beside the thing it describes, and it cannot be put
+aside while you go and look something up. For the deployment sheet that is not theoretical: creating
+Installomator policies is exactly the job where you want the *Privileges* page or the Jamf console
+open next to you.
+
+A window also deletes machinery rather than adding it. The guide needed a whole
+`HostWindowSizeReader` to size itself, because a sheet cannot read its container; as a window that
+went away and `.defaultSize` replaced it.
+
+## Why a sidebar, not a scroll
 
 `DeploymentConfigSheet` is the clearest case, and it is the one he named. It has **six numbered
 sections** — the sheet literally labels them "1. Select Target Category" through "6. Version Pinning
@@ -31,33 +53,41 @@ section views is the same work as making it illustratable.**
 
 ## What it is *not*
 
-The idea arrived as "update all the popover windows … to use NavigationSplitView like ssmacos". That
-premise does not hold and the entry should not carry it forward:
+**Not every sheet.** A confirmation prompt, a category picker, an icon chooser and a results summary
+are better as they are: one job each, dismissed the moment it is done, and a window for any of them
+would be a window the reader has to go and close. `CommanderConfirmation` in particular **must** stay
+modal — it is the thing standing between a click and a bulk delete, and a confirmation you can click
+away from is not one.
 
-- **The help guide already uses `NavigationSplitView`** and has since it was built. What made the
-  reference app's pages look better was left-aligning the text column and richer figures, both since
-  fixed.
-- **The reference app does not use split views for its sheets either.** It uses `NavigationSplitView`
-  in ten files — the app shell, the home launcher, onboarding and help — and still has twelve files
-  presenting `.sheet(`.
+The rule that separates them: **does the reader need anything else while it is open?** If yes, a
+window. If it is one decision and then it is gone, a sheet.
 
-A confirmation prompt, a category picker and a results summary are better as they are. Converting
-them would be churn against production-facing code for no reader benefit.
+Worth recording so it is not re-derived: the idea first arrived as "every view uses navigation view …
+maybe we do everything to use nav split view like ssmacos". Two parts of that were not so — the help
+guide already used `NavigationSplitView`, and the reference app uses split views in ten files while
+still presenting `.sheet(` in twelve. What actually made the difference was the **window**, and the
+text column being left-aligned.
 
 ## Roughly what it touches
 
 Candidates, in the order the value falls off:
 
-1. **`Modules/Packages/DeploymentConfigSheet.swift`** — six sections, already numbered. The case.
-2. **`Auth/ConfigurationView.swift`** — already a tab picker over `SettingsGeneralSection`,
-   `SettingsJamfProSection`, `SettingsPlatformSection`, `SettingsTransferSection`. The sections are
-   *already separate files*, so this is the cheapest conversion and the lowest risk: no write path
-   runs through it beyond saving credentials.
-3. **`Modules/AddPackage/PackageUploadPage.swift`** — the upload flow has the same three-step shape.
-4. **`Modules/Blueprints/BlueprintEditorSheet.swift`** — editor, scope and the DDM wrap panel.
+1. **`Auth/ConfigurationView.swift`** — already a tab picker over `SettingsGeneralSection`,
+   `SettingsJamfProSection`, `SettingsPlatformSection`, `SettingsTransferSection`, each in its own
+   file. The cheapest conversion, the lowest risk, and the natural rehearsal.
+2. **`Modules/Packages/DeploymentConfigSheet.swift`** — six sections, already numbered. The case,
+   and the highest risk: it creates policies on a live tenant.
+3. **`Modules/Blueprints/BlueprintEditorSheet.swift`** — the maintainer named it: editor, scope and
+   the DDM wrap panel, and the one place you most want the Jamf DDM app open beside you.
+4. **`Modules/AddPackage/PackageUploadPage.swift`** — the upload has the same three-step shape, and
+   an upload runs long enough that being trapped in a modal matters.
+
+Each needs a `Window(id:)` in `JamfCommanderApp`, an `openWindow(id:)` at its entry point, and its
+presenter reduced to carrying a request rather than an `isPresented` flag — exactly the shape the
+help guide now has, which is the worked example to copy.
 
 Not candidates: `CommanderConfirmation`, `OperationResultView`, `CategorySelectionSheet`,
-`ScopeTargetPicker` — one job each, already the right size.
+`ScopeTargetPicker`.
 
 ## Known traps
 
@@ -68,9 +98,16 @@ Not candidates: `CommanderConfirmation`, `OperationResultView`, `CategorySelecti
   `@Binding` can be composed by the sheet but not by a figure. The pattern already exists in
   `SharedUI/ActionBarComponents.swift` — `ActionBarColumn`, `SoftIconLabel` — which is why the
   action-bar figures could be grounded when the rest could not.
-- **A sheet inside a sheet is already in play.** The guide's search panel is presented from within
-  the help sheet. It works, but a deployment sheet that itself presents a category picker and an icon
-  chooser is two levels before this change and three after. Worth watching rather than assuming.
+- **A window that presents sheets is fine; a sheet that presents sheets is where it got awkward.**
+  The deployment sheet already presents a category picker and an icon chooser. As a window those
+  become ordinary sheets on it, which is better than what happens today. The guide's search panel
+  went the other way for a related reason — it was a sheet on a sheet and could not be dismissed by
+  clicking away, so it became an overlay.
+
+- **State outlives the window now.** A sheet's `@State` dies when it is dismissed. A window can be
+  closed and reopened, and anything held in a presenter or a store survives. Decide deliberately
+  whether a half-filled deployment sheet should come back as you left it or start clean — both are
+  defensible; silently doing one of them is not.
 - **The window minimum is 960pt and the header arithmetic is tight** — see `START_HERE.md` §4. A
   sheet gaining a 200pt rail loses that from its detail pane; the six sections' content has to still
   fit at the smallest window the app allows.
@@ -82,8 +119,11 @@ Not candidates: `CommanderConfirmation`, `OperationResultView`, `CategorySelecti
    accepting every default and pressing Deploy, or going straight to scope.
 2. **Does the "1 label selected / Deploy Policies" footer stay put** across all sections, or move
    into the last one?
-3. **Is `ConfigurationView` done first** as the low-risk rehearsal? It is the only candidate where a
-   mistake cannot reach a Mac.
-4. **How much does this owe the help guide?** If the sections end up taking values, four deleted
+3. ~~**Is `ConfigurationView` done first**~~ **Yes** — it is the only candidate where a mistake
+   cannot reach a Mac.
+4. **What happens to a window left open when the connection drops, or Settings is pointed at another
+   tenant?** A deployment sheet holding a category list from the previous instance is the same class
+   of problem as the cache in `CACHING.md`, and the two should be solved with one answer.
+5. **How much does this owe the help guide?** If the sections end up taking values, four deleted
    figures can come back. If they keep bindings, they cannot. That should be a deliberate choice at
    the start rather than discovered at the end.

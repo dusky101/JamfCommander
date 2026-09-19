@@ -72,6 +72,12 @@ struct HelpView: View {
         // A floor, not a target: the scene's `.defaultSize` decides how it opens and the reader
         // decides after that. Below this the index and a readable measure stop fitting side by side.
         .frame(minWidth: 860, minHeight: 560)
+        // Search is an overlay, not a sheet.
+        //
+        // A sheet is modal: the only way out is a control inside it. Spotlight — which is what this
+        // is modelled on — closes when you click away from it, and anything that looks like
+        // Spotlight and does not behave like it is worse than something that looks like neither.
+        .overlay { searchOverlay }
         .appBackground()
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -160,12 +166,41 @@ struct HelpView: View {
             Divider()
             topicList
         }
-        .sheet(isPresented: $isSearchPresented) {
-            HelpSearchPanel(topics: topics) { chosen in
-                selectedTopicID = chosen
-                isSearchPresented = false
+
+    }
+
+    /// The search panel, over a backdrop that dismisses it.
+    ///
+    /// The backdrop is what makes clicking away work: it covers the window, takes the click, and
+    /// closes. It also dims what is behind, so the panel reads as the thing in front rather than as
+    /// a card that happens to be floating.
+    @ViewBuilder
+    private var searchOverlay: some View {
+        if isSearchPresented {
+            ZStack {
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { closeSearch() }
+
+                HelpSearchPanel(topics: topics) { chosen in
+                    selectedTopicID = chosen
+                    closeSearch()
+                } onDismiss: {
+                    closeSearch()
+                }
+                .clipShape(.rect(cornerRadius: 14))
+                .shadow(color: .black.opacity(0.4), radius: 24, y: 10)
+                // Clear of the title bar, and not so far down that it reads as part of the page.
+                .padding(.top, 40)
+                .frame(maxHeight: .infinity, alignment: .top)
             }
+            .transition(.opacity)
         }
+    }
+
+    private func closeSearch() {
+        withAnimation(.snappy(duration: 0.15)) { isSearchPresented = false }
     }
 
     /// Opens the search panel. A button, not a text field: a field here is a small grey box in a
@@ -173,7 +208,7 @@ struct HelpView: View {
     /// rather than read it through.
     private var searchButton: some View {
         Button {
-            isSearchPresented = true
+            withAnimation(.snappy(duration: 0.15)) { isSearchPresented = true }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -303,6 +338,11 @@ private struct HelpIndexRow: View {
     /// of secondary text, and it was the single biggest reason the index read as wordy. In results
     /// the trade reverses — you need the summary to judge a hit — so it earns its space there.
     var showsSummary: Bool = false
+    /// Drawn at the guide's own reading size rather than the index's.
+    ///
+    /// The search panel is a reading surface, not a sidebar: it sits over the page at the same
+    /// distance from the eye, so it is set at the same size.
+    var isProminent: Bool = false
 
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -318,7 +358,7 @@ private struct HelpIndexRow: View {
         HStack(alignment: .top, spacing: 8) {
             if let module = topic.module {
                 Image(systemName: module.icon)
-                    .font(.caption)
+                    .font(isProminent ? .body : .caption)
                     .foregroundStyle(module.accentColour)
                     .frame(width: 16, alignment: .center)
                     // The title already says which module this is; the symbol would only repeat it.
@@ -327,7 +367,7 @@ private struct HelpIndexRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(topic.title)
-                    .font(.body)
+                    .font(isProminent ? MarkdownView.bodyFont : .body)
                     .fontWeight(.medium)
                     // Only a module row recolours its title, and only on hover — the same trade the
                     // sidebar makes. A selected row keeps the list's own foreground so the text
@@ -336,7 +376,7 @@ private struct HelpIndexRow: View {
 
                 if showsSummary {
                     Text("\(topic.section.title) · \(topic.summary)")
-                        .font(.subheadline)
+                        .font(isProminent ? .body : .subheadline)
                         // `.secondary` left this fainter than the summary is worth: in a result it
                         // is what tells you whether this is the page you want.
                         .foregroundStyle(Color.primary.opacity(0.75))
@@ -463,8 +503,8 @@ private struct HelpSearchPanel: View {
     let topics: [HelpTopic]
     /// Called with the chosen topic's id. The caller owns selection and dismissal.
     var onChoose: (HelpTopic.ID) -> Void
-
-    @Environment(\.dismiss) private var dismiss
+    /// Called when the reader closes the panel without choosing anything.
+    var onDismiss: () -> Void
     @State private var query = ""
     @State private var highlighted: HelpTopic.ID?
     @FocusState private var fieldFocused: Bool
@@ -483,7 +523,7 @@ private struct HelpSearchPanel: View {
             Divider()
             body(for: results)
         }
-        .frame(width: 620, height: 460)
+        .frame(width: 680, height: 480)
         .appBackground()
         .onAppear { fieldFocused = true }
         // Arrow keys move the highlight without leaving the field, as Spotlight does — typing and
@@ -491,7 +531,9 @@ private struct HelpSearchPanel: View {
         .onKeyPress(.upArrow) { move(-1) }
         .onKeyPress(.downArrow) { move(1) }
         .onKeyPress(.return) { choose() }
-        .onKeyPress(.escape) { dismiss(); return .handled }
+        .onKeyPress(.escape) { onDismiss(); return .handled }
+        // The idiomatic macOS route as well as the key press: a text field can swallow Escape.
+        .onExitCommand { onDismiss() }
     }
 
     private var field: some View {
@@ -537,10 +579,10 @@ private struct HelpSearchPanel: View {
     private var prompt: some View {
         VStack(spacing: 10) {
             Text("Type what you would say out loud.")
-                .font(.callout)
+                .font(MarkdownView.bodyFont)
                 .foregroundStyle(.secondary)
             Text("The error code Jamf gave you, the word on a badge, the field you are filling in.")
-                .font(.caption)
+                .font(.body)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
@@ -554,10 +596,10 @@ private struct HelpSearchPanel: View {
                 .font(.title)
                 .foregroundStyle(.tertiary)
             Text("No topics match “\(query)”.")
-                .font(.callout)
+                .font(MarkdownView.bodyFont)
                 .foregroundStyle(.secondary)
             Text("Try a shorter term, or the words you would see on screen.")
-                .font(.caption)
+                .font(.body)
                 .foregroundStyle(.tertiary)
         }
         .multilineTextAlignment(.center)
@@ -570,7 +612,7 @@ private struct HelpSearchPanel: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     Text(results.count == 1 ? "1 result" : "\(results.count) results")
-                        .font(.caption.weight(.semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 14)
                         .padding(.top, 10)
@@ -582,7 +624,8 @@ private struct HelpSearchPanel: View {
                         } label: {
                             HelpIndexRow(topic: topic,
                                          isSelected: topic.id == highlighted,
-                                         showsSummary: true)
+                                         showsSummary: true,
+                                         isProminent: true)
                                 .padding(.horizontal, 6)
                         }
                         .buttonStyle(.plain)

@@ -1,33 +1,50 @@
-# Handover — sheets that navigate
+# Handover — windows instead of sheets
 
 **State at handover:** 19 September 2026, app version 9.0. **Nothing is built.** Read
 `docs/roadmap/SHEET_NAVIGATION.md` first for the intent; this file is what is true about the code.
 
 ---
 
-## Correct the premise before you start
+## There is a worked example. Copy it.
 
-The idea reached the roadmap as *"every view uses navigation view … maybe we do everything to use nav
-split view like ssmacos"*. Two parts of that are not so, and building on them would waste a session:
+**The help guide was converted from a sheet to a window on 19 September 2026**, and that conversion
+is the pattern for everything in this handover. Read it before writing anything:
 
-- **The help guide already uses `NavigationSplitView`.** It has since it was built. What made the
-  reference app's pages look better was that its text column is **left-aligned** against a 640pt
-  measure, not centred — fixed on 19 September 2026 — and that its figures are richer.
-- **The reference app does not use split views for its sheets.** `NavigationSplitView` appears in ten
-  of its files: the app shell, the home launcher, onboarding and help. It still presents `.sheet(` in
-  twelve.
+- `JamfCommanderApp.swift` — `Window("Jamf Commander Guide", id: HelpWindowID)`, `.defaultSize`,
+  `.restorationBehavior(.disabled)`, and `HelpWindowID` declared beside the scene.
+- `SidebarView.swift` and the `CommandGroup(replacing: .help)` — both entry points call
+  `openWindow(id:)`.
+- `HelpPresenter` — reduced from an `isPresented` flag to carrying a deep-link request. The window's
+  existence is no longer a piece of state some view owns.
+- `HelpView` — lost its `onDismiss`, its Done button, and the whole `HostWindowSizeReader` that
+  existed only because a sheet cannot read its container.
 
-So this is **not** an app-wide container change. It is a shape change to two or three sheets that
-have genuinely outgrown a single scrolling column.
+That last point is worth dwelling on: **the conversion deleted more code than it added.**
+
+The scale of the change was larger than expected, and the maintainer's verdict afterwards was that
+the guide "looks much better". The parts that made the difference were the title bar — traffic
+lights, a title, the sidebar toggle — and no longer being modal.
 
 ## Proven — and what is NOT
 
 | Established | Not established |
 | --- | --- |
-| `DeploymentConfigSheet` has six sections and numbers them itself | That a rail is better than the scroll — nobody has tried it |
+| The help guide's sheet-to-window conversion works, and deleted code | That a rail is better than the scroll — nobody has tried it |
+| `DeploymentConfigSheet` has six sections and numbers them itself | Whether a half-filled window should survive being closed |
 | `ConfigurationView`'s sections are already four separate files | Whether the content fits at the 960pt window minimum with a rail |
 | `ActionBarComponents.swift` proves the value-not-binding pattern works | Whether the sheet's sections can take values without a rewrite |
 | The help guide's figures were deleted for exactly this reason | Whether any of it can be done without changing what is sent to Jamf |
+
+## Two changes, not one
+
+Each candidate needs **both**, and they are separable:
+
+1. **Sheet → window.** A `Window(id:)` scene, `openWindow(id:)` at the entry point, the presenter
+   reduced to a request. Mechanical, and the guide is the template.
+2. **Scroll → sidebar.** The shape change. Only worth doing where the content has sections.
+
+Do them in that order per candidate, and build between. A window that still scrolls is already an
+improvement and is a safe place to stop.
 
 ## Do `ConfigurationView` first
 
@@ -83,9 +100,12 @@ is that a figure must instantiate the real view, and the registry is in
 - **The window minimum is 960pt**, and a module header already fits by about 50pt — see
   `START_HERE.md` §4 for the arithmetic and the warning not to estimate glyph widths. A sheet that
   gains a 200pt rail loses that from its detail pane at every window size.
-- **Sheet inside a sheet is already in play.** The guide's search panel is presented from within the
-  help sheet. `DeploymentConfigSheet` already presents a category picker and an icon chooser, so it
-  is two levels now and three after. Watch it rather than assume.
+- **A window presenting sheets is fine; a sheet presenting sheets was not.**
+  `DeploymentConfigSheet` already presents a category picker and an icon chooser — two levels today,
+  and as a window those become ordinary sheets on it, which is better. The guide hit the other side
+  of this: its search panel was a sheet on a sheet and therefore could not be dismissed by clicking
+  away, so it became an **overlay** with a backdrop that takes the click. If a converted window needs
+  something Spotlight-like, that is the pattern, and it is in `HelpView.searchOverlay`.
 - **Six sections are a sequence, not peers.** A rail implies free navigation. The sheet is genuinely
   used both ways — accept every default and press Deploy, or go straight to scope — so whichever is
   chosen, both paths must stay short. See open question 1 in the roadmap entry.
