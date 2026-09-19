@@ -401,6 +401,11 @@ private struct HelpPage: View {
             metrics = new
         }
         .focusable()
+        // Focusable for the keys, not for the ring. SwiftUI's generic focus treatment draws a blue
+        // rectangle around the whole pane the moment you click into the page, which reads as "this
+        // is selected" — it is not, it is just where the arrow keys go. No document scroll area on
+        // macOS shows one: Preview, Mail's message body and Safari all take key input without it.
+        .focusEffectDisabled()
         .onKeyPress(.pageDown) { scroll(by: pageStep) }
         .onKeyPress(.space) { scroll(by: pageStep) }
         .onKeyPress(.pageUp) { scroll(by: -pageStep) }
