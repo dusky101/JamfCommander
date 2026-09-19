@@ -80,12 +80,25 @@ See `.claude/rules/architecture.md` for the full folder map and data flow, and
 
 ## Where things live
 
-- **Always-loaded rule:** `.claude/rules/architecture.md` (folder map + module pattern + data flow).
+- **Always-loaded rules:** `.claude/rules/architecture.md` (folder map + module pattern + data flow)
+  and `.claude/rules/docs-workflow.md` (how an idea becomes a roadmap entry, then a handover and a
+  prompt). Note `.claude/` is gitignored, so those two travel only with a copy of the folder —
+  the conventions they describe are also written down in the tracked `docs/README.md`.
 - **Path-scoped rules** (load when you open a matching file): `services-and-networking.md` (Services),
   `models-and-decoding.md` (Models), `swiftui-views.md` (Modules/Views/Auth/Core),
   `design-system.md` (SharedUI), `auth-and-credentials.md` (Auth + SettingsService), `exports.md` (export code).
 - **Read-on-demand docs:** `docs/PROJECT_OVERVIEW.md` (whole-project reference),
   `docs/JAMF_API_REFERENCE.md` (exact endpoints, token flow, throttling, XML write/clone patterns).
+- **How `docs/` is organised:** `docs/README.md`. Four kinds of document with different lifespans —
+  read it before adding one, and follow it:
+  - `docs/roadmap/` — **intent**. One file per idea the maintainer wants built, and why. Durable;
+    it describes a goal rather than code. **Any new idea or feature request goes here first.**
+  - `docs/handovers/` — **state**. Where a piece of work stands, and crucially what is *proven against
+    the live tenant* versus what has only ever compiled. Perishable.
+  - `docs/prompts/` — **instructions** for starting a session on one piece of work.
+  A handover and a prompt are written from a roadmap entry **at the moment work starts**, never in
+  advance: one written months early describes a codebase that has since moved, and the reader cannot
+  tell which parts have gone stale.
 - **Project README:** `JamfCommander/README.md` — the maintainer-authored end-user/feature & usage
   reference (modules, workflows, privileges, limitations). Treat it as authoritative for *feature*
   behaviour; the `docs/` files cover internals/architecture. Keep them consistent if you change either.
