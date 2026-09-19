@@ -40,6 +40,16 @@ nonisolated enum HelpLibrary {
                        "disclaimer", "production", "safety"]),
 
         HelpTopic(
+            id: "prerequisites",
+            title: "Prerequisites",
+            section: .gettingStarted,
+            summary: "What Installomator and Blueprints need that this app cannot provide.",
+            keywords: ["prerequisite", "prerequisites", "requirement", "requirements", "before you",
+                       "need", "needed", "installomator", "installomator.sh", "script", "label",
+                       "ddm", "ddm explorer", "declarative", "declaration", "blueprint",
+                       "blueprints", "app store", "download", "github", "install", "authoring"]),
+
+        HelpTopic(
             id: "getting-connected",
             title: "Getting connected",
             section: .gettingStarted,

@@ -41,9 +41,9 @@ directly and are unchanged.
 
 | Proven on screen | Never seen on screen |
 | --- | --- |
-| The eight **phase 1** pages, read end to end at 900×900 and at 1500×1204 | **Every one of the twelve pages phase 2b added** |
+| The eight **phase 1** pages, read end to end at 900×900 and at 1500×1204 | **Every one of the thirteen pages phase 2b added** |
 | Search run for "403", "unscoped", "client secret" and a miss | **Module colour on an index row and on a page's H1** |
-| The empty-search-result state | The index at nineteen topics — it was eight when it was last seen |
+| The empty-search-result state | The index at twenty topics — it was eight when it was last seen |
 | Keyboard paging: Page Down and Home move the page | Whether a Markdown link renders as a clickable link |
 | The sheet tracks the window it is presented on | `HelpPresenter.present(_:)` — nothing calls it |
 
@@ -51,14 +51,20 @@ directly and are unchanged.
 this session stop launching the app — it costs him time and money — so phase 2b was verified by
 other means and **not once looked at**. What *was* checked:
 
-- It builds, and all nineteen `.md` files reach `Contents/Resources/` with no name collision
+- It builds, and all twenty `.md` files reach `Contents/Resources/` with no name collision
   (`README.md` is the only other Markdown in that flat directory).
 - Every topic in the manifest resolves to a file on disk, every file is in the manifest, and every
   page's `# Title` matches its `HelpTopic.title` exactly — checked by script, not by eye.
-- All nineteen pages were run through `HelpMarkdown` compiled standalone: every page opens with an
+- All twenty pages were run through `HelpMarkdown` compiled standalone: every page opens with an
   H1, every paragraph and list item parses as inline Markdown, no unbalanced `**`, and none of the
   three unsupported shapes (tables, images, indented sub-bullets) appears anywhere.
 - No straight quotes or apostrophes, and no American spellings, anywhere in the content.
+
+Also unseen: the index rows' hover treatment — a link pointer, the module's colour as the wash on
+a "Using the app" row and the neutral `.primary` wash elsewhere, and the 3pt nudge — copied from
+`SidebarModuleRow`. And the section headers, which needed rebuilding from an `Image` and a `Text`
+with their own styles because `.listStyle(.sidebar)` re-applies its treatment over a `Label` and
+silently ignored the `.foregroundStyle(.primary)` phase 2a put on one.
 
 None of that proves a *rendering*. A block can parse perfectly and still look wrong, which is the
 lesson phase 1 already paid for once.
@@ -141,7 +147,7 @@ a sentence.
 
 ## What phase 2b built
 
-The guide went from eight topics to **nineteen**, and the index now mirrors the sidebar.
+The guide went from eight topics to **twenty**, and the index now mirrors the sidebar.
 
 **One topic per sidebar module.** `modules.md` — a single page with nine `##` headings — is deleted
 and replaced by nine pages: `module-dashboard`, `-policies`, `-profiles`, `-blueprints`,
@@ -198,6 +204,14 @@ callout saying so and no dates.
 
 **`api-client.md` is now "Creating the API client in Jamf Pro"**, because there is a second
 credential-creation page beside it and "in Jamf" no longer distinguishes them.
+
+**`prerequisites.md`**, added afterwards on the maintainer's ask: the two things that live outside
+this app. Installomator — what the script is, why the module is useless without it in Jamf, and the
+releases page — and **DDM Explorer**, the free Jamf app on the Mac App Store that builds a
+declaration and hands you its JSON. The codebase only ever calls the latter "the Jamf DDM app";
+DDM Explorer (`Jamf-Concepts/ddm-explorer`) is what that was taken to mean, confirmed against the
+repository rather than assumed. Placed **second in Getting started**, straight after *Welcome*, with
+a first line making clear neither is needed to connect the app or to use the other seven modules.
 
 ## Constraints
 

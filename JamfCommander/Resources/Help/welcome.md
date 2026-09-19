@@ -27,6 +27,8 @@ to find online and nothing to keep in step.
 
 - **Setting the app up for the first time?** Read *Getting connected*, then *Creating the API client
   in Jamf Pro* and *Privileges*, in that order.
+- **Using Installomator, or Blueprints?** Both need something that lives outside this app —
+  *Prerequisites* says what, why, and where to get it.
 - **Approving it before anyone points it at production?** *Which APIs this app uses* is the whole
   surface in one page, written for exactly that.
 - **Using Blueprints?** They need a second, separate credential — *Creating the Blueprints
