@@ -45,7 +45,7 @@ directly and are unchanged.
 | Search run for "403", "unscoped", "client secret" and a miss | **Module colour on an index row and on a page's H1** |
 | The empty-search-result state | The index at twenty topics — it was eight when it was last seen |
 | Keyboard paging: Page Down and Home move the page | Whether a Markdown link renders as a clickable link |
-| The sheet tracks the window it is presented on | `HelpPresenter.present(_:)` — nothing calls it |
+| The sheet tracks the window it is presented on | `HelpPresenter.request(_:)` — nothing calls it |
 
 **Read the right-hand column before trusting anything about phase 2b.** The maintainer asked that
 this session stop launching the app — it costs him time and money — so phase 2b was verified by
@@ -356,9 +356,10 @@ them. That is real work in the modules, not in the guide, and it should be decid
    is no `sheetParent`, so it keeps working if this ever becomes a scene.
 2. ~~**Figures.**~~ **Built** (19 September 2026). `HelpBlock` gained a `figure(id:)` case, a
    ```figure``` fence resolves to `HelpFigureView(id:)`, and `HelpFigures.swift` holds the registry
-   and eleven figures. They are drawn from the app's own types — `AppModule.navigationModules` for
-   the sidebar, `RedundantReason.allCases` with its own `icon`, `colour` and `explanation` for the
-   Unused reasons, `PackageViewMode.allCases` for the Installomator views, `JamfItemStatus` for the
+   and **fourteen** figures. They are drawn from the app's own types — `AppModule.navigationModules`
+   for the sidebar, `RedundantReason.allCases` with its own `icon`, `colour` and `explanation` for
+   the Unused reasons, `PackageViewMode.allCases` for the Installomator views, `JamfItemStatus` for
+   the
    badges — so adding a module or a reason updates the picture without anyone remembering to. The
    app icon and version come from `NSApplication` and the bundle.
 
@@ -369,7 +370,7 @@ them. That is real work in the modules, not in the guide, and it should be decid
    twenty pages asserts each one resolves *and* that no registered figure is unused — a typo should
    be caught by whoever changes the content, not found by a reader. There is no test target, so that
    check is a script rather than a test; it is worth re-running after any content change.
-3. **Deep links from the app.** `HelpPresenter.present(_:)` takes a topic id and nothing calls it
+3. **Deep links from the app.** `HelpPresenter.request(_:)` takes a topic id and nothing calls it
    yet. A "?" on each module's header would be the obvious use, and would overlap with the sidebar
    hover hints (`SidebarHint`) — decide which is the source of truth before both exist.
 4. **Does help need the unofficial/disclaimer note?** `welcome.md` currently carries one paragraph

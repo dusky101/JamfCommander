@@ -117,7 +117,15 @@ which is how one of them gets the less careful half of the session.
 
 ## What is already done, so nobody redoes it
 
-The help overhaul is finished — four phases, twenty pages, eleven figures built from the app's real
-views, a Spotlight-style search panel, and PDF export. `docs/handovers/HELP_OVERHAUL_HANDOVER.md`
-has the proven/unproven table. Its four remaining open questions are the maintainer's calls, not
-work to pick up.
+The help overhaul is finished: **20 topics**, **14 figures** — each one instantiating the view its
+module actually uses, never a drawing of it — a search panel that opens over the page and closes
+when you click away, and the guide living in **its own window** rather than a sheet.
+`docs/handovers/HELP_OVERHAUL_HANDOVER.md` has the proven/unproven table, and the right-hand column
+is long: almost none of it has been read on screen by the sessions that wrote it.
+
+**There is no PDF export.** It was attempted on 19 September 2026 and removed — see phase 3 above,
+and `docs/roadmap/HELP_PDF_EXPORT.md` for the three ways it failed.
+
+Two open questions remain and both are the maintainer's calls, not work to pick up: **deep links
+from module headers into the guide** (`HelpPresenter.request(_:)` exists and nothing calls it), and
+**whether the unofficial/disclaimer wording on `welcome.md` is what he wants**.

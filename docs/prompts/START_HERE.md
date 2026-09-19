@@ -129,9 +129,9 @@ Five handovers exist in `docs/handovers/`:
   next. Neither has any code yet; each says so in its first line.
 
 
-- **Help overhaul** — **complete**, four phases, 19 September 2026. Twenty pages, eleven figures
-  built from the app's real views, a search panel and PDF export. Its proven/unproven table is
-  current and its remaining open questions are the maintainer's calls, not work to pick up.
+- **Help overhaul** — **complete**, 19 September 2026. Twenty pages and fourteen figures, each
+  figure instantiating the view its module actually uses. Its proven/unproven table is current, and
+  the unproven column is the longer one. Two open questions remain, both the maintainer's calls.
 - **Sidebar restructure** — written *before* its work began, which is what the rule above now
   forbids. **Re-verify its code facts against the repository before acting on it**; the sidebar has
   moved since.
@@ -150,11 +150,15 @@ Five handovers exist in `docs/handovers/`:
   them. That merge rule lives in `SettingsTransfer.importConfiguration(mergingInto:)` and is the part
   worth re-checking if you touch it.
 
-- **The help guide's rendering** (19 September 2026). All eight pages read on screen at two window
-  sizes, search run for "403", "unscoped", "client secret" and a term that matches nothing, and
-  keyboard paging exercised. Phase 2a fixed what that reading found. Still unexercised:
-  `HelpPresenter.present(_:)`, which nothing calls.
+- **Parts of the help guide** (19 September 2026). Search was run for "403", "unscoped", "client
+  secret" and a term that matches nothing; keyboard paging works; the guide opens as its own window;
+  and the maintainer confirmed on screen that the search panel and the window both behave. The eight
+  pages the guide started with were read end to end.
 
-Not proven: **the twelve help pages phase 2b added have never been rendered.** They build, they
-bundle, and all nineteen pages parse — but the maintainer now runs the app himself, so nothing in
-that content has been looked at. See `docs/handovers/HELP_OVERHAUL_HANDOVER.md`.
+Not proven, and it is most of the guide: **the twelve pages and fourteen figures added afterwards
+have barely been looked at.** They build, they bundle, all twenty pages parse, every figure id
+resolves to a real view — but the maintainer now runs the app himself, so those sessions verified by
+script rather than by eye. Two figures were found wrong that way, by him, not by them. Treat the
+right-hand column of `docs/handovers/HELP_OVERHAUL_HANDOVER.md` as the real state.
+
+Also not built: **PDF export**. Attempted and removed — `docs/roadmap/HELP_PDF_EXPORT.md`.
