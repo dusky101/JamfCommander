@@ -136,3 +136,17 @@ authored for search — the words an administrator types that the title does not
    hover hints (`SidebarHint`) — decide which is the source of truth before both exist.
 4. **Does help need the unofficial/disclaimer note?** `welcome.md` currently carries one paragraph
    saying the app is not affiliated with Jamf. Check that is the wording he wants.
+5. **Print, and Save as PDF.** The maintainer asked for the guide to be saveable as a PDF — to hand
+   the *Privileges* page to a security team, or the setup pages to a customer, without them needing
+   the app. Full background and traps: `docs/roadmap/HELP_PDF_EXPORT.md`.
+
+   **Try a Print command first.** macOS gives **Save as PDF** free from the standard print dialog,
+   so `⌘P` on the help window may deliver the whole request for a fraction of a bespoke exporter.
+   Ask him before building it — it is his call whether it belongs in phase 2 — and if he says yes,
+   two things decide whether it is small or not:
+
+   - `MarkdownView` renders into a `ScrollView`, which does not paginate. Printing an
+     `NSHostingView` of the page is the cheap route; making sure a callout or a numbered list is not
+     cut in half by a page break is the part that is not cheap.
+   - The guide's stated advantage is that it ships with the app and always matches the build. A PDF
+     is a copy that does not, so whatever is produced should carry the app version and the date.

@@ -49,8 +49,12 @@ rendered, so an escaping slip or a list that does not close will show up on firs
 
 ## What to leave alone
 
-The four open questions in the handover — sheet versus window, figures, deep links, the disclaimer
-wording — are the maintainer's calls. Raise them; do not decide them.
+The five open questions in the handover — sheet versus window, figures, deep links, the disclaimer
+wording, and printing the guide — are the maintainer's calls. Raise them; do not decide them.
+
+The last of those is the one he is most likely to say yes to, so read it before you start: a Print
+command may deliver the PDF he asked for almost for free, and it changes nothing about the content
+work if he says no.
 
 ## When phase 2 lands
 
