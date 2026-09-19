@@ -279,12 +279,20 @@ private struct SidebarModuleRow: View {
 
     @State private var isHovering = false
     @State private var isShowingHint = false
+    /// Whether the pointer is on the hint card itself. Without this the row's own `onHover(false)`
+    /// fires the instant somebody moves towards the card, closing it before they reach the
+    /// "Don't show this again" box — which made that box unclickable.
+    @State private var isHoveringHint = false
     /// Bumped on every press, purely to drive the icon's bounce.
     @State private var pressCount = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isHighlighted: Bool { isSelected || isHovering }
+
+    /// The pointer is on the row or on its hint card. Moving between the two dips this false for an
+    /// instant, which the close delay absorbs.
+    private var pointerIsEngaged: Bool { isHovering || isHoveringHint }
 
     /// Read straight from defaults: the key varies per hint, so it cannot be an `@AppStorage`
     /// property. The card writes through the same key, and a sidebar row is not redrawn often
@@ -344,23 +352,40 @@ private struct SidebarModuleRow: View {
         .offset(x: isHovering && !reduceMotion ? 3 : 0)
         .animation(.snappy(duration: 0.18), value: isHovering)
         .animation(.snappy(duration: 0.22), value: isSelected)
-        .onHover { inside in
-            isHovering = inside
-            if !inside { isShowingHint = false }
-        }
+        .onHover { isHovering = $0 }
         .popover(isPresented: $isShowingHint, arrowEdge: .trailing) {
             if let hint {
                 SidebarHintCard(hint: hint) { isShowingHint = false }
+                    .onHover { isHoveringHint = $0 }
             }
         }
-        // A dwell, not a sweep. Opening the moment the pointer touches the row would fire every
-        // time somebody crosses it on the way somewhere else, which is how a helpful explanation
-        // turns into something you learn to avoid.
-        .task(id: isHovering) {
-            guard isHovering, let hint, hintIsAllowed(hint) else { return }
-            try? await Task.sleep(for: .milliseconds(650))
-            guard !Task.isCancelled else { return }
-            isShowingHint = true
+        // Whichever way it closed, the card is no longer under the pointer. Leaving this set would
+        // keep `pointerIsEngaged` true and stop the task below ever running again.
+        .onChange(of: isShowingHint) {
+            if !isShowingHint { isHoveringHint = false }
+        }
+        // One task for both directions, restarted by `.task(id:)` whenever engagement flips, which
+        // cancels whichever delay was pending.
+        //
+        // Opening is a dwell, not a sweep: firing the moment the pointer touches the row would
+        // trigger every time somebody crosses it on the way somewhere else, which is how a helpful
+        // explanation turns into something you learn to avoid.
+        //
+        // Closing is delayed because the journey from the row to the card crosses the popover's
+        // arrow, where the pointer is briefly on neither. Closing immediately there is exactly the
+        // bug that made the card unreachable.
+        .task(id: pointerIsEngaged) {
+            if pointerIsEngaged {
+                guard !isShowingHint, let hint, hintIsAllowed(hint) else { return }
+                try? await Task.sleep(for: .milliseconds(650))
+                guard !Task.isCancelled else { return }
+                isShowingHint = true
+            } else {
+                guard isShowingHint else { return }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                isShowingHint = false
+            }
         }
         // The label is an Image plus a Text inside an HStack, which exposes no accessibility name on
         // its own — VoiceOver read nothing for any of these.
