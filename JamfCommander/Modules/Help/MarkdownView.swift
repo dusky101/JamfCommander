@@ -6,6 +6,9 @@
 //  styling — bold, italic, code spans, links — is applied per paragraph with
 //  `AttributedString(markdown:)`, which handles inline Markdown well and block structure not at all.
 //
+//  Vertical spacing is not uniform: each block asks `HelpRhythm` how much room it needs above it, so
+//  a heading opens a section instead of floating between two.
+//
 
 import SwiftUI
 
@@ -14,9 +17,12 @@ struct MarkdownView: View {
     let blocks: [HelpBlock]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+        // Spacing is per block rather than per stack — see `HelpRhythm`.
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                 HelpBlockView(block: block)
+                    .padding(.top, HelpRhythm.space(before: block,
+                                                    after: index == 0 ? nil : blocks[index - 1]))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -27,6 +33,12 @@ struct MarkdownView: View {
 private struct HelpBlockView: View {
     let block: HelpBlock
 
+    /// The width reserved for a list marker. Bullets and numbers share it so an unordered list and an
+    /// ordered one start their text on the same line, and a wrapped line hangs under the text rather
+    /// than under the marker.
+    private static let markerWidth: CGFloat = 22
+    private static let markerGap: CGFloat = 8
+
     var body: some View {
         switch block {
         case .heading(let level, let text):
@@ -34,7 +46,6 @@ private struct HelpBlockView: View {
                 .font(headingFont(level))
                 .fontWeight(level <= 2 ? .bold : .semibold)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, level == 1 ? 0 : 6)
                 .accessibilityAddTraits(.isHeader)
 
         case .paragraph(let text):
@@ -44,33 +55,33 @@ private struct HelpBlockView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
         case .bulleted(let items):
-            VStack(alignment: .leading, spacing: 6) {
+            // 10pt between items, because most items in this guide wrap: at the old 6pt the gap
+            // between two items was no larger than the gap inside one, and the list stopped reading
+            // as a list.
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    listRow {
                         Text("•")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .font(.callout.weight(.bold))
+                            .foregroundStyle(.tint)
+                            .frame(width: Self.markerWidth, alignment: .trailing)
+                    } content: {
                         inline(item)
-                            .font(.callout)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
                     }
                 }
             }
 
         case .numbered(let start, let items):
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(items.enumerated()), id: \.offset) { offset, item in
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    listRow {
                         Text("\(start + offset).")
                             .font(.callout)
                             .fontWeight(.semibold)
                             .foregroundStyle(.tint)
-                            .frame(width: 22, alignment: .trailing)
+                            .frame(width: Self.markerWidth, alignment: .trailing)
+                    } content: {
                         inline(item)
-                            .font(.callout)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
                     }
                 }
             }
@@ -90,23 +101,38 @@ private struct HelpBlockView: View {
                 Image(systemName: tone.systemImage)
                     .foregroundStyle(tone.colour)
                     .font(.callout)
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(inner.enumerated()), id: \.offset) { _, block in
+                    .accessibilityLabel(tone.accessibilityLabel)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(inner.enumerated()), id: \.offset) { index, block in
                         HelpBlockView(block: block)
+                            .padding(.top, HelpRhythm.space(before: block,
+                                                            after: index == 0 ? nil : inner[index - 1]))
                     }
                 }
                 Spacer(minLength: 0)
             }
             .padding(12)
-            .background(tone.colour.opacity(0.08))
+            .background(tone.colour.opacity(0.12))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(tone.colour.opacity(0.25), lineWidth: 1)
+                    .stroke(tone.colour.opacity(0.35), lineWidth: 1)
             )
 
         case .divider:
-            Divider().padding(.vertical, 2)
+            Divider()
+        }
+    }
+
+    /// A list row: a fixed-width marker, then the item's text.
+    private func listRow<Marker: View>(@ViewBuilder marker: () -> Marker,
+                                       @ViewBuilder content: () -> Text) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Self.markerGap) {
+            marker()
+            content()
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
     }
 
@@ -142,12 +168,25 @@ private extension HelpCallout {
         }
     }
 
+    /// Four tones that stay apart from each other on the dark background. `note` was `.secondary`,
+    /// which drew a grey box with a grey icon inside it — beside the orange and red ones it read as a
+    /// disabled control rather than as information, and six of the eight pages open with one.
     var colour: Color {
         switch self {
-        case .note: return .secondary
-        case .tip: return .blue
+        case .note: return .blue
+        case .tip: return .green
         case .warning: return .orange
         case .important: return .red
+        }
+    }
+
+    /// Spoken in place of the icon, so the tone survives for somebody who cannot see the colour.
+    var accessibilityLabel: String {
+        switch self {
+        case .note: return "Note"
+        case .tip: return "Tip"
+        case .warning: return "Warning"
+        case .important: return "Important"
         }
     }
 }

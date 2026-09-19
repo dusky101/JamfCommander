@@ -30,7 +30,9 @@ nonisolated enum HelpSection: Int, CaseIterable, Identifiable, Comparable, Senda
         switch self {
         case .gettingStarted: return "bolt.horizontal.circle"
         case .modules: return "square.grid.2x2"
-        case .reference: return "stethoscope"
+        // Was `stethoscope`, which reads as diagnostics: right for "If something fails" alone, wrong
+        // once this section also holds the API and roadmap pages.
+        case .reference: return "book.closed"
         }
     }
 

@@ -9,7 +9,7 @@ are scoped to, clones them, creates install policies, and deletes them — again
 instance you have configured.
 
 > **Important:** Every write lands on a real tenant and the Macs it manages. Deletion is permanent
-> from this app's point of view. Rehearse a bulk action against a non-production instance before you
+> from this app’s point of view. Rehearse a bulk action against a non-production instance before you
 > run it against the one your fleet is enrolled in.
 
 ## Using this guide
@@ -19,8 +19,8 @@ to find online and nothing to keep in step.
 
 - The list on the left is the whole index, grouped into sections.
 - The **search** box matches titles, summaries and the full text of every page, so you can look for
-  the words you would actually type — *403*, *unscoped*, *client secret* — rather than guessing a
-  heading.
+  the error code Jamf returned, the word on a badge, or the field you are filling in, rather than
+  guessing which heading it lives under. Results are listed with the closest match first.
 - **⌘?** opens this guide from anywhere, and it is in the sidebar footer beside Settings.
 
 ## Where to start

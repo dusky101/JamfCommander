@@ -2,7 +2,7 @@
 
 In Jamf Pro, go to **Settings → System → API roles and clients**.
 
-1. On the **API Roles** tab, choose **New**. Give the role a name such as "Jamf Commander", then add
+1. On the **API Roles** tab, choose **New**. Give the role a name such as “Jamf Commander”, then add
    the privileges listed in *Privileges* and save.
 2. On the **API Clients** tab, choose **New**. Give the client a display name, assign the role you
    just created, and set an access token lifetime — 30 minutes is ample.

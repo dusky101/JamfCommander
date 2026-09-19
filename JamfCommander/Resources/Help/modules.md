@@ -5,7 +5,8 @@ A tour of the sidebar, in the order it appears.
 ## Dashboard
 
 Fleet totals at a glance, each one clickable — a count opens its module. A total that could not be
-read shows — rather than 0, so a failed read never reads as an empty tenant.
+read shows a dash in place of a number, never a zero, so a failed read is never mistaken for an empty
+tenant.
 
 Also here: category management (create, rename, delete), device check-ins grouped by email domain,
 and **Export All**, which writes every CSV into a single ZIP.
@@ -24,8 +25,8 @@ a bulk action to realign policies whose two have drifted apart.
 The same pattern for macOS configuration profiles — inspect, move category, change scope, clone,
 delete and export.
 
-> **Note:** A profile's Scoped or Unscoped badge is worked out from its scope, not read from a field.
-> Jamf configuration profiles have no enabled/disabled flag at all, so "not enabled" never applies to
+> **Note:** A profile’s Scoped or Unscoped badge is worked out from its scope, not read from a field.
+> Jamf configuration profiles have no enabled/disabled flag at all, so “not enabled” never applies to
 > one.
 
 ## Blueprints
@@ -43,7 +44,7 @@ inspect hardware, OS, profiles, scripts, policies and User & Location; export to
 
 ## Packages
 
-Jamf's own package library, and uploading software Installomator has no label for. Three tabs:
+Jamf’s own package library, and uploading software Installomator has no label for. Three tabs:
 
 - **New** — drop a `.pkg`, `.mpkg`, `.dmg` or `.zip` onto the page, fill in the details, and the app
   creates the package record, uploads the file with progress, and creates the install policy. Each
@@ -52,7 +53,7 @@ Jamf's own package library, and uploading software Installomator has no label fo
 - **Deployed** — only the packages a policy actually installs, with the policy named on the row.
 
 The Deployed answer requires reading every policy, so it runs once, lazily, the first time you open a
-library tab — never for the New tab alone. While it runs, rows read "Checking…" rather than
+library tab — never for the New tab alone. While it runs, rows read “Checking…” rather than
 pretending a package is unused.
 
 ## Scripts
@@ -72,7 +73,7 @@ icon, scope and optional version pinning.
 A deployed policy whose label has since been **withdrawn upstream** is flagged **Missing** in amber.
 The policy still runs, but Installomator no longer recognises the label, so it fails on every Mac it
 reaches. Missing rows are the clean-up list: edit the policy to point at a current label, or remove
-it. "Explain This Label" on any row describes what that label will actually do on a Mac.
+it. “Explain This Label” on any row describes what that label will actually do on a Mac.
 
 ## Unused
 
@@ -85,7 +86,7 @@ category without changing whether they run. **Disable** applies to policies only
 from the Policies module. **Delete** is permanent and confirmed separately. Packages are reported
 only; removing a package record is done in Jamf.
 
-> **Note:** "Not scoped" means nothing is targeted — no computers, groups, buildings or departments.
+> **Note:** “Not scoped” means nothing is targeted — no computers, groups, buildings or departments.
 > Exclusions and limitations narrow a scope rather than create one, so they do not count as targets.
 > A scope that cannot be read at all is treated as scoped, so the audit errs towards leaving things
 > alone.

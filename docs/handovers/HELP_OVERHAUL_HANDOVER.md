@@ -1,7 +1,8 @@
 # Handover — Help overhaul
 
-**State at handover:** 19 September 2026, app version 8.5. Phase 1 is **committed**, and the window
-has now been opened once — see the table below for exactly how far that goes.
+**State at handover:** 19 September 2026, app version 8.5. Phase 1 is **committed**. **Phase 2a** —
+the layout and search defects found the first time all eight pages were read on screen — is done and
+verified but **not yet committed**. Phase 2b, the new content, has not started.
 
 Read this before touching anything in `Modules/Help/` or `Resources/Help/`.
 
@@ -37,19 +38,21 @@ directly and are unchanged.
 
 ## Proven — and what is NOT
 
-| Proven on screen | Never exercised |
+| Proven on screen | Still never exercised |
 | --- | --- |
-| The window opens; the index draws all three sections | **Search has never been run** |
-| Selecting a topic renders its page | Seven of the eight pages have not been read |
-| Headings, paragraphs, bullets and callouts render | `HelpPresenter.present(_:)` — nothing calls it |
-| `welcome.md` reads correctly end to end | The empty-search-result state |
+| All eight pages read end to end, at 900×900 and at 1500×1204 | `HelpPresenter.present(_:)` — nothing calls it |
+| Search run for "403", "unscoped", "client secret" and a miss | Printing, and Save as PDF (deferred — see below) |
+| The empty-search-result state | A light-appearance rendering (the app forces dark) |
+| Keyboard paging: Page Down and Home move the page | |
+| The sheet tracks the window it is presented on | |
 
 Every page now parses with balanced inline emphasis, checked by compiling `HelpMarkdown.swift`
 standalone and running it over all eight files. That proves the *parser*, not the *rendering*: a
 block can parse perfectly and still look wrong.
 
-The maintainer's verdict on first sight was "good but not great", with no specifics — so the layout
-is unfinished, not broken. Read all eight pages and form your own view before changing anything.
+The maintainer's verdict on first sight was "good but not great", with no specifics. All eight pages
+were then read on screen and the specifics turned out to be six things, fixed in phase 2a — see
+below.
 
 ### Found the first time the window was opened
 
@@ -81,7 +84,45 @@ Two consequences:
 2. **A help file's name must be unique across every resource in the app.** `JamfCommander/README.md`
    is already swept into the same flat directory, so `Resources/Help/README.md` would collide.
 
-## What phase 2 has to do
+## What phase 2a fixed, and what it proved
+
+Reading every page at two window sizes, and running the search, turned "good but not great" into a
+list. All of the following were seen on screen before and after.
+
+- **The sheet ignored the window.** `minWidth: 820, idealWidth: 980, maxWidth: .infinity` settles a
+  sheet on its *minimum*: the guide drew at ~820×785pt whether the window was 1428pt wide or 1500,
+  marooned in the middle with a third of the window empty. `.presentationSizing(.page)` was tried and
+  only fixed the height. It now measures the window it is attached to — `HostWindowSizeReader` in
+  `HelpView.swift` — and sizes to it. **The trap:** `window.sheetParent` is nil in
+  `viewDidMoveToWindow`, so a first attempt measured the sheet's own window and never corrected;
+  resolve the host one run-loop turn later.
+- **Headings floated.** A uniform `VStack(spacing: 14)` gave 20pt over a heading and 14pt under it,
+  so it belonged to neither section. Spacing is now per block — `HelpRhythm.swift`, a new file — and a
+  heading gets 26pt over and 8pt under.
+- **Lists were unscannable.** 6pt between items, and most items wrap, so the gap between two items
+  matched the gap inside one. Now 10pt, with a shared 22pt marker column so bullets and numbers line
+  up and wrapped lines hang under the text.
+- **`note` callouts read as disabled** — `Color.secondary` drew a grey icon in a grey box. The four
+  tones are now blue, green, orange, red, each with its own symbol and an accessibility label.
+- **Search ranked the wrong page first**, in two separate ways. `groups(for:)` promoted every match
+  in a section to sit beside that section's best match, so "403" put Welcome (score 1) above the
+  troubleshooting page (score 6). Search now draws a **flat ranked list** with a result count;
+  `groups(for:)` is for browsing only. Separately, `welcome.md` advertised *403*, *unscoped* and
+  *client secret* as example searches, which put all three in its own searchable body and made it a
+  false hit for the three terms it invited people to try. That sentence has been reworded.
+- **Search did not move the page**, and the empty-result message was drawn *below* a full-height
+  empty list, hundreds of points from the search box. The page now follows the best match when the
+  open topic drops out of the results, and the message sits where the list would be.
+- **The page could not be scrolled from the keyboard.** `.focusable()` alone is not enough on macOS —
+  Page Down, the arrow keys and the space bar all did nothing. `HelpPage` now wires them against
+  `onScrollGeometryChange` and `ScrollPosition`.
+
+Also fixed: the guide had no title (the index column now carries one); `stethoscope` for the
+Reference section became `book.closed`; straight quotes and apostrophes across all eight pages became
+typographic ones; and `modules.md` said a failed Dashboard read "shows — rather than 0", which is not
+a sentence.
+
+## What phase 2b has to do
 
 Phase 1 deliberately ported the *existing* content and invented almost none, so that it is a pure
 mechanism change and any difference on screen is a rendering bug rather than a rewrite. Phase 2 is
@@ -119,15 +160,26 @@ authored for search — the words an administrator types that the title does not
 - The parser handles headings, paragraphs, `-`/`*` bullets, ordered lists, fenced code, blockquote
   callouts and `---`. It does **not** do tables, nested lists or images. Inline bold, italic, code
   spans and links work, because paragraphs go through `AttributedString(markdown:)`.
+- **What the unsupported shapes actually do.** Checked by compiling `HelpMarkdown.swift` standalone
+  and running these through it. None of them fails loudly, which is what makes them dangerous:
+  - An **indented sub-bullet is silently flattened into a sibling**. `- Top` / `  - Child` parses to
+    one flat list. The hierarchy simply disappears; nothing on screen says so.
+  - A **table becomes one run-on paragraph** — `| Column | Other | | --- | --- | | a | b |`, on
+    screen, verbatim. Not graceful degradation. Worth knowing because *Privileges* is the page most
+    naturally written as a table.
+  - A **sub-bullet inside an ordered list splits it into three blocks** — `1.`/`2.`, then a
+    full-width bullet list, then `3.`. The numbering correctly resumes at 3, but it looks broken.
 - Every page should open with `# Title` matching its `HelpTopic.title`, so the page and the index
   agree.
 
 ## Open questions
 
-1. **Sheet or window?** Help is still a sheet, so it cannot be left open beside the thing it
-   describes — which is what reference material is for. The reference app uses a separate `Window`
-   scene. Deliberately not changed in phase 1: it affects both entry points (sidebar footer and ⌘?)
-   and is a decision, not a detail.
+1. **Sheet or window?** Still open, and still the maintainer's call. Help is a sheet, so it cannot
+   be left open beside the thing it describes — which is what reference material is for. The
+   reference app uses a separate `Window` scene. It affects both entry points (sidebar footer and
+   ⌘?) and is a decision, not a detail. Phase 2a fixed the *size* complaint without touching this:
+   the sheet now tracks the window. `HostWindowSizeReader` already falls back to `window` when there
+   is no `sheetParent`, so it keeps working if this ever becomes a scene.
 2. **Figures.** The reference app renders live in-app diagrams from a ```figure``` fence, so the
    guide shows the real thing and cannot drift. ~300 lines plus one view per figure. Omitted from
    phase 1; `HelpBlock` has no `figure` case, so adding it means touching the parser.
@@ -136,16 +188,16 @@ authored for search — the words an administrator types that the title does not
    hover hints (`SidebarHint`) — decide which is the source of truth before both exist.
 4. **Does help need the unofficial/disclaimer note?** `welcome.md` currently carries one paragraph
    saying the app is not affiliated with Jamf. Check that is the wording he wants.
-5. **Print, and Save as PDF.** The maintainer asked for the guide to be saveable as a PDF — to hand
-   the *Privileges* page to a security team, or the setup pages to a customer, without them needing
-   the app. Full background and traps: `docs/roadmap/HELP_PDF_EXPORT.md`.
+5. **Print, and Save as PDF.** **Asked and answered on 19 September 2026: not now.** The maintainer
+   was offered a `⌘P` Print command in phase 2 and said to leave it and make the guide complete
+   first. It stays a roadmap entry — `docs/roadmap/HELP_PDF_EXPORT.md` — and the background below is
+   kept for whoever picks it up.
 
-   **Try a Print command first.** macOS gives **Save as PDF** free from the standard print dialog,
-   so `⌘P` on the help window may deliver the whole request for a fraction of a bespoke exporter.
-   Ask him before building it — it is his call whether it belongs in phase 2 — and if he says yes,
-   two things decide whether it is small or not:
+   macOS gives **Save as PDF** free from the standard print dialog, so `⌘P` on the help window may
+   deliver the whole request for a fraction of a bespoke exporter. Two things decide whether it is
+   small or not:
 
-   - `MarkdownView` renders into a `ScrollView`, which does not paginate. Printing an
+   - `HelpPage` renders into a `ScrollView`, which does not paginate. Printing an
      `NSHostingView` of the page is the cheap route; making sure a callout or a numbered list is not
      cut in half by a page break is the part that is not cheap.
    - The guide's stated advantage is that it ships with the app and always matches the build. A PDF

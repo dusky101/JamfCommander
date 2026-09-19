@@ -23,7 +23,7 @@ Connection**. Once saved, the app reconnects automatically each launch.
 
 ## Blueprints needs different credentials
 
-The Blueprints module does **not** use the API client above. Blueprints are served by Jamf's Platform
+The Blueprints module does **not** use the API client above. Blueprints are served by Jamf’s Platform
 API Gateway, which is a different host with its own integration, created in **Jamf Account** rather
 than in Jamf Pro. A Jamf Pro API client cannot reach it, whatever privileges you give it.
 

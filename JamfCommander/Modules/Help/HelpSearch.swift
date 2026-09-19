@@ -64,14 +64,17 @@ nonisolated enum HelpSearch {
         }
     }
 
-    /// The index as the view draws it: the sections that have a match, **in relevance order**, each
-    /// with its matching topics.
+    /// The index grouped into its sections, in the order the topics arrive.
     ///
-    /// Ranking `filter`'s output is not enough on its own. A sectioned list that iterated
-    /// `HelpSection.allCases` and filtered per section would fix the section order, so the relevance
-    /// order would only ever apply *within* a section and the ranking would never reach the screen.
-    /// A section's rank here is its best topic's rank — its first appearance in an already-ranked
-    /// list — so the two orders cannot disagree and no second scoring pass is needed.
+    /// This is the **browsing** index — the whole manifest, in manifest order. It is deliberately not
+    /// used for search results any more.
+    ///
+    /// Grouping and ranking cannot both be honoured. A section's rank here is its best topic's rank,
+    /// which sounds right and is not: every *other* match in that section is then promoted to sit
+    /// beside it, regardless of its own score. Searching "403" ranked Welcome — a single incidental
+    /// match in its body, score 1 — above the troubleshooting page that scored 6, purely because
+    /// Welcome shares a section with the top hit. Search now draws a flat, ranked list instead, so
+    /// the order on screen is the order `filter` computed.
     static func groups(for matches: [HelpTopic]) -> [(section: HelpSection, topics: [HelpTopic])] {
         var order: [HelpSection] = []
         var bySection: [HelpSection: [HelpTopic]] = [:]

@@ -141,4 +141,10 @@ Three handovers exist in `docs/handovers/`:
   them. That merge rule lives in `SettingsTransfer.importConfiguration(mergingInto:)` and is the part
   worth re-checking if you touch it.
 
-Not proven: most of the help guide's rendering — see `docs/handovers/HELP_OVERHAUL_HANDOVER.md`.
+- **The help guide's rendering** (19 September 2026). All eight pages read on screen at two window
+  sizes, search run for "403", "unscoped", "client secret" and a term that matches nothing, and
+  keyboard paging exercised. Phase 2a fixed what that reading found. Still unexercised:
+  `HelpPresenter.present(_:)`, which nothing calls.
+
+Not proven: the guide's new per-module content, which has not been written yet — see
+`docs/handovers/HELP_OVERHAUL_HANDOVER.md`.
