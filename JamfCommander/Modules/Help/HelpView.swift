@@ -58,8 +58,11 @@ struct HelpView: View {
     /// window, and capped so it does not become an unreadably wide measure on a large display.
     private var sheetSize: CGSize {
         guard let hostSize else { return CGSize(width: 900, height: 700) }
-        return CGSize(width: min(max(hostSize.width - 120, 820), 1400),
-                      height: min(max(hostSize.height - 100, 520), 1100))
+        // The cap is what the guide actually needs, not what the window can spare: an index of
+        // about 270pt plus a 620pt measure and its padding comes to roughly a thousand. At the
+        // previous 1400 the page was a narrow column of text stranded in an acre of empty pane.
+        return CGSize(width: min(max(hostSize.width - 120, 820), 1040),
+                      height: min(max(hostSize.height - 100, 520), 1000))
     }
 
     private var selectedTopic: HelpTopic? {

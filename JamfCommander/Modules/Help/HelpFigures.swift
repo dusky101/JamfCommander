@@ -30,23 +30,16 @@ nonisolated enum HelpFigures {
         "help-index",
         "sidebar",
         "dashboard-tiles",
-        "bulk-actions",
+        "policy-row",
+        "profile-row",
         "status-badges",
+        "bulk-actions",
+        "single-action-bar",
         "blueprint-row",
-        "computer-row",
-        "package-tabs",
-        "script-parameters",
+        "package-row",
         "label-states",
-        "unused-reasons",
-        "connection-settings",
-        "platform-settings",
-        "installomator-deploy",
-        "version-pinning",
-        "package-upload",
-        "clone-options",
+        "unused-rows",
         "unused-actions",
-        "blueprint-editor",
-        "computer-inspector",
     ]
 
     /// Figures drawn straight onto the page, with no card around them.
@@ -67,41 +60,27 @@ nonisolated enum HelpFigures {
         case "sidebar":
             return "The app's sidebar, listing every module in its own colour."
         case "dashboard-tiles":
-            return "Dashboard tiles: a count, a tile still loading, and one showing a dash because it could not be read."
-        case "bulk-actions":
-            return "The bulk action panel that replaces the filter bar when rows are selected."
+            return "Dashboard tiles: a count, one still counting, and one showing a dash because it could not be read."
+        case "policy-row":
+            return "A policy row: its icon, name, ID, category and status badge."
+        case "profile-row":
+            return "Two profile rows, one scoped and one unscoped."
         case "status-badges":
             return "The Scoped and Unscoped badges, each with its own symbol as well as its own colour."
+        case "bulk-actions":
+            return "The bulk action panel that replaces the filter bar when several rows are selected."
+        case "single-action-bar":
+            return "The action bar for one selected policy, named for that policy rather than a count."
         case "blueprint-row":
-            return "A blueprint row, with the deployment state the server reports."
-        case "computer-row":
-            return "A computer row: name, serial number and assigned user."
-        case "package-tabs":
-            return "The Packages tabs — New, Uploaded and Deployed — with a row still being checked."
-        case "script-parameters":
-            return "Script parameter labels four to eleven, as Installomator expects them."
+            return "Blueprint rows, with the deployment state the server reports."
+        case "package-row":
+            return "A package row from Jamf's library."
         case "label-states":
-            return "The four Installomator views, and a row flagged Missing."
-        case "unused-reasons":
-            return "The Unused audit's reason filters, one per reason a row can be listed."
-        case "connection-settings":
-            return "Settings: the instance URL, client ID and client secret, then Initialise Connection."
-        case "platform-settings":
-            return "The Platform API fields for Blueprints: region, environment ID, client ID and secret, and Test Connection."
-        case "installomator-deploy":
-            return "The deployment sheet's six numbered steps: category, script, name template, Self Service, scope and version pinning."
-        case "version-pinning":
-            return "Version pinning: the versions field, the override rows, the policies it will create, and the warning."
-        case "package-upload":
-            return "The three steps of a package upload: the package record, the file, and the install policy."
-        case "clone-options":
-            return "The clone options: strip scope, strip triggers, set frequency, and turn Self Service off."
+            return "The four Installomator views, and rows in the deployed, available and missing states."
+        case "unused-rows":
+            return "Unused audit rows, each showing the reason it was listed."
         case "unused-actions":
-            return "The Unused audit's three actions, ordered by how easily each can be undone."
-        case "blueprint-editor":
-            return "The blueprint editor: the JSON, the three scope choices, and the DDM wrap panel."
-        case "computer-inspector":
-            return "The computer inspector's tabs."
+            return "The Unused audit's action bar, its columns ordered by how easily each undoes."
         default:
             return "Illustration"
         }
@@ -132,23 +111,16 @@ struct HelpFigureView: View {
         case "help-index": HelpIndexFigure()
         case "sidebar": SidebarFigure()
         case "dashboard-tiles": DashboardTilesFigure()
-        case "bulk-actions": BulkActionsFigure()
+        case "policy-row": PolicyRowFigure()
+        case "profile-row": ProfileRowFigure()
         case "status-badges": StatusBadgesFigure()
+        case "bulk-actions": BulkActionsFigure()
+        case "single-action-bar": SingleActionBarFigure()
         case "blueprint-row": BlueprintRowFigure()
-        case "computer-row": ComputerRowFigure()
-        case "package-tabs": PackageTabsFigure()
-        case "script-parameters": ScriptParametersFigure()
+        case "package-row": PackageRowFigure()
         case "label-states": LabelStatesFigure()
-        case "unused-reasons": UnusedReasonsFigure()
-        case "connection-settings": ConnectionSettingsFigure()
-        case "platform-settings": PlatformSettingsFigure()
-        case "installomator-deploy": InstallomatorDeployFigure()
-        case "version-pinning": VersionPinningFigure()
-        case "package-upload": PackageUploadFigure()
-        case "clone-options": CloneOptionsFigure()
+        case "unused-rows": UnusedRowsFigure()
         case "unused-actions": UnusedActionsFigure()
-        case "blueprint-editor": BlueprintEditorFigure()
-        case "computer-inspector": ComputerInspectorFigure()
         default: MissingFigure(id: id)
         }
     }
@@ -384,243 +356,284 @@ private struct HelpIndexFigure: View {
 
 // MARK: - Module figures
 
-/// Three Dashboard tiles, showing the three things a tile can say.
+
+/// The bulk action panel, built from the **real** components.
 ///
-/// Colours and symbols come from `AppModule`, so they are the tiles you actually have.
-private struct DashboardTilesFigure: View {
-    var body: some View {
-        HStack(spacing: 12) {
-            tile(.policies, value: .init(text: "249"))
-            tile(.redundant, value: .init(text: "14", isCounting: true))
-            tile(.blueprints, value: .init(text: "—", isDimmed: true))
-        }
-    }
-
-    private struct Value {
-        var text: String
-        var isCounting = false
-        var isDimmed = false
-    }
-
-    private func tile(_ module: AppModule, value: Value) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                ZStack {
-                    Circle()
-                        .fill(module.accentColour.opacity(0.15))
-                        .frame(width: 28, height: 28)
-                    Image(systemName: module.icon)
-                        .font(.system(size: 13))
-                        .foregroundStyle(module.accentColour)
-                }
-                Spacer(minLength: 0)
-                if value.isCounting {
-                    Circle()
-                        .trim(from: 0, to: 0.7)
-                        .stroke(Color.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                        .frame(width: 11, height: 11)
-                }
-                Text(value.text)
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundStyle(value.isDimmed ? Color.secondary : Color.primary)
-            }
-            Text(module.rawValue)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(11)
-        .frame(width: 132, alignment: .leading)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.6), in: .rect(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
-    }
-}
-
-/// The bulk action panel that replaces the filter bar the moment anything is selected.
+/// `ActionBarColumn`, `SoftIconLabel` and `.appBarBackground()` are the same types
+/// `ActionPanelView` uses, and the tints are the ones it passes. That is the difference between a
+/// figure and a drawing: the first version of this was drawn by hand from memory and showed a row
+/// of small tinted capsules with the action names beside them, which is not what the panel looks
+/// like at all — it is a name *above* a large soft button, in equal-width columns, on the app's
+/// elevated bar background. The maintainer spotted it immediately.
+///
+/// Buttons are not used here — a figure must not be clickable — so the labels are drawn directly.
 private struct BulkActionsFigure: View {
     var body: some View {
-        HStack(spacing: 8) {
-            Text("3 selected")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.trailing, 2)
-            action("Move Category", "folder", .blue)
-            action("Scope", "target", .purple)
-            action("Clone", "doc.on.doc", .teal)
-            // Delete is the only one that is not reversible, and it is drawn that way.
-            action("Delete", "trash", .red)
-        }
-        .padding(9)
-        .background(.bar, in: .rect(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
-    }
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Bulk Actions", systemImage: "checklist")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Text("3 items selected")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fontDesign(.monospaced)
+                Spacer(minLength: 12)
+                Label("Cancel Selection", systemImage: "xmark.circle")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .frame(width: 130, alignment: .leading)
 
-    private func action(_ title: String, _ symbol: String, _ tint: Color) -> some View {
-        Label(title, systemImage: symbol)
-            .font(.caption)
-            .foregroundStyle(tint)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(tint.opacity(0.14), in: .capsule)
+            Divider()
+
+            ActionBarColumn(title: "Move to Category") {
+                SoftIconLabel(systemImage: "folder", tint: .indigo)
+            }
+            ActionBarColumn(title: "Match Self Service Category") {
+                SoftIconLabel(systemImage: "arrow.triangle.2.circlepath", tint: .teal)
+            }
+            ActionBarColumn(title: "Edit Policies (3)") {
+                SoftIconLabel(systemImage: "slider.horizontal.3", tint: .indigo)
+            }
+            ActionBarColumn(title: "Clone Selected (3)") {
+                SoftIconLabel(systemImage: "doc.on.doc", tint: .purple)
+            }
+            ActionBarColumn(title: "Delete Selection") {
+                SoftIconLabel(systemImage: "trash.fill", tint: .red)
+            }
+        }
+        .padding(16)
+        .frame(width: 620)
+        .appBarBackground(cornerRadius: 16)
     }
 }
 
-/// The two badges a profile or policy row can carry, from `JamfItemStatus` itself.
+/// The two badges a row can carry — the **real** `StatusBadge`, not a copy of it.
 ///
-/// Both cases are drawn, side by side, because the point is that they differ by **symbol** as well
-/// as colour — nothing in this app tells you something by colour alone.
+/// Both cases are drawn side by side because the point is that they differ by **symbol** as well as
+/// colour: nothing in this app tells you something by colour alone.
 private struct StatusBadgesFigure: View {
     var body: some View {
         HStack(spacing: 14) {
             ForEach([JamfItemStatus.active, .inactive]) { status in
-                Label(status.rawValue, systemImage: status.icon)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(status.color)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(status.color.opacity(0.15), in: .capsule)
+                StatusBadge(status: status)
             }
         }
     }
 }
 
-/// A blueprint row, with the deployment state the server reports rather than one the app assumed.
-private struct BlueprintRowFigure: View {
+
+
+
+
+
+
+/// The single-item action bar: the same columns, named for one object rather than a selection.
+private struct SingleActionBarFigure: View {
     var body: some View {
-        VStack(spacing: 6) {
-            row(name: "Passcode policy", state: "Deployed", tint: .green)
-            row(name: "Extensible SSO", state: "Not Deployed", tint: .secondary)
-        }
-        .frame(width: 320)
-    }
-
-    private func row(name: String, state: String, tint: Color) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: AppModule.blueprints.icon)
-                .font(.caption)
-                .foregroundStyle(AppModule.blueprints.accentColour)
-            Text(name).font(.callout)
-            Spacer(minLength: 0)
-            Text(state)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(tint)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(tint.opacity(0.15), in: .capsule)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.6), in: .rect(cornerRadius: 8))
-    }
-}
-
-/// A computer row — what you can search on, shown as what you would search for.
-private struct ComputerRowFigure: View {
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: AppModule.computers.icon)
-                .font(.callout)
-                .foregroundStyle(AppModule.computers.accentColour)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("MAC-C02DR4J3Q6LT").font(.callout)
-                Text("C02DR4J3Q6LT · a.admin@yourcompany.co.uk")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            Label("Active", systemImage: "circle.fill")
-                .font(.caption2)
-                .foregroundStyle(.green)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .frame(width: 340)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.6), in: .rect(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
-        )
-    }
-}
-
-/// The three Packages tabs, and a row still being checked.
-private struct PackageTabsFigure: View {
-    private let tabs = ["New", "Uploaded", "Deployed"]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 0) {
-                ForEach(Array(tabs.enumerated()), id: \.offset) { index, tab in
-                    Text(tab)
-                        .font(.caption.weight(index == 1 ? .semibold : .regular))
-                        .foregroundStyle(index == 1 ? Color.primary : Color.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 5)
-                        .background {
-                            if index == 1 {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color(nsColor: .windowBackgroundColor))
-                            }
-                        }
-                }
-            }
-            .padding(2)
-            .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 8))
-
-            HStack(spacing: 10) {
-                Image(systemName: AppModule.packages.icon)
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Policy", systemImage: AppModule.policies.icon)
+                    .font(.headline)
+                Text("Cursorai")
                     .font(.caption)
-                    .foregroundStyle(AppModule.packages.accentColour)
-                Text("SomeTool-2.4.pkg").font(.callout)
-                Spacer(minLength: 0)
-                // The honest state while the estate scan runs — never "unused".
-                Text("Checking…")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
+                Text("ID: 144")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fontDesign(.monospaced)
+                Spacer(minLength: 12)
+                Label("Cancel Selection", systemImage: "xmark.circle")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(width: 300)
-            .background(Color(nsColor: .windowBackgroundColor).opacity(0.6), in: .rect(cornerRadius: 8))
+            .frame(width: 130, alignment: .leading)
+
+            Divider()
+
+            ActionBarColumn(title: "Move to Category") {
+                SoftIconLabel(systemImage: "folder", tint: .indigo)
+            }
+            ActionBarColumn(title: "Match Self Service Category") {
+                SoftIconLabel(systemImage: "arrow.triangle.2.circlepath", tint: .teal)
+            }
+            ActionBarColumn(title: "Edit Policy") {
+                SoftIconLabel(systemImage: "slider.horizontal.3", tint: .indigo)
+            }
+            ActionBarColumn(title: "Clone Policy") {
+                SoftIconLabel(systemImage: "doc.on.doc", tint: .purple)
+            }
+            ActionBarColumn(title: "Delete Policy") {
+                SoftIconLabel(systemImage: "trash.fill", tint: .red)
+            }
         }
+        .padding(16)
+        .frame(width: 620)
+        .appBarBackground(cornerRadius: 16)
     }
 }
 
-/// Script parameter labels, as the Installomator module expects to find them.
-private struct ScriptParametersFigure: View {
-    private let rows: [(String, String)] = [
-        ("Parameter 4", "Label"),
-        ("Parameter 5", "Option"),
-        ("Parameter 6", "Option"),
-        ("Parameters 7–11", "Override"),
-    ]
+// MARK: - Workflow figures
+//
+// These are the figures that explain a *job* rather than name a control: the deployment sheet, the
+// upload, version pinning. Each carries `FigureMarker`s, and the prose beside it points at them by
+// number, so a paragraph can name one field out of a dozen without describing where it sits.
+
+
+
+
+
+
+
+/// The Unused audit's action bar — the same shared components, with its own three actions.
+///
+/// Its columns are ordered by how easily each can be undone, which is the module's whole argument:
+/// **Move to Category** first because it changes nothing but where a thing is filed, **Disable**
+/// next because Policies can put it back, **Delete** last because nothing can.
+private struct UnusedActionsFigure: View {
+    var body: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Bulk Actions", systemImage: "checklist")
+                    .font(.headline)
+                Text("3 items selected")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fontDesign(.monospaced)
+                Spacer(minLength: 12)
+                Label("Cancel Selection", systemImage: "xmark.circle")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .frame(width: 130, alignment: .leading)
+
+            Divider()
+
+            ActionBarColumn(title: "Move to Category") {
+                SoftIconLabel(systemImage: "folder", tint: .indigo)
+            }
+            ActionBarColumn(title: "Disable (2)") {
+                SoftIconLabel(systemImage: "pause.circle", tint: .orange)
+            }
+            ActionBarColumn(title: "Delete Selection") {
+                SoftIconLabel(systemImage: "trash.fill", tint: .red)
+            }
+        }
+        .padding(16)
+        .frame(width: 560)
+        .appBarBackground(cornerRadius: 16)
+    }
+}
+
+
+
+// MARK: - Figures built from the module's own views
+//
+// Every figure below instantiates the **real** view the module uses, with sample data. Nothing here
+// re-draws a row: `PolicyCardView`, `ProfileCardView`, `PackageCardView`, `BlueprintCardView`,
+// `RedundantRowView` and `StatCard` all take a model and no service, which is what makes this
+// possible — and what makes these figures unable to drift. The first pass at this guide drew several
+// of them by hand and they were wrong in ways nobody would notice until a reader did.
+
+/// Dashboard tiles — the real `StatCard`, in the three states a tile can be in.
+private struct DashboardTilesFigure: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            StatCard(title: "Policies", count: 249,
+                     icon: AppModule.policies.icon, color: .moduleMagenta)
+            StatCard(title: "Unused", count: 14,
+                     icon: AppModule.redundant.icon, color: .moduleRose,
+                     detail: "Items to review", isLoading: true)
+            StatCard(title: "Blueprints", count: nil,
+                     icon: AppModule.blueprints.icon, color: .moduleCyan)
+        }
+        .frame(width: 560)
+    }
+}
+
+/// A policy row — `PolicyCardView`, exactly as the list draws it.
+private struct PolicyRowFigure: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            PolicyCardView(policy: Policy(id: 143, name: "Claude Desktop",
+                                          categoryId: 1, categoryName: "AI Tools",
+                                          enabled: true, scope: nil,
+                                          scopeTargetsAnything: true),
+                           categoryName: "AI Tools")
+            PolicyCardView(policy: Policy(id: 205, name: "Install Github Copilot",
+                                          categoryId: 1, categoryName: "AI Tools",
+                                          enabled: false, scope: nil,
+                                          scopeTargetsAnything: false),
+                           categoryName: "AI Tools")
+        }
+        .frame(width: 560)
+    }
+}
+
+/// Two profile rows — `ProfileCardView` — one scoped, one not.
+private struct ProfileRowFigure: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            ProfileCardView(profile: ConfigProfile(id: 61, name: "FileVault Escrow",
+                                                   categoryName: "Management",
+                                                   isActive: true),
+                            categoryName: "Management")
+            ProfileCardView(profile: ConfigProfile(id: 74, name: "Legacy Wi-Fi",
+                                                   categoryName: "Network Settings",
+                                                   isActive: false),
+                            categoryName: "Network Settings")
+        }
+        .frame(width: 560)
+    }
+}
+
+/// Blueprint rows — `BlueprintCardView`, with the state the server reports.
+///
+/// `Blueprint` has a custom `init(from:)` rather than a memberwise one, so the samples are **decoded
+/// from JSON** here. That is a feature, not a workaround: the figure's data goes through exactly the
+/// decoding path a real blueprint does, so a change to the coding keys breaks the figure too.
+///
+/// The card's actions are closures; a figure is not interactive, so they are empty and the whole
+/// card is behind `allowsHitTesting(false)` in `HelpFigureCard`.
+private struct BlueprintRowFigure: View {
+    private static func sample(_ json: String) -> Blueprint? {
+        try? JSONDecoder().decode(Blueprint.self, from: Data(json.utf8))
+    }
+
+    private static let samples: [Blueprint] = [
+        sample(#"{"id":"b1","name":"Passcode policy","description":"Minimum length and grace period","deploymentState":"DEPLOYED"}"#),
+        sample(#"{"id":"b2","name":"Extensible SSO","description":"Platform SSO for the identity provider"}"#),
+    ].compactMap { $0 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                HStack(spacing: 10) {
-                    Text(row.0)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 110, alignment: .leading)
-                    Text(row.1)
-                        .font(.system(.caption, design: .monospaced))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(AppModule.scripts.accentColour.opacity(0.15), in: .rect(cornerRadius: 5))
-                }
+        VStack(spacing: 8) {
+            ForEach(Self.samples) { blueprint in
+                BlueprintCardView(blueprint: blueprint,
+                                  onInspect: {}, onEdit: {},
+                                  onDeploy: {}, onUndeploy: {}, onDelete: {})
             }
         }
-        .frame(width: 260, alignment: .leading)
+        .frame(width: 560)
     }
 }
 
-/// The four Installomator views, from `PackageViewMode` itself, and a row flagged Missing.
+/// A package row from Jamf's library — the same `PackageCardView` the library list uses.
+private struct PackageRowFigure: View {
+    var body: some View {
+        PackageCardView(item: InstallomatorItem(
+            label: "1password8", displayName: "1Password 8",
+            isDeployed: true, policyID: 88, policyName: "Install 1Password 8",
+            categoryName: "Security", enabled: true, pinnedVersion: nil,
+            existingPolicyName: nil, labelExistsUpstream: true), isSelected: false)
+        .frame(width: 560)
+    }
+}
+
+/// The four Installomator views, and what a row looks like in three of the states.
+///
+/// The view picker iterates `PackageViewMode.allCases`; the rows are `PackageCardView`, so the
+/// status colour and symbol on each come from `InstallomatorItem` itself rather than from a guess.
 private struct LabelStatesFigure: View {
     private let selected: PackageViewMode = .missing
 
@@ -633,410 +646,51 @@ private struct LabelStatesFigure: View {
                         .foregroundStyle(mode == selected ? Color.primary : Color.secondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
-                        .background(
-                            AppModule.installomator.accentColour
-                                .opacity(mode == selected ? 0.20 : 0.06),
-                            in: .capsule
-                        )
+                        .background(AppModule.installomator.accentColour
+                                        .opacity(mode == selected ? 0.20 : 0.06),
+                                    in: .capsule)
                 }
             }
 
-            HStack(spacing: 10) {
-                Image(systemName: AppModule.installomator.icon)
-                    .font(.caption)
-                    .foregroundStyle(AppModule.installomator.accentColour)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Adobe Acrobat Reader").font(.callout)
-                    Text("Not in the Installomator label list")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-                Spacer(minLength: 0)
-                Text("Missing")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.orange.opacity(0.16), in: .capsule)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Color(nsColor: .windowBackgroundColor).opacity(0.6), in: .rect(cornerRadius: 8))
+            PackageCardView(item: InstallomatorItem(
+                label: "googlechrome", displayName: "Google Chrome",
+                isDeployed: true, policyID: 12, policyName: "Install Google Chrome",
+                categoryName: "Web", enabled: true, pinnedVersion: nil,
+                existingPolicyName: nil, labelExistsUpstream: true), isSelected: false)
+
+            PackageCardView(item: InstallomatorItem(
+                label: "adobeacrobatreader", displayName: "Adobe Acrobat Reader",
+                isDeployed: true, policyID: 44, policyName: "Install Adobe Acrobat Reader",
+                categoryName: "Creative Apps", enabled: true, pinnedVersion: nil,
+                existingPolicyName: nil, labelExistsUpstream: false), isSelected: false)
+
+            PackageCardView(item: InstallomatorItem(
+                label: "slack", displayName: "Slack",
+                isDeployed: false, policyID: nil, policyName: nil,
+                categoryName: nil, enabled: false, pinnedVersion: nil,
+                existingPolicyName: nil, labelExistsUpstream: true), isSelected: false)
         }
-        .frame(width: 360, alignment: .leading)
+        .frame(width: 560, alignment: .leading)
     }
 }
 
-/// Every reason a row can be listed in the Unused audit, straight from `RedundantReason`.
-///
-/// Iterating `allCases` means a new reason appears here the day it is added, with its own symbol and
-/// colour, and the explanation under each is the enum's own `explanation` — the same words the audit
-/// puts on the row.
-private struct UnusedReasonsFigure: View {
+/// Unused audit rows — `RedundantRowView`, one per reason, each carrying its own `ReasonBadge`.
+private struct UnusedRowsFigure: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(RedundantReason.allCases) { reason in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Label(reason.rawValue, systemImage: reason.icon)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(reason.colour)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(reason.colour.opacity(0.15), in: .capsule)
-                        .frame(width: 130, alignment: .leading)
-
-                    Text(reason.explanation)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+        VStack(spacing: 8) {
+            RedundantRowView(item: RedundantItem(
+                kind: .policy, jamfID: "31", name: "Old onboarding script",
+                categoryName: "Onboarding", reasons: [.notEnabled],
+                isEnabled: false, isInstallomator: false))
+            RedundantRowView(item: RedundantItem(
+                kind: .profile, jamfID: "74", name: "Legacy Wi-Fi",
+                categoryName: "Network Settings", reasons: [.notScoped],
+                isEnabled: nil, isInstallomator: false))
+            RedundantRowView(item: RedundantItem(
+                kind: .package, jamfID: "102", name: "SomeTool-2.4.pkg",
+                categoryName: "Utilities and tools", reasons: [.notAttached],
+                isEnabled: nil, isInstallomator: false), isSelectable: false)
         }
-        .frame(width: 420, alignment: .leading)
-    }
-}
-
-// MARK: - Workflow figures
-//
-// These are the figures that explain a *job* rather than name a control: the deployment sheet, the
-// upload, version pinning. Each carries `FigureMarker`s, and the prose beside it points at them by
-// number, so a paragraph can name one field out of a dozen without describing where it sits.
-
-/// Settings → Jamf Connections, in the order you fill it in.
-private struct ConnectionSettingsFigure: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            MarkedRow(marker: "1") { field("Instance URL", "https://yourcompany.jamfcloud.com") }
-            MarkedRow(marker: "2") { field("Client ID", "a1b2c3d4-…") }
-            MarkedRow(marker: "3") { field("Client Secret", "••••••••••••") }
-            MarkedRow(marker: "4") {
-                Text("Initialise Connection")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(Color.accentColor, in: .capsule)
-            }
-        }
-        .frame(width: 400, alignment: .leading)
-    }
-
-    private func field(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .frame(width: 320, alignment: .leading)
-                .background(Color(nsColor: .windowBackgroundColor).opacity(0.7), in: .rect(cornerRadius: 6))
-        }
-    }
-}
-
-/// The four Platform API fields Blueprints needs, and the button that proves all four at once.
-private struct PlatformSettingsFigure: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            MarkedRow(marker: "1") {
-                HStack(spacing: 4) {
-                    ForEach(PlatformRegion.allCases) { region in
-                        Text(region.rawValue)
-                            .font(.caption.weight(region == .eu ? .semibold : .regular))
-                            .foregroundStyle(region == .eu ? Color.primary : Color.secondary)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 4)
-                            .background(region == .eu ? Color(nsColor: .windowBackgroundColor) : .clear,
-                                        in: .rect(cornerRadius: 5))
-                    }
-                }
-                .padding(2)
-                .background(Color(nsColor: .controlBackgroundColor), in: .rect(cornerRadius: 7))
-            }
-            MarkedRow(marker: "2") { field("Environment ID", "cda24521-f23b-4f27-a9ff-…") }
-            MarkedRow(marker: "3") { field("Client ID", "a1b2c3d4-…") }
-            MarkedRow(marker: "4") { field("Client Secret", "••••••••••••") }
-            MarkedRow(marker: "5") {
-                Label("Test Connection", systemImage: "checkmark.seal")
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(Color(nsColor: .controlBackgroundColor), in: .capsule)
-            }
-        }
-        .frame(width: 400, alignment: .leading)
-    }
-
-    private func field(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(.caption, design: .monospaced))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .frame(width: 320, alignment: .leading)
-                .background(Color(nsColor: .windowBackgroundColor).opacity(0.7), in: .rect(cornerRadius: 6))
-        }
-    }
-}
-
-/// The Installomator deployment sheet, numbered as the sheet itself numbers its sections.
-///
-/// The markers are not invented for the guide: the sheet really is labelled "1. Select Target
-/// Category" through "6. Version Pinning", so a reader can match the figure to what is in front of
-/// them without translating.
-private struct InstallomatorDeployFigure: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            step("1", "Select Target Category", "Communication Apps", "folder")
-            step("2", "Select Installomator Script", "Installomator", AppModule.scripts.icon)
-            step("3", "Policy Name Template", "Install {appName}", "textformat")
-            step("4", "Self Service Options", "Display in category · No icon", "square.grid.2x2")
-            step("5", "Deployment Scope", "All Computers", "target")
-            step("6", "Version Pinning (Advanced)", "Let Installomator decide", "arrow.triangle.branch")
-
-            Divider().padding(.vertical, 2)
-
-            HStack {
-                Text("1 label selected")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                Text("Deploy Policies")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .background(Color.accentColor, in: .capsule)
-            }
-        }
-        .frame(width: 420, alignment: .leading)
-    }
-
-    private func step(_ marker: String, _ title: String, _ value: String, _ symbol: String) -> some View {
-        MarkedRow(marker: marker, alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.caption.weight(.semibold))
-                HStack(spacing: 6) {
-                    Image(systemName: symbol)
-                        .font(.caption2)
-                        .foregroundStyle(AppModule.installomator.accentColour)
-                    Text(value).font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-}
-
-/// Version pinning, broken into the four things step 6 actually contains.
-private struct VersionPinningFigure: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            MarkedRow(marker: "6a", alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Versions — one policy is created for each")
-                        .font(.caption.weight(.semibold))
-                    Text("3.11.9, 3.12.7, 3.13.1")
-                        .font(.system(.caption, design: .monospaced))
-                        .padding(.horizontal, 8).padding(.vertical, 5)
-                        .frame(width: 300, alignment: .leading)
-                        .background(Color(nsColor: .windowBackgroundColor).opacity(0.7),
-                                    in: .rect(cornerRadius: 6))
-                }
-            }
-            MarkedRow(marker: "6b", alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Overrides — use {version} where the version appears")
-                        .font(.caption.weight(.semibold))
-                    HStack(spacing: 6) {
-                        Text("downloadURL").font(.system(.caption2, design: .monospaced))
-                            .padding(.horizontal, 7).padding(.vertical, 4)
-                            .background(Color(nsColor: .windowBackgroundColor).opacity(0.7),
-                                        in: .rect(cornerRadius: 5))
-                        Text("…/app-{version}.dmg").font(.system(.caption2, design: .monospaced))
-                            .padding(.horizontal, 7).padding(.vertical, 4)
-                            .background(Color(nsColor: .windowBackgroundColor).opacity(0.7),
-                                        in: .rect(cornerRadius: 5))
-                    }
-                }
-            }
-            MarkedRow(marker: "6c", alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Will create 3 policies").font(.caption.weight(.semibold))
-                    ForEach(["Install 1Password 3.11.9", "Install 1Password 3.12.7",
-                             "Install 1Password 3.13.1"], id: \.self) { name in
-                        Text(name).font(.caption2).foregroundStyle(AppModule.computers.accentColour)
-                    }
-                }
-            }
-            MarkedRow(marker: "6d", alignment: .top) {
-                Label {
-                    Text("A pinned download URL stops working the moment the vendor moves the file.")
-                        .font(.caption2)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.caption2)
-                }
-                .foregroundStyle(.orange)
-                .padding(8)
-                .frame(width: 320, alignment: .leading)
-                .background(Color.orange.opacity(0.12), in: .rect(cornerRadius: 7))
-            }
-        }
-        .frame(width: 420, alignment: .leading)
-    }
-}
-
-/// The three steps an upload runs, and the fact that each is reported on its own.
-private struct PackageUploadFigure: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            step("1", "Create the package record", "Name, file name, category, priority", "doc.badge.plus")
-            step("2", "Upload the file", "With progress, and a Cancel button", "arrow.up.circle")
-            step("3", "Create the install policy", "Created enabled, offered in Self Service", AppModule.policies.icon)
-        }
-        .frame(width: 380, alignment: .leading)
-    }
-
-    private func step(_ marker: String, _ title: String, _ detail: String, _ symbol: String) -> some View {
-        MarkedRow(marker: marker, alignment: .top) {
-            HStack(spacing: 9) {
-                Image(systemName: symbol)
-                    .font(.callout)
-                    .foregroundStyle(AppModule.packages.accentColour)
-                    .frame(width: 20)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.caption.weight(.semibold))
-                    Text(detail).font(.caption2).foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-}
-
-/// What a clone can be stripped of before it is made.
-private struct CloneOptionsFigure: View {
-    private let options = [
-        ("a", "Remove scope", "The copy reaches nobody until you scope it"),
-        ("b", "Remove triggers", "Nothing sets it running on its own"),
-        ("c", "Once per computer", "Frequency, regardless of the original's"),
-        ("d", "Self Service off", "It does not appear to your users"),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Created disabled — always, and not optional")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppModule.policies.accentColour)
-                .padding(.bottom, 2)
-
-            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
-                MarkedRow(marker: option.0) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.square.fill")
-                            .font(.caption)
-                            .foregroundStyle(AppModule.policies.accentColour)
-                        Text(option.1).font(.caption.weight(.medium))
-                        Text("— \(option.2)").font(.caption2).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .frame(width: 420, alignment: .leading)
-    }
-}
-
-/// The Unused audit's three actions, drawn in the order they can be undone.
-private struct UnusedActionsFigure: View {
-    private let actions: [(String, String, String, String, Color)] = [
-        ("a", "folder", "Move to Category", "Reversible by hand — nothing stops running", .blue),
-        ("b", "pause.circle", "Disable", "Policies only. Reversible from Policies", .orange),
-        ("c", "trash", "Delete", "Permanent. Confirmed separately", .red),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            ForEach(Array(actions.enumerated()), id: \.offset) { _, action in
-                MarkedRow(marker: action.0) {
-                    HStack(spacing: 9) {
-                        Label(action.2, systemImage: action.1)
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(action.4)
-                            .padding(.horizontal, 9).padding(.vertical, 5)
-                            .background(action.4.opacity(0.15), in: .capsule)
-                            .frame(width: 150, alignment: .leading)
-                        Text(action.3).font(.caption2).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .frame(width: 440, alignment: .leading)
-    }
-}
-
-/// The blueprint editor: what you paste, how it is scoped, and the DDM wrap panel.
-private struct BlueprintEditorFigure: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            MarkedRow(marker: "1", alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("The definition, as JSON").font(.caption.weight(.semibold))
-                    Text("{ \"name\": \"Passcode policy\",\n  \"components\": [ … ] }")
-                        .font(.system(.caption2, design: .monospaced))
-                        .padding(8)
-                        .frame(width: 300, alignment: .leading)
-                        .background(Color(nsColor: .windowBackgroundColor).opacity(0.7),
-                                    in: .rect(cornerRadius: 6))
-                }
-            }
-            MarkedRow(marker: "2", alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Scope — three ways").font(.caption.weight(.semibold))
-                    ForEach(["Leave the scope in your JSON alone",
-                             "Pick device groups from the environment",
-                             "Send it unscoped"], id: \.self) { choice in
-                        Text("• \(choice)").font(.caption2).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            MarkedRow(marker: "3", alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("DDM Declaration panel").font(.caption.weight(.semibold))
-                    Text("Appears when the JSON is a bare payload. Give it a type, press Wrap as Blueprint.")
-                        .font(.caption2).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(width: 300, alignment: .leading)
-                }
-            }
-        }
-        .frame(width: 420, alignment: .leading)
-    }
-}
-
-/// The computer inspector's tabs — what the read-only detail view actually holds.
-private struct ComputerInspectorFigure: View {
-    private let tabs: [(String, String)] = [
-        ("desktopcomputer", "Hardware & OS"),
-        ("doc.text.fill", "Profiles"),
-        ("applescript.fill", "Scripts"),
-        ("scroll.fill", "Policies"),
-        ("person.crop.circle", "User & Location"),
-    ]
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(Array(tabs.enumerated()), id: \.offset) { index, tab in
-                Label(tab.1, systemImage: tab.0)
-                    .font(.caption)
-                    .foregroundStyle(index == 0 ? Color.primary : Color.secondary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(index == 0
-                                ? AppModule.computers.accentColour.opacity(0.18)
-                                : Color(nsColor: .controlBackgroundColor).opacity(0.6),
-                                in: .capsule)
-            }
-        }
+        .frame(width: 560)
     }
 }

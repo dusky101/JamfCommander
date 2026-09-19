@@ -8,7 +8,7 @@ it. Three tabs:
 - **Deployed** — only the packages a policy actually installs, with the policy named on the row.
 
 ```figure
-package-tabs
+package-row
 ```
 
 ## Uploading a package
@@ -16,15 +16,11 @@ package-tabs
 Drop a `.pkg`, `.mpkg`, `.dmg` or `.zip` onto the page, or choose it, fill in the details, and the
 app runs three steps — reporting each one separately, which matters when one of them fails.
 
-```figure
-package-upload
-```
-
-- **1 — The package record.** Display name, file name, category, priority, restart requirement, and
+- **The package record.** Display name, file name, category, priority, restart requirement, and
   optional info and notes. Everything else is created switched off and can be changed on the package
   in Jamf afterwards.
-- **2 — The file.** Uploaded to that record, with a progress bar and a Cancel button.
-- **3 — The install policy.** Name, category, Self Service options, icon and scope, exactly as the
+- **The file.** Uploaded to that record, with a progress bar and a Cancel button.
+- **The install policy.** Name, category, Self Service options, icon and scope, exactly as the
   Installomator flow does. It is created enabled and offered in Self Service; turn it off if you
   only wanted the package filed in Jamf.
 

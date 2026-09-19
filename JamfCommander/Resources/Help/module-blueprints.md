@@ -48,17 +48,6 @@ deployment succeeded on the strength of the response.
 An edit sends a merge: any key you remove from the JSON is **left as it is on the server**, not
 deleted. If you want to clear something, set it explicitly rather than deleting the line.
 
-## The editor
-
-```figure
-blueprint-editor
-```
-
-You paste or load the definition as JSON (**1**), choose how it is scoped (**2**), and — if what you
-pasted is a bare payload rather than a whole blueprint — use the **DDM Declaration** panel (**3**)
-to wrap it. Server-managed fields are stripped on the way in, so a definition copied out of an
-existing blueprint can be pasted straight back as a starting point.
-
 ## Bringing settings in from the Jamf DDM app
 
 There is no graphical DDM builder here — settings are authored in the Jamf DDM app, or by hand, and

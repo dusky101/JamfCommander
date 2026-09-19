@@ -4,6 +4,22 @@ Every policy in the tenant, grouped by category. This is the module most of the 
 in: the actions here are the ones that would otherwise be a long afternoon of clicking through the
 Jamf web console one policy at a time.
 
+A row carries the policy’s name, its ID, its category and whether anything is scoped to it.
+
+```figure
+policy-row
+```
+
+Select anything and the filter bar is replaced by the action bar.
+
+```figure
+single-action-bar
+```
+
+With one policy selected it names that policy and its ID. Select several and it becomes **Bulk
+Actions**, with the count and the same columns — the action names change to match what they will
+do to the selection.
+
 ```figure
 bulk-actions
 ```
@@ -27,12 +43,8 @@ bulk-actions
 A clone is named `Copy of [Original Name]` and is **disabled**, always: a copy that started running
 the moment it was made would be a copy you had not finished configuring.
 
-```figure
-clone-options
-```
-
-Four more things can be stripped on the way — scope (**a**), triggers (**b**), the frequency
-(**c**) and Self Service (**d**). Each is there for the same reason as the disabled state: a clone
+Four more things can be stripped on the way: the scope, the triggers, the frequency (set to *Once
+per computer*) and Self Service. Each is there for the same reason as the disabled state — a clone
 is a starting point, not a deployment.
 
 Turn the clone on in Jamf, or in this module, when you are satisfied with it.

@@ -3,23 +3,13 @@
 The managed Mac fleet, read from Jamf’s computer inventory. This module is **read-only** — nothing in
 it writes to your tenant.
 
-```figure
-computer-row
-```
-
 ## What you can do
 
 - **Search** by computer name, serial number, assigned user or email address.
 - **Filter** to managed devices only, or show everything Jamf holds a record for.
-- **Inspect** a computer. The inspector has a tab for each part of the record:
-
-```figure
-computer-inspector
-```
-
-  Hardware and OS, FileVault state, IP address, last contact and remote management status; the
-  configuration profiles installed on it; the scripts available to it; its policies; and its User &
-  Location record.
+- **Inspect** a computer. The inspector has a tab for each part of the record: hardware and OS,
+  FileVault state, IP address, last contact and remote management status; the configuration profiles
+  installed on it; the scripts available to it; its policies; and its User & Location record.
 - **Copy a serial number** from the row’s context menu.
 - **Export** the visible list to CSV.
 

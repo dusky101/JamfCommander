@@ -274,6 +274,44 @@ bordered box around the app's own icon reads as a screenshot of something, when 
 
 **Tagline:** "Two hundred policies, one action." — proposed, not settled.
 
+## Phase D — figures rebuilt from the real views
+
+Phase C's figures were drawn by hand from README prose and memory. The maintainer opened the guide,
+compared the bulk-action figure with `ActionPanelView`, and it was not close: the real panel is an
+action name *above* a large soft button in equal-width columns on the elevated bar background; the
+figure showed small tinted capsules with names beside them. **"Where is this coming from"** is the
+right question and the answer was: from me, not from the code.
+
+**The rule now, and it is not negotiable: a figure instantiates the view the module uses.**
+
+That is possible because the card views take a model and nothing else — no service, no bindings:
+`PolicyCardView(policy:categoryName:)`, `ProfileCardView`, `PackageCardView(item:isSelected:)`,
+`BlueprintCardView`, `RedundantRowView(item:)`, `StatCard`. The action bars are built from
+`ActionBarColumn` and `SoftIconLabel`, which are equally reusable, and `StatusBadge` takes only a
+`JamfItemStatus`. Figures use `SoftIconLabel` rather than `SoftIconButton` because a figure must not
+be clickable.
+
+`BlueprintRowFigure` decodes its samples from JSON rather than constructing them, because `Blueprint`
+has a custom `init(from:)`. That is better than a workaround: the figure's data goes through the same
+decoding path a real blueprint does, so a change to the coding keys breaks the figure too.
+
+**Nine figures were deleted rather than left wrong.** `clone-options`, `package-upload`,
+`blueprint-editor`, `computer-inspector`, `computer-row`, `package-tabs`, `script-parameters`,
+`connection-settings`, `platform-settings`, plus `installomator-deploy` and `version-pinning`. Each
+illustrated a **sheet** — `DeploymentConfigSheet`, `PackageUploadPage`, `BlueprintEditorSheet`,
+`SettingsPlatformSection` — and a sheet is one large view with its state wired in, not a set of
+reusable pieces a figure can borrow. Drawing them by hand is how the last round went wrong.
+
+The numbered `FigureMarker`s went with them. They only ever made sense pointing at parts of a real
+reproduction; on an invented list they were pointing at things the guide had made up. `FigureMarker`
+and `MarkedRow` remain in the file, unused, for whoever grounds the sheets.
+
+### If the sheet figures are wanted
+
+The honest route is to refactor each sheet the way the action bars already are: pull its sections out
+as presentational views taking values rather than bindings, and let both the sheet and the figure use
+them. That is real work in the modules, not in the guide, and it should be decided as such.
+
 ## Constraints
 
 - **British English**, calm and professional. Match the existing pages.

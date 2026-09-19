@@ -10,10 +10,6 @@ Every script in your tenant, grouped by category.
 - **Delete**, confirmed by count and reported per script.
 - **Export** to CSV.
 
-```figure
-script-parameters
-```
-
 ## Scripts have no status, and that is not an omission
 
 A script in Jamf carries no scope and no enabled state. It is not targeted at anything and it does

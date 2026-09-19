@@ -9,13 +9,9 @@ in Jamf, not your own admin login. You need three things:
 
 Enter them under **Settings → Jamf Connections** in the sidebar.
 
-```figure
-connection-settings
-```
-
-The instance URL (**1**) is your Jamf Pro address and nothing more — no `/JSSResource`, no trailing
-path. The client ID (**2**) and secret (**3**) come from the API client you create in Jamf Pro.
-Then choose **Initialise Connection** (**4**). Once saved, the app reconnects automatically each
+The instance URL is your Jamf Pro address and nothing more — no `/JSSResource`, no trailing
+path. The client ID and secret come from the API client you create in Jamf Pro.
+Then choose **Initialise Connection**. Once saved, the app reconnects automatically each
 launch.
 
 *Creating the API client in Jamf* covers making the client, and *Privileges* covers what to grant it.

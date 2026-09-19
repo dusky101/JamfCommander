@@ -5,7 +5,8 @@ macOS configuration profiles, grouped by category, with the same shape of bulk a
 ## What you can do
 
 - **Find** a profile by name or ID, or filter to a category.
-- **Select** one, several with ⌘-click, or a run with ⇧-click.
+- **Select** one, several with ⌘-click, or a run with ⇧-click. The action bar is the same one
+  *Policies* uses, minus the two actions that only apply to a policy.
 - **Inspect** a profile’s scope and its raw source.
 - **Move to a category.**
 - **Change scope** — set the selection to All Computers, or remove all scope from it.
@@ -21,6 +22,10 @@ from the profile’s actual scope every time the list is built.
 
 ```figure
 status-badges
+```
+
+```figure
+profile-row
 ```
 
 That has one consequence worth holding on to: **a configuration profile has no enabled or disabled
