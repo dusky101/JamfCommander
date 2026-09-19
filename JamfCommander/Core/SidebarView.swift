@@ -110,12 +110,12 @@ struct SidebarView: View {
             Divider()
 
             moduleButton(for: .installomator)
-                .padding(.vertical, 8)
+                .padding(.vertical, 10)
 
             Divider()
 
             moduleButton(for: .redundant)
-                .padding(.top, 22)
+                .padding(.top, 40)
                 .padding(.bottom, 8)
 
             Divider()
