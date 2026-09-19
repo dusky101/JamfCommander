@@ -208,7 +208,10 @@ struct SidebarView: View {
                 title: "Settings",
                 icon: "gearshape",
                 help: "Jamf Pro and Platform API credentials",
-                action: { SettingsPresenter.shared.present(.general) }
+                action: {
+                    SettingsPresenter.shared.request(.general)
+                    openWindow(id: SettingsWindowID)
+                }
             )
 
             SidebarFooterRow(

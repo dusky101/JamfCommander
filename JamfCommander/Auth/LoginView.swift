@@ -9,6 +9,7 @@
 import SwiftUI
 
 struct LoginView: View {
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject var api: JamfAPIService
     
     // Binding allows us to tell the parent (ContentView) when we are done
@@ -44,7 +45,10 @@ struct LoginView: View {
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     
-                    Button(action: { SettingsPresenter.shared.present(.jamfConnections) }) {
+                    Button(action: {
+                        SettingsPresenter.shared.request(.jamfPro)
+                        openWindow(id: SettingsWindowID)
+                    }) {
                         Label("Open Settings", systemImage: "gear")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 4)
@@ -75,7 +79,10 @@ struct LoginView: View {
                 .buttonStyle(.borderedProminent)
                 
                 // Add a subtle settings link for users who want to change settings
-                Button(action: { SettingsPresenter.shared.present(.jamfConnections) }) {
+                Button(action: {
+                    SettingsPresenter.shared.request(.jamfPro)
+                    openWindow(id: SettingsWindowID)
+                }) {
                     Label("Edit Settings", systemImage: "gear")
                         .font(.caption)
                 }

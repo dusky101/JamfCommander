@@ -15,7 +15,31 @@ struct BlueprintsDashboardView: View {
     @ObservedObject var api: JamfAPIService
 
     /// Owned by `ContentView`; set to open the Settings sheet from the not-configured state.
-    @Binding var showConfigSheet: Bool
+    @Environment(\.openWindow) private var openWindow
+
+    // Watched so the module reloads when the Platform integration is configured or changed. It used
+    // to reload when the Settings *sheet* closed; Settings is a window now, and there is no such
+    // moment. Watching the credentials themselves is the better trigger anyway — it fires when
+    // something actually changed, rather than every time Settings was looked at and shut again.
+    @AppStorage(PlatformCredentialsStore.regionKey) private var platformRegion = PlatformRegion.eu.rawValue
+    @AppStorage(PlatformCredentialsStore.environmentIdKey) private var platformEnvironmentId = ""
+    @AppStorage(PlatformCredentialsStore.clientIdKey) private var platformClientId = ""
+    @AppStorage(PlatformCredentialsStore.clientSecretKey) private var platformClientSecret = ""
+
+    /// The Platform credentials reduced to something `onChange` can compare.
+    ///
+    /// A hash rather than the values joined into a string: this only needs to know that they
+    /// changed, and a client secret has no business sitting in view state as text (root
+    /// `CLAUDE.md`, invariant 4). `Hasher` is seeded per process, which is all the stability a
+    /// within-session comparison needs.
+    private var platformCredentialsToken: Int {
+        var hasher = Hasher()
+        hasher.combine(platformRegion)
+        hasher.combine(platformEnvironmentId)
+        hasher.combine(platformClientId)
+        hasher.combine(platformClientSecret)
+        return hasher.finalize()
+    }
 
     @State private var blueprints: [Blueprint] = []
     @State private var searchText = ""
@@ -113,12 +137,10 @@ struct BlueprintsDashboardView: View {
         .task {
             await load()
         }
-        // Credentials are entered in Settings; reload once that sheet closes so the module
-        // picks up a newly configured integration without needing a restart.
-        .onChange(of: showConfigSheet) { _, isShowing in
-            if !isShowing {
-                Task { await load() }
-            }
+        // Credentials are entered in Settings; reload when they change so the module picks up a
+        // newly configured integration without needing a restart.
+        .onChange(of: platformCredentialsToken) {
+            Task { await load() }
         }
         .sheet(item: $inspected) { blueprint in
             BlueprintInspectorView(blueprint: blueprint, api: api)
@@ -258,7 +280,10 @@ struct BlueprintsDashboardView: View {
         } description: {
             Text("Blueprints are served by Jamf's Platform API, which uses its own integration created in Jamf Account — separate from the Jamf Pro API client. Add its region, environment ID, client ID and secret in Settings.")
         } actions: {
-            Button("Open Settings") { SettingsPresenter.shared.present(.jamfConnections) }
+            Button("Open Settings") {
+                SettingsPresenter.shared.request(.platform)
+                openWindow(id: SettingsWindowID)
+            }
                 .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -272,7 +297,10 @@ struct BlueprintsDashboardView: View {
         } actions: {
             Button("Try Again") { Task { await load() } }
                 .buttonStyle(.borderedProminent)
-            Button("Open Settings") { SettingsPresenter.shared.present(.jamfConnections) }
+            Button("Open Settings") {
+                SettingsPresenter.shared.request(.platform)
+                openWindow(id: SettingsWindowID)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

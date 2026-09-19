@@ -32,10 +32,11 @@ struct JamfCommanderApp: App {
         }
         .commands {
             // The standard Settings item macOS expects in the application menu, on ⌘, — the sidebar
-            // footer is the same sheet, not a second way of configuring the app.
+            // footer opens the same window, not a second way of configuring the app.
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {
-                    SettingsPresenter.shared.present(.general)
+                    SettingsPresenter.shared.request(.general)
+                    openWindow(id: SettingsWindowID)
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
@@ -69,8 +70,39 @@ struct JamfCommanderApp: App {
         }
         .defaultSize(width: 1100, height: 900)
         .restorationBehavior(.disabled)
+
+        // Settings is a **window** too, for the same reasons as the guide and one of its own: the
+        // credentials it holds are the thing you are most likely to need to *look something up* for.
+        // Creating a Jamf Pro API client means reading the Privileges page, or the Jamf console, and
+        // a modal sheet is precisely the shape that cannot be put aside while you do.
+        //
+        // `.restorationBehavior(.disabled)` so Settings left open does not reopen on the next launch
+        // in front of the app.
+        Window("Settings", id: SettingsWindowID) {
+            SettingsWindowContent()
+        }
+        .defaultSize(width: 860, height: 660)
+        .restorationBehavior(.disabled)
     }
 }
 
 /// The guide's window identity, shared by every route into it.
 let HelpWindowID = "help"
+
+/// Settings' window identity, shared by every route into it.
+let SettingsWindowID = "settings"
+
+/// Settings needs the `JamfAPIService` for one button — Platform "Test Connection" — but a `Window`
+/// scene cannot reach the service `ContentView` owns.
+///
+/// It gets its own, which is correct rather than a workaround: that button authenticates against
+/// the Platform gateway with the credentials being typed, and it must test *those* rather than
+/// whatever session the main window happens to be holding. Nothing else in Settings touches Jamf —
+/// every other field is `@AppStorage`.
+private struct SettingsWindowContent: View {
+    @StateObject private var api = JamfAPIService()
+
+    var body: some View {
+        ConfigurationView(api: api)
+    }
+}

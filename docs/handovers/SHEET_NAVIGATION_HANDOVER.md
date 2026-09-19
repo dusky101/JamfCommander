@@ -1,7 +1,9 @@
 # Handover — windows instead of sheets
 
-**State at handover:** 19 September 2026, app version 9.0. **Nothing is built.** Read
-`docs/roadmap/SHEET_NAVIGATION.md` first for the intent; this file is what is true about the code.
+**State at handover:** 20 September 2026, app version 9.0. **`ConfigurationView` is converted — the
+rehearsal is done.** `DeploymentConfigSheet`, `BlueprintEditorSheet` and `PackageUploadPage` are
+untouched. Read `docs/roadmap/SHEET_NAVIGATION.md` first for the intent; this file is what is true
+about the code.
 
 ---
 
@@ -29,9 +31,9 @@ lights, a title, the sidebar toggle — and no longer being modal.
 
 | Established | Not established |
 | --- | --- |
-| The help guide's sheet-to-window conversion works, and deleted code | That a rail is better than the scroll — nobody has tried it |
-| `DeploymentConfigSheet` has six sections and numbers them itself | Whether a half-filled window should survive being closed |
-| `ConfigurationView`'s sections are already four separate files | Whether the content fits at the 960pt window minimum with a rail |
+| The help guide's sheet-to-window conversion works, and deleted code | **Everything about the `ConfigurationView` conversion on screen** — it builds clean, nothing has been looked at |
+| `DeploymentConfigSheet` has six sections and numbers them itself | Whether a half-filled deployment window should survive being closed |
+| `ConfigurationView` is now a window with a four-item rail, and it compiles with no warnings | Whether the deployment sheet's content fits at the 960pt minimum with a rail |
 | `ActionBarComponents.swift` proves the value-not-binding pattern works | Whether the sheet's sections can take values without a rewrite |
 | The help guide's figures were deleted for exactly this reason | Whether any of it can be done without changing what is sent to Jamf |
 
@@ -46,16 +48,63 @@ Each candidate needs **both**, and they are separable:
 Do them in that order per candidate, and build between. A window that still scrolls is already an
 improvement and is a safe place to stop.
 
-## Do `ConfigurationView` first
+## `ConfigurationView` — done, 20 September 2026
 
-It is the rehearsal, and the argument is not that it is easiest — it is that **a mistake there cannot
-reach a Mac**. It already has a tab picker over `SettingsGeneralSection`, `SettingsJamfProSection`,
-`SettingsPlatformSection` and `SettingsTransferSection`, each in its own file. Turning a picker into
-a rail is close to a container swap, and it will surface every layout problem the deployment sheet
-will hit — at the window minimum, with a footer, inside a sheet — while the worst outcome is a
-mis-saved credential the user retypes.
+The rehearsal, converted. Six files, +210/−73.
 
-Only then `DeploymentConfigSheet`.
+**The scene.** `Window("Settings", id: SettingsWindowID)` beside the guide's, `.defaultSize(860×660)`,
+`.restorationBehavior(.disabled)` so Settings left open does not reopen in front of the app.
+
+**The presenter lost its flag.** `SettingsPresenter.isPresented` is gone; it carries
+`requestedPage: SettingsPage?` and every caller opens the window itself — exactly what `HelpPresenter`
+did. The request is cleared once honoured, so reopening Settings lands where the reader left off
+rather than repeating the last deep link.
+
+**Two tabs became four pages.** The sheet had a segmented picker over `General` and
+`Jamf Connections`, and the second stacked three sections. As a rail each section file is one click:
+General, Jamf Pro, Platform, Import & Export. That also let the deep links say what they mean — the
+login screen's "Open Settings" lands on **Jamf Pro**, and Blueprints' on **Platform**, where both
+used to land on a tab holding three sections.
+
+**Six entry points**, all now `request(_:)` then `openWindow(id: SettingsWindowID)`: the ⌘, menu
+item, the sidebar footer, two buttons on the login screen, and two in Blueprints.
+
+**Blueprints lost a binding it should not have had.** It took `showConfigSheet: Binding<Bool>` — the
+presenter's `isPresented`, threaded through `ContentView` — purely to reload when Settings closed. A
+window has no such moment, so it now watches the Platform credentials themselves via a hashed token.
+That is the better trigger regardless: it fires when something actually changed, rather than every
+time Settings was opened and shut again. The hash is deliberate — a client secret has no business
+sitting in view state as text.
+
+**Settings owns its own `JamfAPIService`.** A `Window` scene cannot reach the one `ContentView`
+holds. This is correct rather than a workaround, and it was checked rather than assumed:
+`verifyPlatformConnection()` → `preparedPlatformSession()` reads `PlatformCredentialsStore.current()`
+straight from `@AppStorage` and never touches `baseURL` or `token`. Nothing else in Settings calls
+Jamf.
+
+**No Done button.** A window closes the way windows close, and "Done" reads as "save" — which these
+fields do not need, since every one is `@AppStorage` and stored as it is typed.
+
+**Clear All moved rather than changed.** It showed under the `Jamf Connections` tab; it now shows
+under the three credential pages when there is something to clear, and still empties both APIs
+wherever it is pressed.
+
+### What to look at
+
+- ⌘, and the sidebar footer both open **one** window, and bring it forward if it is already open.
+- The login screen's "Open Settings" lands on **Jamf Pro**; Blueprints' lands on **Platform**.
+- Settings can be left open *beside* the app — that is the whole point, and the reason to prefer it
+  for credentials is that creating a Jamf Pro API client means reading the Privileges page while you
+  do it.
+- **Platform → Test Connection still works.** It is the only part of Settings that calls Jamf, and it
+  now runs through a service of its own.
+- Entering Platform credentials should make the Blueprints module reload on its own.
+- Close Settings and reopen it: it should land where you left it, not on General.
+
+## Then `DeploymentConfigSheet`
+
+The rehearsal above is what the pattern looks like in this codebase. The deployment sheet is the
+case, and the risk: **it creates policies on a live tenant.**
 
 ## The rule for `DeploymentConfigSheet`
 

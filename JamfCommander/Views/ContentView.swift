@@ -65,7 +65,6 @@ struct ContentView: View {
     // App State
     @State private var isLoggedIn = false
     @State private var isBusy = false
-    @ObservedObject private var settingsPresenter = SettingsPresenter.shared
     @State private var statusMessage = "Please initialise connection."
     
     // Data (For Profile Dashboard Only - Old Pattern)
@@ -219,9 +218,6 @@ struct ContentView: View {
             moduleAwaitingScan = nil
             currentModule.wrappedValue = destination
         }
-        .sheet(isPresented: $settingsPresenter.isPresented) {
-            ConfigurationView(api: api)
-        }
         // MARK: - AUTO LOGIN TRIGGER
         .task {
             if !isLoggedIn && !storedURL.isEmpty && !storedClientId.isEmpty && !storedClientSecret.isEmpty {
@@ -254,7 +250,7 @@ struct ContentView: View {
             )
 
         case .blueprints:
-            BlueprintsDashboardView(api: api, showConfigSheet: $settingsPresenter.isPresented)
+            BlueprintsDashboardView(api: api)
 
         case .computers:
             ComputersDashboardView(api: api)
