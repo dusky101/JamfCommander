@@ -442,6 +442,13 @@ extension JamfAPIService {
             )
         }
 
+        // A policy now exists that did not before, so anything the app has cached about the
+        // tenant's policies is out of date. This POST is built and sent here rather than through
+        // `genericRequest`, so it does not inherit that method's refresh signal and has to give it
+        // explicitly — before the id is parsed, because the policy exists whether or not its id can
+        // be read back.
+        RefreshCoordinator.shared.requestRefresh()
+
         // The policy now exists in Jamf. Read its id back so the caller can attach an icon — using
         // `try?` because failing to parse the id must never be reported as a failed creation.
         return try? parseIDFromXMLResponse(data: data, elementName: "id")

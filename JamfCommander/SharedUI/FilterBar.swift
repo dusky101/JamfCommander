@@ -26,6 +26,13 @@ struct FilterBar: View {
     var onRefresh: (() -> Void)?
     var onExport: (() -> Void)? // Optional export action
 
+    /// When the data this bar sits above was read from Jamf, if the screen knows.
+    ///
+    /// Shown next to Refresh, because a screen can now be serving a cached read that looks exactly
+    /// like a fresh one (see `SessionCache`). `nil` — the default — shows nothing, which is the
+    /// honest answer for a module whose data is not cached yet.
+    var readAt: Date?
+
     /// Remembered across launches and shared by every dashboard that uses this bar.
     @AppStorage("filterBarCategoriesExpanded") private var isCategoriesExpanded = true
 
@@ -83,6 +90,12 @@ struct FilterBar: View {
                     .help("Export to CSV")
                 }
                 
+                // When this was read. Before Refresh, so it reads as a statement about the data
+                // followed by the way to change it.
+                if let readAt {
+                    DataFreshnessLabel(readAt: readAt)
+                }
+
                 // Refresh Button
                 if let onRefresh = onRefresh {
                     Button(action: onRefresh) {

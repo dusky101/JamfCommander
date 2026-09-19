@@ -203,6 +203,12 @@ extension JamfAPIService {
             throw Self.recordFailure(status: httpResponse.statusCode, packageName: draft.packageName)
         }
 
+        // A package record now exists that did not before. Signalled before the id is read back,
+        // because the record exists in Jamf whether or not this app can parse its id. These Pro API
+        // writes are sent directly rather than through `genericRequest`, so they do not inherit its
+        // refresh signal and have to give it themselves.
+        RefreshCoordinator.shared.requestRefresh()
+
         guard let id = (try? JSONDecoder().decode(CreateResponse.self, from: data))?.id, !id.isEmpty else {
             throw PackageUploadError.packageRecordMissingID
         }
@@ -226,6 +232,10 @@ extension JamfAPIService {
               (200...299).contains(httpResponse.statusCode) else {
             throw PackageUploadError.unexpectedResponse((response as? HTTPURLResponse)?.statusCode ?? -1)
         }
+
+        // A record has gone. Narrow though this path is, a cache that kept it would list a package
+        // that no longer exists.
+        RefreshCoordinator.shared.requestRefresh()
     }
 
     // MARK: - Step 2: the file
@@ -282,6 +292,9 @@ extension JamfAPIService {
             print("[Packages] Package upload rejected by Jamf (HTTP \(httpResponse.statusCode))")
             throw Self.uploadFailure(status: httpResponse.statusCode)
         }
+
+        // The record's file — and with it the transfer status Jamf reports for it — has changed.
+        RefreshCoordinator.shared.requestRefresh()
     }
 
     // MARK: - Step 3: the policy
@@ -386,6 +399,10 @@ extension JamfAPIService {
                 categoryName: categoryName
             )
         }
+
+        // A policy now exists that did not before — signalled before the id is parsed, for the same
+        // reason as the package record above.
+        RefreshCoordinator.shared.requestRefresh()
 
         return try? parseIDFromXMLResponse(data: data, elementName: "id")
     }

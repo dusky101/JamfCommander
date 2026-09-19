@@ -11,6 +11,8 @@ import AppKit
 struct PoliciesDashboardView: View {
     @ObservedObject var api: JamfAPIService
     @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
+    /// Observed only for the "read at" stamp — the list itself is `@State`, fetched below.
+    @ObservedObject private var cache = SessionCache.shared
 
     // Data
     @State private var policies: [Policy] = []
@@ -90,11 +92,14 @@ struct PoliciesDashboardView: View {
                     selectedCategory: $selectedCategory,
                     policies: policies, // Pass policies for counts
                     onRefresh: {
-                        Task { await loadData() }
+                        // Refresh always goes to Jamf. Without that there is no way to pick up a
+                        // change made in the Jamf console by somebody else.
+                        Task { await loadData(bypassingCache: true) }
                     },
                     onExport: {
                         exportPolicies()
-                    }
+                    },
+                    readAt: cache.readAt[.policies]
                 )
                 .zIndex(1)
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -195,9 +200,12 @@ struct PoliciesDashboardView: View {
 
     // MARK: - Actions
     
-    func loadData() async {
+    /// - Parameter bypassingCache: `true` reads from Jamf regardless of what this session has
+    ///   already read. Passed by Refresh; left `false` when the module is simply opened again, which
+    ///   is the case the cache exists for.
+    func loadData(bypassingCache: Bool = false) async {
         do {
-            async let fetchedPolicies = api.fetchPolicies()
+            async let fetchedPolicies = api.fetchPolicies(bypassingCache: bypassingCache)
             async let fetchedCategories = api.fetchCategories()
             let (p, c) = try await (fetchedPolicies, fetchedCategories)
             await MainActor.run {

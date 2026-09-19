@@ -60,6 +60,11 @@ class JamfAPIService: ObservableObject {
         struct OAuthResponse: Codable { let access_token: String }
         let tokenResponse = try JSONDecoder().decode(OAuthResponse.self, from: data)
         self.token = tokenResponse.access_token
+
+        // A new session reads everything again. `SessionCache` would discard another instance's
+        // entries on its own the moment one was looked up, but this makes the moment explicit and
+        // means nothing from a previous connection is held even if nothing is ever read.
+        SessionCache.shared.reset()
     }
     
     // MARK: - Data Fetching
@@ -245,7 +250,20 @@ class JamfAPIService: ObservableObject {
     
     // MARK: - Policy Functions (Classic API)
         
-        func fetchPolicies() async throws -> [Policy] {
+        /// Every policy in the tenant, hydrated with category, enabled state and scope.
+        ///
+        /// Served from `SessionCache` when this session has already read it from this instance, so
+        /// returning to the Policies module is instant rather than another pass over the estate.
+        ///
+        /// - Parameter bypassingCache: `true` reads from Jamf regardless, and refiles what it gets.
+        ///   The Refresh button passes this: without a way to force the truth there is no way to
+        ///   pick up a change somebody else made in the Jamf console.
+        func fetchPolicies(bypassingCache: Bool = false) async throws -> [Policy] {
+            if !bypassingCache,
+               let cached = SessionCache.shared.value(.policies, as: [Policy].self, instanceURL: baseURL) {
+                return cached
+            }
+
             // 1. Fetch Basic List
             let endpoint = "JSSResource/policies"
             let listResponse = try await genericFetch(endpoint: endpoint, responseType: PolicyListResponse.self)
@@ -312,7 +330,18 @@ class JamfAPIService: ObservableObject {
                 }
             }
             
-            return detailedPolicies.sorted { $0.name < $1.name }
+            let sorted = detailedPolicies.sorted { $0.name < $1.name }
+
+            // Only a *complete* read is worth keeping. A policy whose detail could not be fetched is
+            // dropped rather than guessed at, and leaving a module cancels the hydration mid-flight —
+            // so this method can return a short list without throwing. Shown once that is today's
+            // behaviour; cached, it would be the answer for the rest of the session, in front of a
+            // module whose next action might be a bulk delete.
+            if !Task.isCancelled, sorted.count == listResponse.policies.count {
+                SessionCache.shared.store(sorted, as: .policies, instanceURL: baseURL)
+            }
+
+            return sorted
         }
         
         /// Fetches a policy's detail. Pass `subsets` (e.g. `["General", "Scope", "SelfService"]`)

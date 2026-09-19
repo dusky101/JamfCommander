@@ -151,7 +151,8 @@ struct AddPackageView: View {
                 .disabled(!canExport)
 
                 Button {
-                    Task { await reloadLibrary() }
+                    // Refresh always re-reads, cache or no cache.
+                    Task { await reloadLibrary(bypassingCache: true) }
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
@@ -367,7 +368,11 @@ struct AddPackageView: View {
         await reloadLibrary()
     }
 
-    private func reloadLibrary() async {
+    /// - Parameter bypassingCache: `true` re-reads the policy estate from Jamf rather than reusing
+    ///   a scan this session has already paid for. Passed by Refresh only — opening the tab again,
+    ///   or reloading after an upload, should use whatever is still valid. (An upload invalidates
+    ///   the cache itself, so the reload after one reads from Jamf regardless.)
+    private func reloadLibrary(bypassingCache: Bool = false) async {
         isLoadingPackages = true
         packagesLoadFailed = false
 
@@ -387,13 +392,13 @@ struct AddPackageView: View {
             return
         }
 
-        await scanPackageUsage()
+        await scanPackageUsage(bypassingCache: bypassingCache)
     }
 
     /// The expensive half: every policy is read once, answering both which packages it installs and
     /// whether it is an Installomator deployment. Run after the list is already on screen, so the
     /// library is usable while the deployed state fills in.
-    private func scanPackageUsage() async {
+    private func scanPackageUsage(bypassingCache: Bool = false) async {
         await MainActor.run {
             isScanningUsage = true
             usageScanFailed = false
@@ -404,7 +409,8 @@ struct AddPackageView: View {
         let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
 
         do {
-            let scan = try await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs)
+            let scan = try await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs,
+                                                      bypassingCache: bypassingCache)
             await MainActor.run {
                 packageUsage = scan.packageUsage
                 installomatorPolicies = scan.installomator

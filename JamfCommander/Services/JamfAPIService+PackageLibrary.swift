@@ -126,9 +126,27 @@ extension JamfAPIService {
     /// - Parameter onPolicy: Called with each policy as it is read, on whatever task the scan is
     ///   running on. The Dashboard uses it to count unused policies while the scan is still going,
     ///   rather than leaving a spinner up for tens of seconds with nothing to show. Optional, so the
-    ///   callers that only want the finished estate are unaffected.
+    ///   callers that only want the finished estate are unaffected. **Not replayed for a cached
+    ///   scan**: there is nothing to watch climb when the answer is already in hand, and 250
+    ///   callbacks hopping to the main actor would be slower than simply showing the total.
+    /// - Parameter bypassingCache: `true` reads from Jamf regardless, and refiles what it gets. The
+    ///   Refresh buttons pass this.
+    ///
+    /// This is the read the whole cache was built for. Four screens ask for it — the Unused module,
+    /// the Dashboard's Unused tile, the Packages "Deployed" tab and Export All — and before the
+    /// cache, a session could reach all four with no change in between and pay for the tenant's
+    /// policies four times over.
     func scanPolicyEstate(knownScriptIDs: Set<String> = [],
+                          bypassingCache: Bool = false,
                           onPolicy: (@Sendable (Policy) -> Void)? = nil) async throws -> PolicyEstateScan {
+        if !bypassingCache,
+           let cached = SessionCache.shared.value(.policyEstate,
+                                                  as: CachedPolicyEstate.self,
+                                                  instanceURL: baseURL),
+           cached.knownScriptIDs == knownScriptIDs {
+            return cached.scan
+        }
+
         let listResponse = try await genericFetch(
             endpoint: "JSSResource/policies",
             responseType: PolicyListResponse.self
@@ -221,7 +239,24 @@ extension JamfAPIService {
         }
 
         print("[Packages] Estate scan: \(policies.count) policies read · \(usage.count) packages attached to a policy · \(installomator.count) Installomator policies")
-        return PolicyEstateScan(policies: policies, packageUsage: usage, installomator: installomator)
+        let scan = PolicyEstateScan(policies: policies, packageUsage: usage, installomator: installomator)
+
+        // Only a *complete* scan is worth keeping — and this scan is cancelled routinely by design:
+        // the Dashboard starts it after the tiles are up, and leaving the module abandons it. A
+        // cancelled pass still returns, because a policy that could not be read is skipped rather
+        // than failing the whole scan, so without this guard the first half of an abandoned scan
+        // would become the session's answer to "what is unused".
+        if !Task.isCancelled, policies.count == listResponse.policies.count {
+            SessionCache.shared.store(
+                CachedPolicyEstate(scan: scan, knownScriptIDs: knownScriptIDs),
+                as: .policyEstate,
+                instanceURL: baseURL
+            )
+        } else {
+            print("[Packages] Estate scan incomplete — not cached")
+        }
+
+        return scan
     }
 }
 
@@ -242,6 +277,17 @@ struct PolicyEstateScan: Sendable {
     let packageUsage: [String: [String]]
     /// Policies that install software through Installomator, sorted by policy name.
     let installomator: [JamfAPIService.InstallomatorPolicyInfo]
+}
+
+/// A cached estate scan, with the Installomator script ids it was built with.
+///
+/// The scan's `installomator` list depends on those ids, so a cached scan only answers the same
+/// question if they match. Every caller derives them the same way today
+/// (`fetchInstallomatorScriptIDs()`), so the check is free — it is here so that a future caller
+/// passing a different set is handed a miss rather than an answer to somebody else's question.
+struct CachedPolicyEstate: Sendable {
+    let scan: PolicyEstateScan
+    let knownScriptIDs: Set<String>
 }
 
 /// One policy's contribution to a scan, gathered inside the task group before it is merged.

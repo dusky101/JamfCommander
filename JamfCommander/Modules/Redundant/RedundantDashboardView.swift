@@ -23,6 +23,8 @@ import SwiftUI
 
 struct RedundantDashboardView: View {
     @ObservedObject var api: JamfAPIService
+    /// Observed only for the "read at" stamp — the audit itself is `@State`, built in `load()`.
+    @ObservedObject private var cache = SessionCache.shared
 
     @State private var items: [RedundantItem] = []
     @State private var isLoading = true
@@ -68,8 +70,10 @@ struct RedundantDashboardView: View {
                             items.filter { $0.categoryName == category.name }.count
                         },
                         customTotal: items.count,
-                        onRefresh: { Task { await load() } },
-                        onExport: { exportAudit() }
+                        // Refresh always re-reads the estate, however recently it was scanned.
+                        onRefresh: { Task { await load(bypassingCache: true) } },
+                        onExport: { exportAudit() },
+                        readAt: cache.readAt[.policyEstate]
                     )
 
                     reasonBar
@@ -440,7 +444,11 @@ struct RedundantDashboardView: View {
 
     // MARK: - Loading
 
-    private func load() async {
+    /// - Parameter bypassingCache: `true` re-reads every policy from Jamf. Passed by Refresh. Left
+    ///   `false` on the module's first appearance, where a scan the Dashboard's Unused tile has
+    ///   already paid for is reused — the two ask the same question of the same data, and sharing
+    ///   one cache entry is what stops them answering it differently on screen.
+    private func load(bypassingCache: Bool = false) async {
         isLoading = true
         loadFailed = false
 
@@ -448,7 +456,8 @@ struct RedundantDashboardView: View {
         // failure here only narrows detection, so it degrades rather than failing the scan.
         let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
 
-        async let estateResult = api.scanPolicyEstate(knownScriptIDs: knownScriptIDs)
+        async let estateResult = api.scanPolicyEstate(knownScriptIDs: knownScriptIDs,
+                                                      bypassingCache: bypassingCache)
         async let profilesResult = api.fetchProfiles()
         async let packagesResult = api.fetchJamfPackages()
         async let categoriesResult = api.fetchCategories()
