@@ -126,8 +126,10 @@ nonisolated enum HelpMarkdown {
                 while index < lines.count {
                     let item = lines[index].trimmingCharacters(in: .whitespaces)
                     guard isBullet(item) else { break }
-                    items.append(String(item.dropFirst(2)).trimmingCharacters(in: .whitespaces))
                     index += 1
+                    items.append(consumeContinuations(
+                        of: String(item.dropFirst(2)).trimmingCharacters(in: .whitespaces),
+                        lines: lines, index: &index))
                 }
                 blocks.append(.bulleted(items))
                 continue
@@ -140,9 +142,11 @@ nonisolated enum HelpMarkdown {
                     let item = lines[index].trimmingCharacters(in: .whitespaces)
                     guard orderedNumber(item) != nil,
                           let dot = item.firstIndex(of: ".") else { break }
-                    items.append(String(item[item.index(after: dot)...])
-                        .trimmingCharacters(in: .whitespaces))
                     index += 1
+                    items.append(consumeContinuations(
+                        of: String(item[item.index(after: dot)...])
+                            .trimmingCharacters(in: .whitespaces),
+                        lines: lines, index: &index))
                 }
                 blocks.append(.numbered(start: first, items: items))
                 continue
@@ -176,6 +180,38 @@ nonisolated enum HelpMarkdown {
 
     private static func isFenceClose(_ line: String) -> Bool {
         line.trimmingCharacters(in: .whitespaces).hasPrefix("```")
+    }
+
+    /// A list item plus any wrapped lines belonging to it, advancing `index` past them.
+    ///
+    /// Markdown lets a list item span several source lines, and the guide's pages are hard-wrapped,
+    /// so most multi-line bullets arrive that way. Without this the first line became the item and
+    /// the remainder became a paragraph *after* the list — which also split any emphasis straddling
+    /// the wrap, putting a literal asterisk on screen. Seen on `welcome.md` the first time the
+    /// window was opened.
+    private static func consumeContinuations(of item: String,
+                                             lines: [String],
+                                             index: inout Int) -> String {
+        var text = item
+        while index < lines.count, let continuation = listContinuation(lines[index]) {
+            text += " " + continuation
+            index += 1
+        }
+        return text
+    }
+
+    /// A wrapped line belonging to the list item above it, or `nil` when the line starts something
+    /// new. A blank line ends the item, as it does in Markdown.
+    private static func listContinuation(_ line: String) -> String? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty,
+              !isBullet(trimmed),
+              orderedNumber(trimmed) == nil,
+              !trimmed.hasPrefix("#"),
+              !trimmed.hasPrefix(">"),
+              fenceInfo(trimmed) == nil,
+              trimmed != "---", trimmed != "***", trimmed != "___" else { return nil }
+        return trimmed
     }
 
     private static func isBullet(_ line: String) -> Bool {

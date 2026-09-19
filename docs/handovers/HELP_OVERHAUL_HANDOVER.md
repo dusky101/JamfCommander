@@ -1,7 +1,7 @@
 # Handover — Help overhaul
 
-**State at handover:** 19 September 2026, app version 8.5. **Phase 1 is written but NOT committed**
-and NOT run — see the table below before you trust any of it.
+**State at handover:** 19 September 2026, app version 8.5. Phase 1 is **committed**, and the window
+has now been opened once — see the table below for exactly how far that goes.
 
 Read this before touching anything in `Modules/Help/` or `Resources/Help/`.
 
@@ -37,17 +37,33 @@ directly and are unchanged.
 
 ## Proven — and what is NOT
 
-| Proven | Never exercised |
+| Proven on screen | Never exercised |
 | --- | --- |
-| `xcodebuild … build` succeeds, no warnings | **The Help window has never been opened** |
-| All 8 `.md` files reach `JamfCommander.app/Contents/Resources/` | Nothing has been rendered on screen |
-| Markdown resources flatten (see below) | Search has never been run |
-| | The parser has never seen its own content |
+| The window opens; the index draws all three sections | **Search has never been run** |
+| Selecting a topic renders its page | Seven of the eight pages have not been read |
+| Headings, paragraphs, bullets and callouts render | `HelpPresenter.present(_:)` — nothing calls it |
+| `welcome.md` reads correctly end to end | The empty-search-result state |
 
-**Nothing in the right-hand column works until somebody looks at it.** The build proves the code
-compiles and the files ship; it proves nothing about whether a page reads correctly, whether the
-index selects, or whether search returns sensible results. Open Help and read every one of the eight
-pages before building on this.
+Every page now parses with balanced inline emphasis, checked by compiling `HelpMarkdown.swift`
+standalone and running it over all eight files. That proves the *parser*, not the *rendering*: a
+block can parse perfectly and still look wrong.
+
+The maintainer's verdict on first sight was "good but not great", with no specifics — so the layout
+is unfinished, not broken. Read all eight pages and form your own view before changing anything.
+
+### Found the first time the window was opened
+
+`welcome.md` rendered with half of two bullets falling out of the list and appearing as loose
+paragraphs after it, one of them showing a literal `*` where emphasis had been split.
+
+The cause was the parser, not the content. The guide's pages are hard-wrapped, so a bullet routinely
+spans several source lines; the list loop only continued while a line *began* with `- `, so the first
+line became the item and the rest became a paragraph — taking half of any `*emphasis*` with it.
+Markdown's lazy continuation. Fixed in `HelpMarkdown.consumeContinuations(of:lines:index:)`.
+
+Worth knowing because it is the shape of bug to expect: **the parser has only ever seen eight
+documents.** Phase 2 adds eleven more, written by somebody who will reasonably assume ordinary
+Markdown works. Tables, nested lists and images are not supported at all — see Constraints.
 
 ## The bundling trap, confirmed by experiment
 
