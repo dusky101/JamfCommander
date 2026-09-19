@@ -7,6 +7,14 @@ Packages, and Categories — delete, move category, change scope, clone, create 
 policies, and CSV export. It authenticates with OAuth client-credentials and talks to both the Jamf
 **Classic API** (`JSSResource/…`, XML for writes) and the **Pro API** (`api/v1/…`, JSON).
 
+## First, if this is a new session
+
+Read **`docs/prompts/START_HERE.md`** before writing any code. (The maintainer's own opening message
+lives in `docs/prompts/NEW_SESSION_PROMPT.md`.) It is the orientation for this
+project: what to read and in what order, what each module does, which sidebar labels do not match
+their folder names, and the things that will catch you out. It takes a couple of minutes and it is
+shorter than the mistakes it prevents.
+
 ## Non-negotiable safety invariants (ALWAYS apply)
 
 These govern every change. Never relax them to make a feature easier.

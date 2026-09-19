@@ -5,6 +5,25 @@
 Hand this to a fresh Claude Code session in the JamfCommander repository. Read the files below in
 order before writing any code. None of it is optional.
 
+`CLAUDE.md` already points a new session here, so this should happen on its own. To be explicit, the
+maintainer's opening message is kept in **`docs/prompts/NEW_SESSION_PROMPT.md`**, ready to copy — it
+is this:
+
+```
+Before doing anything, read docs/prompts/START_HERE.md and follow it: the reading order,
+what each module does, and the things that will catch you out. Then read CLAUDE.md's safety
+invariants and treat them as binding — this app writes to a live production Jamf instance.
+
+Confirm you have read both by telling me, in one line each: which two sidebar labels do not
+match their folder names, and why a cancelled request must not be retried.
+
+Then wait. I will tell you what we are working on.
+```
+
+The two questions are there because they cannot be answered from the code alone in a few seconds —
+they are only in the documents. An answer that is wrong or vague means the reading did not happen, and
+you have found that out before any code was written rather than afterwards.
+
 ---
 
 ## 1. Read these, in this order
