@@ -46,13 +46,18 @@ struct HelpView: View {
     @State private var hostSize: CGSize?
     /// Help opens ready to be searched. Without this the page takes first focus — it is focusable so
     /// that it can be scrolled from the keyboard — and opens wearing a focus ring.
-    /// Which index sections are open. Everything starts closed except the section holding the page
-    /// you land on — an index that showed no sign of where you are is disorienting, and one section
-    /// open is not the wall of text the whole index was.
-    @State private var openSections: Set<HelpSection> = []
     /// Whether the search panel is up. Search is a panel rather than a field in the index: as a
     /// field it sat in the corner being ignored, and the index underneath it was doing the work.
     @State private var isSearchPresented = false
+    /// What an export did, once it has done it. A save that reported nothing would leave the reader
+    /// guessing whether the file exists.
+    @State private var exportOutcome: ExportOutcome?
+
+    private struct ExportOutcome: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
 
     /// How large to draw the guide, given the window behind it. Generous, but always inside the
     /// window, and capped so it does not become an unreadably wide measure on a large display.
@@ -61,8 +66,8 @@ struct HelpView: View {
         // The cap is what the guide actually needs, not what the window can spare: an index of
         // about 270pt plus a 620pt measure and its padding comes to roughly a thousand. At the
         // previous 1400 the page was a narrow column of text stranded in an acre of empty pane.
-        return CGSize(width: min(max(hostSize.width - 120, 820), 1040),
-                      height: min(max(hostSize.height - 100, 520), 1000))
+        return CGSize(width: min(max(hostSize.width - 120, 860), 1160),
+                      height: min(max(hostSize.height - 100, 560), 1040))
     }
 
     private var selectedTopic: HelpTopic? {
@@ -72,7 +77,7 @@ struct HelpView: View {
     var body: some View {
         NavigationSplitView {
             index
-                .navigationSplitViewColumnWidth(min: 240, ideal: 270, max: 340)
+                .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 380)
         } detail: {
             page
         }
@@ -86,10 +91,18 @@ struct HelpView: View {
         .background(HostWindowSizeReader { hostSize = $0 })
         .appBackground()
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                exportMenu
+            }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done", action: onDismiss)
                     .keyboardShortcut(.escape, modifiers: [])
             }
+        }
+        .alert(item: $exportOutcome) { outcome in
+            Alert(title: Text(outcome.title),
+                  message: Text(outcome.message),
+                  dismissButton: .default(Text("OK")))
         }
         .task {
             // Reading a dozen files is cheap, but it is still file I/O on every open, so it happens
@@ -100,8 +113,49 @@ struct HelpView: View {
         .onChange(of: presenter.requestedTopic) {
             guard let requested = presenter.requestedTopic else { return }
             selectedTopicID = requested
-            revealSelectedSection()
             presenter.requestedTopic = nil
+        }
+    }
+
+    /// Save this page, or the whole guide, as a PDF.
+    ///
+    /// For sending a page to somebody who does not have the app — the *Privileges* page to a
+    /// security team, the setup pages to a customer. Every export carries the app version and the
+    /// date, because a PDF is a copy and stops matching the build the moment one of them moves.
+    private var exportMenu: some View {
+        Menu {
+            Button("Export This Page…") {
+                guard let topic = selectedTopic else { return }
+                save([topic], named: HelpPDFWriter.fileName(for: topic))
+            }
+            .disabled(selectedTopic == nil)
+
+            Button("Export the Whole Guide…") {
+                save(topics, named: HelpPDFWriter.fileName(for: nil))
+            }
+            .disabled(topics.isEmpty)
+        } label: {
+            Label("Export", systemImage: "square.and.arrow.up")
+        }
+        .menuIndicator(.hidden)
+        .help("Save this page, or the whole guide, as a PDF")
+    }
+
+    private func save(_ topics: [HelpTopic], named name: String) {
+        HelpPDFWriter.export(topics, suggestedName: name) { result in
+            switch result {
+            case .success(let url):
+                exportOutcome = ExportOutcome(
+                    title: "Guide exported",
+                    message: "Saved to \(url.lastPathComponent). It carries the app version and "
+                        + "today's date, because a PDF stops matching the app the moment either moves.")
+            case .failure:
+                // No error body: it can carry a path the reader did not choose to share.
+                exportOutcome = ExportOutcome(
+                    title: "Could not export",
+                    message: "The PDF could not be written. Check you can write to that folder and "
+                        + "try again.")
+            }
         }
     }
 
@@ -115,14 +169,8 @@ struct HelpView: View {
         }
         if let current = selectedTopicID, topics.contains(where: { $0.id == current }) { return }
         selectedTopicID = topics.first?.id
-        revealSelectedSection()
     }
 
-    /// Open the section holding the selected topic, leaving the rest closed.
-    private func revealSelectedSection() {
-        guard let section = selectedTopic?.section else { return }
-        openSections.insert(section)
-    }
 
     // MARK: - Index
 
@@ -136,7 +184,6 @@ struct HelpView: View {
         .sheet(isPresented: $isSearchPresented) {
             HelpSearchPanel(topics: topics) { chosen in
                 selectedTopicID = chosen
-                revealSelectedSection()
                 isSearchPresented = false
             }
         }
@@ -156,10 +203,10 @@ struct HelpView: View {
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Text("⌘F")
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.tertiary)
             }
-            .font(.callout)
+            .font(.body)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.7),
@@ -183,7 +230,8 @@ struct HelpView: View {
     /// whose only label is a Done button.
     private var header: some View {
         Text("Jamf Commander Guide")
-            .font(.headline)
+            .font(.title3)
+            .fontWeight(.semibold)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.top, 14)
@@ -196,10 +244,8 @@ struct HelpView: View {
         List(selection: $selectedTopicID) {
             ForEach(HelpSearch.groups(for: topics), id: \.section) { group in
                 Section {
-                    if openSections.contains(group.section) {
-                        ForEach(group.topics) { topic in
-                            row(for: topic)
-                        }
+                    ForEach(group.topics) { topic in
+                        row(for: topic)
                     }
                 } header: {
                     sectionHeader(group.section)
@@ -216,39 +262,28 @@ struct HelpView: View {
             .tag(topic.id)
     }
 
-    /// A section's header — and the control that opens it.
+    /// A section's header.
     ///
     /// Built from an `Image` and a `Text` with their own styles rather than from a `Label`:
     /// `.listStyle(.sidebar)` re-applies its own header treatment over a `Label`, so a single
-    /// `.foregroundStyle` on the outside was simply ignored. `.textCase(nil)` stops the list
-    /// uppercasing it for the same reason.
+    /// `.foregroundStyle` on the outside is ignored. `.textCase(nil)` stops it uppercasing for the
+    /// same reason.
+    ///
+    /// These were collapsible for a while. The maintainer's verdict was that it "gets in the way" —
+    /// nineteen titles is a list you can read, and a click to reveal them is a click for nothing.
     private func sectionHeader(_ section: HelpSection) -> some View {
-        let isOpen = openSections.contains(section)
-        return Button {
-            withAnimation(.snappy(duration: 0.2)) {
-                if isOpen { openSections.remove(section) } else { openSections.insert(section) }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: isOpen ? "chevron.down" : "chevron.right")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 10)
-                Image(systemName: section.systemImage)
-                    .font(.caption)
-                    .foregroundStyle(section.colour)
-                Text(section.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(section.colour)
-                Spacer(minLength: 0)
-            }
-            .textCase(nil)
-            .contentShape(Rectangle())
+        HStack(spacing: 7) {
+            Image(systemName: section.systemImage)
+                .font(.callout)
+                .foregroundStyle(section.colour)
+            Text(section.title)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(section.colour)
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .accessibilityLabel(section.title)
-        .accessibilityHint(isOpen ? "Collapses this section" : "Expands this section")
+        .textCase(nil)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
     }
 
     // MARK: - Page
@@ -313,7 +348,7 @@ private struct HelpIndexRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(topic.title)
-                    .font(.callout)
+                    .font(.body)
                     .fontWeight(.medium)
                     // Only a module row recolours its title, and only on hover — the same trade the
                     // sidebar makes. A selected row keeps the list's own foreground so the text
@@ -322,7 +357,7 @@ private struct HelpIndexRow: View {
 
                 if showsSummary {
                     Text("\(topic.section.title) · \(topic.summary)")
-                        .font(.caption)
+                        .font(.subheadline)
                         // `.secondary` left this fainter than the summary is worth: in a result it
                         // is what tells you whether this is the page you want.
                         .foregroundStyle(Color.primary.opacity(0.75))

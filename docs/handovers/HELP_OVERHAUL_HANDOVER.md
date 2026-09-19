@@ -362,7 +362,12 @@ them. That is real work in the modules, not in the guide, and it should be decid
    hover hints (`SidebarHint`) — decide which is the source of truth before both exist.
 4. **Does help need the unofficial/disclaimer note?** `welcome.md` currently carries one paragraph
    saying the app is not affiliated with Jamf. Check that is the wording he wants.
-5. **Print, and Save as PDF.** **Asked and answered on 19 September 2026: not now.** The maintainer
+5. ~~**Print, and Save as PDF.**~~ **Built** (19 September 2026) — he changed his mind and asked
+   for it. `HelpExport.swift`, an Export menu in the guide's toolbar, page or whole guide, stamped
+   with version and date. Pagination is AppKit's and can cut a callout in half; see the roadmap
+   entry for what that would cost to fix. Original note kept below.
+
+   **Previously: asked and answered on 19 September 2026: not now.** The maintainer
    was offered a `⌘P` Print command in phase 2 and said to leave it and make the guide complete
    first. It stays a roadmap entry — `docs/roadmap/HELP_PDF_EXPORT.md` — and the background below is
    kept for whoever picks it up.

@@ -14,6 +14,10 @@ import SwiftUI
 
 /// One help page: its parsed blocks, in order.
 struct MarkdownView: View {
+    /// Running text for the guide — a step up from `.body`, so the page reads as a document rather
+    /// than as a dialog, and so the headings above it have somewhere to go.
+    static let bodyFont: Font = .title3
+
     let blocks: [HelpBlock]
     /// The module this page documents, when it documents one. Its colour and symbol dress the page's
     /// level-1 heading, so a module looks the same in the guide as it does in the sidebar.
@@ -69,7 +73,7 @@ private struct HelpBlockView: View {
 
         case .paragraph(let text):
             inline(text)
-                .font(.callout)
+                .font(MarkdownView.bodyFont)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -81,7 +85,7 @@ private struct HelpBlockView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     listRow {
                         Text("•")
-                            .font(.callout.weight(.bold))
+                            .font(MarkdownView.bodyFont.weight(.bold))
                             .foregroundStyle(.tint)
                             .frame(width: Self.markerWidth, alignment: .trailing)
                     } content: {
@@ -95,7 +99,7 @@ private struct HelpBlockView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { offset, item in
                     listRow {
                         Text("\(start + offset).")
-                            .font(.callout)
+                            .font(MarkdownView.bodyFont)
                             .fontWeight(.semibold)
                             .foregroundStyle(.tint)
                             .frame(width: Self.markerWidth, alignment: .trailing)
@@ -107,7 +111,7 @@ private struct HelpBlockView: View {
 
         case .code(_, let text):
             Text(text)
-                .font(.system(.caption, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -119,7 +123,7 @@ private struct HelpBlockView: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: tone.systemImage)
                     .foregroundStyle(tone.colour)
-                    .font(.callout)
+                    .font(MarkdownView.bodyFont)
                     .accessibilityLabel(tone.accessibilityLabel)
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(inner.enumerated()), id: \.offset) { index, block in
@@ -152,7 +156,7 @@ private struct HelpBlockView: View {
         HStack(alignment: .firstTextBaseline, spacing: Self.markerGap) {
             marker()
             content()
-                .font(.callout)
+                .font(MarkdownView.bodyFont)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
@@ -170,12 +174,14 @@ private struct HelpBlockView: View {
         return Text(markdown)
     }
 
+    /// Running text for the guide — a step up from `.body`, so the page reads as a document rather
+    /// than as a dialog, and so the headings above it have somewhere to go.
     private func headingFont(_ level: Int) -> Font {
         switch level {
-        case 1: return .title2
-        case 2: return .title3
-        case 3: return .headline
-        default: return .subheadline
+        case 1: return .largeTitle
+        case 2: return .title
+        case 3: return .title2
+        default: return .title3
         }
     }
 }

@@ -28,16 +28,16 @@ nonisolated enum HelpRhythm {
         switch block {
         case .heading(let level, _):
             // The break that makes a section legible as a section.
-            return level <= 2 ? 26 : 20
+            return level <= 2 ? 30 : 24
 
         case .bulleted, .numbered:
             // A list introduced by a line like "You need three things:" belongs to that line, so it
             // sits closer to it than two paragraphs sit to each other.
-            if case .paragraph = previous { return 8 }
-            return 14
+            if case .paragraph = previous { return 10 }
+            return 18
 
         case .divider:
-            return 22
+            return 26
 
         case .figure:
             // A figure is a block of its own, not an aside to the paragraph above it.
@@ -45,8 +45,8 @@ nonisolated enum HelpRhythm {
 
         case .paragraph, .code, .callout:
             // First thing under a heading: close, because the heading introduces it.
-            if case .heading = previous { return 8 }
-            return 14
+            if case .heading = previous { return 10 }
+            return 18
         }
     }
 }
