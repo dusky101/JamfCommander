@@ -90,6 +90,15 @@ labelled **Installomator**, and `Modules/Redundant/` is the one labelled **Unuse
 - **Never invent an endpoint or a payload shape.** If it is not in `docs/JAMF_API_REFERENCE.md` or
   already proven in the code, confirm it against Jamf's documentation first. Where a Pro API update is
   needed, read the record, change one key and send the whole object back — see `moveScript`.
+- **A module header has less room than it looks.** Measure the detail pane against the window's own
+  **960pt** minimum, not that minus the sidebar: `NavigationSplitView` collapses the sidebar before
+  the window gets that narrow and hands the whole width to the pane. Installomator's header
+  (`PackagesDashboardView.headerView`) needs **910.5pt** — a 184pt title, a 140pt group picker, a
+  420pt view picker and an 86.5pt Refresh button — so it fits by about 50pt. Add a fifth segment to
+  that picker, or give a button a text label, and it will not. Packages was moved into the window
+  toolbar once for exactly this reason and has since been moved back with content-sized controls;
+  the arithmetic is in the comment on `AddPackageView.header`. Measure with a real
+  `NSSegmentedControl`, do not estimate — glyph widths are not what you expect.
 
 ## 5. How to work here
 
@@ -107,8 +116,29 @@ Read `docs/README.md` and `.claude/rules/docs-workflow.md`. In short: a new idea
 `docs/roadmap/` entry, **not** immediate code. A handover and a prompt are written from that entry on
 the day work starts, never in advance.
 
-Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`.
+Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
+`docs/roadmap/MULTIPLE_ENVIRONMENTS.md`, `docs/roadmap/HELP_PDF_EXPORT.md`.
 
-Handovers exist for the sidebar restructure and the Help overhaul in `docs/handovers/`. Both were
-written *before* their work began, which is what the rule above now forbids — **re-verify their code
-facts against the repository before acting on them.**
+Three handovers exist in `docs/handovers/`:
+
+- **Help overhaul** — rewritten on 19 September 2026 against the code as it stood that day, with a
+  proven/unproven table. Current; trust it, and update it when phase 2 lands.
+- **Sidebar restructure** — written *before* its work began, which is what the rule above now
+  forbids. **Re-verify its code facts against the repository before acting on it**; the sidebar has
+  moved since.
+- **Blueprints** — has its own proven/unproven table. Read that table before trusting any write.
+
+## 7. What is proven against the live tenant
+
+"It builds" is not "it works". These have actually run:
+
+- **Script category moves and script delete** — `moveScript` is read-modify-write against
+  `PUT api/v1/scripts/{id}`; the script's contents survive.
+- **The Blueprints writes** that `BLUEPRINTS_HANDOVER.md` once listed as unexercised.
+- **`.jamfconfig` export and import** (19 September 2026). An export carries the real instance URL
+  and the real app version — it hardcoded `1.0.0` until that date — and importing a file written
+  before Blueprints existed leaves existing Platform API credentials in place rather than blanking
+  them. That merge rule lives in `SettingsTransfer.importConfiguration(mergingInto:)` and is the part
+  worth re-checking if you touch it.
+
+Not proven: most of the help guide's rendering — see `docs/handovers/HELP_OVERHAUL_HANDOVER.md`.
