@@ -154,8 +154,7 @@ struct DashboardView: View {
                                      icon: "arrow.down.app.fill",
                                      color: .moduleSpring,
                                      detail: installomatorDetail,
-                                     isLoading: isLoadingInstallomator,
-                                     animatesArrival: true)
+                                     isLoading: isLoadingInstallomator)
                         }
                         .buttonStyle(.plain)
                         .help(installomatorTooltip)
@@ -659,8 +658,7 @@ struct StatCard: View {
                 }
                 Spacer()
                 if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
+                    TileSpinner()
                         .padding(.trailing, 4)
                 } else {
                     Text(countText)
@@ -741,6 +739,34 @@ struct StatCard: View {
         withAnimation(.spring(response: 0.26, dampingFraction: 0.4)) { isPulsing = true }
         try? await Task.sleep(for: .seconds(0.16))
         withAnimation(.spring(response: 0.34, dampingFraction: 0.7)) { isPulsing = false }
+    }
+}
+
+/// The tile's "still reading" indicator, drawn in SwiftUI rather than hosted from AppKit.
+///
+/// `ProgressView` wraps an `NSProgressIndicator`. The card's hover `scaleEffect` re-hosts it at
+/// fractional sizes — 16.498pt, then 16.495, settling back to 16.000 as the spring unwinds — and
+/// AppKit logs a constraint complaint for each one, hundreds of lines deep while a tile is loading.
+/// Nothing was wrong on screen; the noise buried the app's own logging. Drawing the arc here removes
+/// the hosted view, and with it the message.
+private struct TileSpinner: View {
+    @State private var isSpinning = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.7)
+            .stroke(Color.secondary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+            .frame(width: 16, height: 16)
+            .rotationEffect(.degrees(isSpinning ? 360 : 0))
+            .animation(reduceMotion
+                       ? nil
+                       : .linear(duration: 0.9).repeatForever(autoreverses: false),
+                       value: isSpinning)
+            .onAppear { isSpinning = true }
+            // The card speaks for itself — `StatCard.accessibilitySummary` already says "still
+            // loading" — so the arc is decoration.
+            .accessibilityHidden(true)
     }
 }
 

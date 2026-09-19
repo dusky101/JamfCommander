@@ -40,9 +40,9 @@ categories and Device Status are usable throughout.
 
 A spinner means still working. A dash means the read failed. They are deliberately not the same.
 
-When the answer arrives the tile counts up to it and settles. Every number on the way is between
-where the tile was and the figure Jamf returned — there is no count climbing while the scan runs,
-because until it comes back nobody knows the total.
+When the Unused answer arrives the tile counts up to it and settles. Every number on the way is
+between where the tile was and the figure Jamf returned — there is no count climbing while the scan
+runs, because until it comes back nobody knows the total.
 
 Leaving the Dashboard before they finish cancels them, which is the right outcome; they are read
 again next time you come back.
