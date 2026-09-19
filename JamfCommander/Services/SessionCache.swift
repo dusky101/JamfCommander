@@ -86,8 +86,6 @@ enum CacheEntry: String, CaseIterable, Sendable {
     case categories
     /// `[ComputerGroup]` — `fetchComputerGroups()`. The scope pickers.
     case computerGroups
-    /// `CachedInstallomatorScan` — `fetchInstallomatorPolicies(knownScriptIDs:)`.
-    case installomatorScan
     /// `[String]` — Installomator's published label list. From GitHub, not Jamf.
     case installomatorLabels
     /// `[String: String]` — `fetchBuildings()`.
@@ -104,7 +102,7 @@ enum CacheEntry: String, CaseIterable, Sendable {
         case .packages: .packages
         case .categories: .categories
         case .computerGroups: .groups
-        case .installomatorScan, .installomatorLabels: .installomator
+        case .installomatorLabels: .installomator
         case .buildings, .departments: .userLocation
         }
     }

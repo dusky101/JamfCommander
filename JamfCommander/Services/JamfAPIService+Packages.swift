@@ -180,94 +180,29 @@ extension JamfAPIService {
     ///
     /// - Parameter knownScriptIDs: Additional script ids to treat as Installomator, so a renamed
     ///   or differently-named script is still detected (see `fetchInstallomatorScriptIDs()`).
-    /// - Parameter bypassingCache: `true` re-reads every policy from Jamf. The Refresh button passes
-    ///   this. A cached scan is only served when `knownScriptIDs` match the set it was built with,
-    ///   for the same reason as `scanPolicyEstate`.
+    /// - Parameter bypassingCache: `true` re-reads every policy from Jamf. The Refresh button
+    ///   passes this.
+    ///
+    /// **One pass, not two.** This used to run a scan of its own, identical in every respect to
+    /// `scanPolicyEstate` — same list endpoint, same `fetchPolicyDetail` per policy, same batches of
+    /// 10 with 0.5s gaps, and the same `installomatorInfo(in:knownScriptIDs:)` applied to the
+    /// result. On a 249-policy tenant that meant opening the Dashboard and then the Installomator
+    /// module hydrated all 249 policies twice, and the second pass was the ~20 seconds that module
+    /// took to appear even with everything else cached.
+    ///
+    /// Deriving it instead means the two modules share one scan in either order: the Dashboard's
+    /// estate scan makes this instant, and coming here first makes the Unused audit instant.
+    /// `scanPolicyEstate` is also the better-behaved of the two — it never retries a cancelled
+    /// request, which this one did three times with backoff.
     func fetchInstallomatorPolicies(knownScriptIDs: Set<String> = [],
                                     bypassingCache: Bool = false) async throws -> InstallomatorScan {
-        if !bypassingCache,
-           let cached = SessionCache.shared.value(.installomatorScan,
-                                                  as: CachedInstallomatorScan.self,
-                                                  instanceURL: baseURL),
-           cached.knownScriptIDs == knownScriptIDs {
-            return cached.scan
-        }
-
-        print("[Installomator] Starting fetchInstallomatorPolicies...")
-
-        let listResponse = try await genericFetch(
-            endpoint: "JSSResource/policies",
-            responseType: PolicyListResponse.self
+        let estate = try await scanPolicyEstate(knownScriptIDs: knownScriptIDs,
+                                                bypassingCache: bypassingCache)
+        return InstallomatorScan(
+            deployed: estate.installomator,
+            allPolicyNames: estate.allPolicyNames
         )
-        print("[Installomator] Fetched \(listResponse.policies.count) policies from Jamf")
-
-        var results: [InstallomatorPolicyInfo] = []
-        /// How many policies were actually read. A policy that is not an Installomator deployment
-        /// contributes nothing to `results`, so the size of that list says nothing about whether the
-        /// scan finished — and whether it finished is what decides if it may be cached.
-        var readCount = 0
-
-        let batchSize = 10
-        let batches = stride(from: 0, to: listResponse.policies.count, by: batchSize).map {
-            Array(listResponse.policies[$0..<min($0 + batchSize, listResponse.policies.count)])
-        }
-        
-        for (batchIndex, batch) in batches.enumerated() {
-            await withTaskGroup(of: InstallomatorReadResult.self) { group in
-                for item in batch {
-                    group.addTask {
-                        for attempt in 1...3 {
-                            do {
-                                let detail = try await self.fetchPolicyDetail(id: item.id)
-                                return InstallomatorReadResult(
-                                    didRead: true,
-                                    info: Self.installomatorInfo(in: detail, knownScriptIDs: knownScriptIDs)
-                                )
-                            } catch {
-                                if attempt == 3 { return .unread }
-                                try? await Task.sleep(nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000))
-                            }
-                        }
-                        return .unread
-                    }
-                }
-                
-                for await result in group {
-                    if result.didRead { readCount += 1 }
-                    if let info = result.info {
-                        results.append(info)
-                    }
-                }
-            }
-            
-            if batchIndex < batches.count - 1 {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-            }
-        }
-        
-        print("[Installomator] Found \(results.count) deployed Installomator policies")
-        let scan = InstallomatorScan(
-            deployed: results,
-            allPolicyNames: listResponse.policies.map(\.name)
-        )
-
-        // Like the estate scan, this skips a policy it cannot hydrate rather than failing, so a
-        // cancelled pass returns short without throwing. `allPolicyNames` comes from the list
-        // response and is always whole, so completeness is judged on the policies actually read.
-        if !Task.isCancelled, readCount == listResponse.policies.count {
-            SessionCache.shared.store(
-                CachedInstallomatorScan(scan: scan, knownScriptIDs: knownScriptIDs),
-                as: .installomatorScan,
-                instanceURL: baseURL
-            )
-        } else {
-            print("[Installomator] Scan incomplete — not cached")
-        }
-
-        return scan
     }
-
-
 
     /// When `Labels.txt` last changed upstream, or `nil` when GitHub will not say.
     ///
@@ -658,29 +593,4 @@ private struct GitHubCommitEntry: Decodable {
             let date: String
         }
     }
-}
-
-// MARK: - Scan plumbing
-
-/// A cached Installomator scan, with the script ids it was built with — see `CachedPolicyEstate`
-/// for why the ids travel with it.
-struct CachedInstallomatorScan: Sendable {
-    let scan: JamfAPIService.InstallomatorScan
-    let knownScriptIDs: Set<String>
-}
-
-/// One policy's contribution to an Installomator scan.
-///
-/// `info` alone could not answer whether the scan finished: it is `nil` both for a policy that was
-/// read and is not an Installomator deployment, and for one that could not be read at all. Only the
-/// second means the scan is incomplete, and only an incomplete scan must not be cached.
-private struct InstallomatorReadResult: Sendable {
-    let didRead: Bool
-    let info: JamfAPIService.InstallomatorPolicyInfo?
-
-    /// A policy Jamf would not return.
-    ///
-    /// `nonisolated` for the same reason as `PolicyPackageFindings.none` — this is read from inside
-    /// a `TaskGroup`, and the project defaults to main-actor isolation.
-    nonisolated static let unread = InstallomatorReadResult(didRead: false, info: nil)
 }

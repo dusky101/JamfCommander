@@ -244,7 +244,10 @@ extension JamfAPIService {
         }
 
         print("[Packages] Estate scan: \(policies.count) policies read · \(usage.count) packages attached to a policy · \(installomator.count) Installomator policies")
-        let scan = PolicyEstateScan(policies: policies, packageUsage: usage, installomator: installomator)
+        let scan = PolicyEstateScan(policies: policies,
+                                    packageUsage: usage,
+                                    installomator: installomator,
+                                    allPolicyNames: listResponse.policies.map(\.name))
 
         // Only a *complete* scan is worth keeping — and this scan is cancelled routinely by design:
         // the Dashboard starts it after the tiles are up, and leaving the module abandons it. A
@@ -282,6 +285,12 @@ struct PolicyEstateScan: Sendable {
     let packageUsage: [String: [String]]
     /// Policies that install software through Installomator, sorted by policy name.
     let installomator: [JamfAPIService.InstallomatorPolicyInfo]
+    /// Every policy name in the tenant, in the order Jamf listed them — including policies whose
+    /// detail could not be read, because this comes from the list response rather than the scan.
+    ///
+    /// The Installomator module uses it to spot a name collision with a policy that installs the
+    /// same app but was made by hand, so it must cover policies the scan itself could not hydrate.
+    let allPolicyNames: [String]
 }
 
 /// A cached estate scan, with the Installomator script ids it was built with.

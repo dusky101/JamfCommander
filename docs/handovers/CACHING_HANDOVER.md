@@ -156,7 +156,6 @@ signal is a cache that goes stale silently — the failure mode that matters.
 | `.packages` | `fetchJamfPackages` | packages |
 | `.categories` | `fetchCategories` | categories |
 | `.computerGroups` | `fetchComputerGroups` | groups |
-| `.installomatorScan` | `fetchInstallomatorPolicies` | installomator |
 | `.installomatorLabels` | Installomator's GitHub label list | installomator |
 | `.buildings` / `.departments` | `fetchBuildings` / `fetchDepartments` | userLocation |
 
@@ -168,6 +167,38 @@ returning different types; they share one domain and fall together.
 
 **The Dashboard now primes everything the Unused module needs.** All five of that module's reads are
 cache hits on a second visit.
+
+### The Installomator module was scanning the tenant a second time
+
+Phase 2 as first written still left Installomator taking ~20 seconds, and the maintainer's console
+said why:
+
+```
+[Packages] Estate scan: 249 policies read …          ← the Dashboard
+[Installomator] Starting fetchInstallomatorPolicies...
+[Installomator] Fetched 249 policies from Jamf        ← all 249 hydrated AGAIN
+```
+
+`fetchInstallomatorPolicies` ran a scan of its own that was **identical to `scanPolicyEstate` in
+every respect** — same list endpoint, same `fetchPolicyDetail` per policy with no subsets, same
+batches of 10 with 0.5s gaps and three retries, and the same
+`installomatorInfo(in:knownScriptIDs:)` applied to each result. Two implementations of one read,
+and caching them separately would only have made the app pay for both.
+
+It is now derived: `fetchInstallomatorPolicies` calls `scanPolicyEstate` and reshapes the result.
+**109 lines deleted, 19 added.** `PolicyEstateScan` gained `allPolicyNames` so the derivation is
+exact — that list comes from the *list* response and therefore covers policies the scan could not
+hydrate, which is what the Installomator module needs it for. The `.installomatorScan` cache entry
+is gone; there is nothing left to cache separately.
+
+Two consequences worth knowing:
+
+- **The two modules now share one scan in either order.** Dashboard first makes Installomator
+  instant; Installomator first makes the Unused audit instant.
+- **The cancellation behaviour improved.** `scanPolicyEstate` never retries a cancelled request;
+  the implementation just deleted retried one three times with backoff, which is the trap
+  `START_HERE.md` warns about. Ordering within `deployed` changed from list order to name order,
+  which is invisible: `PackagesDashboardView` sorts every row by display name itself.
 
 ### Blueprints are deliberately excluded
 
@@ -256,6 +287,9 @@ sheet while another is still on screen does not reliably work on macOS, which is
    cache hits. "Read … ago" sits beside its Refresh button, and under the Dashboard's tiles.
 2. **Back to the Dashboard.** No `[Installomator] Parsed 1268 …` a second time, and no second
    `[Packages] Estate scan:`.
+3. **Installomator, from a loaded Dashboard.** Should now be quick rather than ~20 seconds, and the
+   console should show **no** `[Installomator] Fetched 249 policies from Jamf` line at all — that
+   read no longer exists.
 3. **Refresh on any module.** The stamp resets; the console shows the read actually happening.
 4. **Delete a policy, or move one to a category.** The list must come back *without* it. If it comes
    back with it, the `requestRefresh()` isolation fix is not actually closed.
