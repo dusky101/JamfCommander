@@ -225,7 +225,7 @@ enum ExportType: String, CaseIterable, Identifiable, Hashable {
         case .profiles: return "Profiles"
         case .scripts: return "Scripts"
         case .packages: return "Packages"
-        case .redundant: return "Redundant"
+        case .redundant: return "Unused"
         }
     }
 

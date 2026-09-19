@@ -28,7 +28,12 @@ enum AppModule: String, CaseIterable, Identifiable {
     case installomator = "Installomator"
     /// Housekeeping: policies, profiles and packages that look like they do nothing. Pinned lowest,
     /// and quieter than Installomator: it is an audit you visit occasionally, not a place you work.
-    case redundant = "Redundant"
+    ///
+    /// Labelled "Unused" rather than "Redundant". To an infrastructure audience "redundant" most
+    /// naturally means *duplicated for resilience* — redundant power supplies, redundant links —
+    /// which is close to the opposite of what this module finds. The case keeps its name because the
+    /// concept is still redundancy in the everyday sense; only the word somebody reads changes.
+    case redundant = "Unused"
 
     var id: String { rawValue }
 
@@ -142,6 +147,7 @@ struct SidebarView: View {
         SidebarModuleRow(
             module: module,
             isSelected: currentModule == module,
+            subtitle: module == .installomator ? "Install apps from labels" : nil,
             hint: module == .installomator ? .installomator : nil,
             action: { currentModule = module }
         )
@@ -220,6 +226,8 @@ private struct SidebarFooterRow: View {
 private struct SidebarModuleRow: View {
     let module: AppModule
     let isSelected: Bool
+    /// One short line under the label, for a module whose name does not say what it does.
+    var subtitle: String? = nil
     var hint: SidebarHint? = nil
     var action: () -> Void
 
@@ -253,9 +261,18 @@ private struct SidebarModuleRow: View {
                     // fires, rather than firing and being suppressed.
                     .symbolEffect(.bounce, value: reduceMotion ? 0 : pressCount)
 
-                Text(module.rawValue)
-                    .fontWeight(.medium)
-                    .foregroundStyle(isHighlighted ? module.accentColour : Color.primary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(module.rawValue)
+                        .fontWeight(.medium)
+                        .foregroundStyle(isHighlighted ? module.accentColour : Color.primary)
+
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(Color.secondary)
+                            .lineLimit(1)
+                    }
+                }
 
                 Spacer(minLength: 0)
             }

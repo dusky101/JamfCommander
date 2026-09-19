@@ -167,7 +167,7 @@ extension JamfAPIService {
         OperationResult(
             itemName: item.name,
             success: false,
-            error: "\(item.kind.singular) objects are not changed from the Redundant view.",
+            error: "\(item.kind.singular) objects are not changed from the Unused view.",
             itemID: item.id
         )
     }

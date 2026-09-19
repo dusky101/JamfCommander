@@ -149,7 +149,7 @@ class ExportService {
             try profileCSV.write(to: tempDir.appendingPathComponent("Profiles_\(dateString).csv"), atomically: true, encoding: .utf8)
             try scriptCSV.write(to: tempDir.appendingPathComponent("Scripts_\(dateString).csv"), atomically: true, encoding: .utf8)
             try packageCSV.write(to: tempDir.appendingPathComponent("Packages_\(dateString).csv"), atomically: true, encoding: .utf8)
-            try redundantCSV.write(to: tempDir.appendingPathComponent("Redundant_\(dateString).csv"), atomically: true, encoding: .utf8)
+            try redundantCSV.write(to: tempDir.appendingPathComponent("Unused_\(dateString).csv"), atomically: true, encoding: .utf8)
 
             // Create ZIP archive
             let zipURL = tempDir.appendingPathComponent("JamfCommander_Export_\(dateString).zip")

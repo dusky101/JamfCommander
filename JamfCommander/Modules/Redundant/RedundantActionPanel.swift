@@ -41,7 +41,7 @@ struct RedundantActionPanel: View {
         HStack(spacing: 16) {
             // MARK: - Left: Selection Info
             VStack(alignment: .leading, spacing: 6) {
-                Label("Redundant Actions", systemImage: "checklist")
+                Label("Bulk Actions", systemImage: "checklist")
                     .font(.headline)
                     .foregroundColor(.primary)
 

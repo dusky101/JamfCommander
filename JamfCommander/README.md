@@ -126,7 +126,7 @@ The dashboard is the starting point after connection. It shows clickable totals 
 
 - Category manager for creating, renaming, and deleting categories.
 - Device status summary based on recent computer inventory records.
-- Export All action that writes a ZIP archive containing CSV files for computers, policies, profiles, scripts, packages, and the Redundant audit.
+- Export All action that writes a ZIP archive containing CSV files for computers, policies, profiles, scripts, packages, and the Unused audit.
 
 ### Computers
 
@@ -435,7 +435,7 @@ Practical notes:
 - The upload uses the Jamf Pro API's package upload endpoint. On a Jamf Pro too old to offer it, the
   app says so plainly instead of failing obscurely.
 
-### Redundant
+### Unused
 
 An audit of objects that look like they do nothing, with the means to tidy them up. It is pinned at
 the bottom of the sidebar, above Settings, because it is housekeeping rather than somewhere you work
@@ -488,7 +488,7 @@ Jamf Commander can export:
 - Detailed profiles CSV
 - Scripts CSV
 - Packages CSV
-- Redundant audit CSV
+- Unused audit CSV
 - All supported data as a ZIP archive
 
 Exports use macOS save panels, so you choose the destination at export time. The progress window
@@ -521,7 +521,7 @@ Actions that modify Jamf include:
 - Cloning policies and profiles.
 - Creating Installomator deployment policies.
 - Deleting policies and profiles.
-- Disabling policies from the Redundant audit, and moving or deleting what it lists.
+- Disabling policies from the Unused audit, and moving or deleting what it lists.
 
 Deletion is permanent from the app's perspective. Make sure you have backups or a recovery process before using bulk delete actions.
 

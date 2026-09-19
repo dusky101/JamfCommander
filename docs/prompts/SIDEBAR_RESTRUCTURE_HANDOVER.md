@@ -26,13 +26,19 @@ Computers           │
 Packages            │
 Scripts            ─┘
 ───────────────────────  Divider
-Installomator            pinned, framed both sides
+Installomator            pinned, framed both sides, with a subtitle
 ───────────────────────  Divider
-                         22pt of air
-Redundant                pinned, unframed and deliberately quieter
+                         40pt of air
+Unused                   pinned, unframed and deliberately quieter (AppModule.redundant)
 ───────────────────────  Divider
 Settings · Help          SidebarFooterRow
 ```
+
+**On names.** The sidebar reads **Unused**; the code says `redundant` throughout (`AppModule.redundant`,
+`Modules/Redundant/`, `RedundantItem`). The label changed because to an infrastructure audience
+"redundant" most naturally means *duplicated for resilience*; the concept behind the code did not.
+Installomator keeps its name and carries a subtitle instead — every generic alternative collides with
+Jamf's own App Catalog / App Installers.
 
 **Why Installomator is out of the list.** Every other module *mirrors* something that already exists
 in the Jamf tenant. Installomator is the only one that brings something **in** from outside it — it
@@ -67,7 +73,7 @@ The maintainer's grouping, in his words:
 | *(ungrouped)* | Dashboard |
 | **Content** | Packages, Installomator |
 | **Management** | Policies, Profiles, Blueprints |
-| *(pinned, unchanged)* | Redundant |
+| *(pinned, unchanged)* | Unused |
 
 Plus **Devices** (mobile), not yet built, which needs a home in this scheme.
 

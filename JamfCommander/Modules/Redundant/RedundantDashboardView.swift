@@ -415,7 +415,7 @@ struct RedundantDashboardView: View {
         formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         _ = ExportService.saveCSVToFile(
             content: csv,
-            defaultName: "Redundant_\(formatter.string(from: Date())).csv"
+            defaultName: "Unused_\(formatter.string(from: Date())).csv"
         )
     }
 
