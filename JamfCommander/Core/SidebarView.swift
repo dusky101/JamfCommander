@@ -166,7 +166,7 @@ struct SidebarView: View {
             Divider()
 
             moduleButton(for: .redundant)
-                .padding(.top, 40)
+                .padding(.top, 16)
                 .padding(.bottom, 8)
 
             Divider()
@@ -313,10 +313,14 @@ private struct SidebarModuleRow: View {
                         .foregroundStyle(isHighlighted ? module.accentColour : Color.primary)
 
                     if let subtitle {
+                        // Two lines is a ceiling, not a target: at the column's normal width every
+                        // subtitle fits on one. It only wraps if the divider is dragged in, which
+                        // beats "Audit what nothing u…".
                         Text(subtitle)
                             .font(.caption2)
                             .foregroundStyle(Color.secondary)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 

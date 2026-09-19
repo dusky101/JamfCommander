@@ -126,7 +126,11 @@ struct ContentView: View {
                 .padding()
                 .background(Color.black.opacity(0.05))
             }
-            .frame(minWidth: 220, maxHeight: .infinity)
+            // 250, not 220. A sidebar row spends 104pt on padding, its icon and the two HStack
+            // gaps, so 220 left 116pt for the subtitle — and "Audit what nothing uses" measures
+            // 119.1pt at caption2, missing by 1.3pt while Installomator's 114.7pt fitted. 250
+            // gives 146pt. Narrower than this the subtitle wraps rather than truncating.
+            .frame(minWidth: 250, maxHeight: .infinity)
             // FIX: Apply background logic here to fix the "glitch" without squashing content
             .background {
                 Rectangle()
