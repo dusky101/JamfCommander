@@ -192,6 +192,56 @@ class JamfAPIService: ObservableObject {
         // Pro API delete endpoint
         try await genericRequest(method: "DELETE", endpoint: "api/v1/scripts/\(id)")
     }
+
+    /// Moves a script to another category.
+    ///
+    /// Read-modify-write on the script's own record: this reads the object Jamf returns for the
+    /// script, changes only `categoryId`, and sends that same object back. It deliberately does not
+    /// build a body of its own — sending a partial one would be a guess about which fields the Pro
+    /// API treats as optional, and the field most likely to be lost that way is `scriptContents`,
+    /// which is the script itself. Round-tripping the raw JSON also preserves any field this app
+    /// does not model, rather than dropping it.
+    ///
+    /// JSON, not XML: this is the Pro API, so it cannot go through `genericRequest`, which sends
+    /// `application/xml` for Classic writes.
+    func moveScript(id: String, toCategoryID categoryID: Int) async throws {
+        guard let token, !baseURL.isEmpty,
+              let url = URL(string: "\(baseURL)/api/v1/scripts/\(id)")
+        else { throw APIError.authFailed }
+
+        // 1. Read the whole record.
+        var readRequest = URLRequest(url: url)
+        readRequest.httpMethod = "GET"
+        readRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        readRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, readResponse) = try await URLSession.shared.data(for: readRequest)
+        guard let readHTTP = readResponse as? HTTPURLResponse,
+              (200...299).contains(readHTTP.statusCode)
+        else { throw APIError.httpError((readResponse as? HTTPURLResponse)?.statusCode ?? -1) }
+
+        guard var record = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.decodingFailed
+        }
+
+        // 2. Change one key. Jamf returns this id as a string, so it goes back as one.
+        record["categoryId"] = String(categoryID)
+
+        // 3. Write it back whole.
+        var writeRequest = URLRequest(url: url)
+        writeRequest.httpMethod = "PUT"
+        writeRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        writeRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        writeRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        writeRequest.httpBody = try JSONSerialization.data(withJSONObject: record)
+
+        let (_, writeResponse) = try await URLSession.shared.data(for: writeRequest)
+        guard let writeHTTP = writeResponse as? HTTPURLResponse,
+              (200...299).contains(writeHTTP.statusCode)
+        else { throw APIError.httpError((writeResponse as? HTTPURLResponse)?.statusCode ?? -1) }
+
+        RefreshCoordinator.shared.requestRefresh()
+    }
     
     // MARK: - Policy Functions (Classic API)
         

@@ -52,6 +52,9 @@ Follow `docs/handovers/BLUEPRINTS_HANDOVER.md`, which sets the pattern:
 
 ## For somebody picking this project up
 
+**`docs/prompts/START_HERE.md` is the short version** — hand it to a fresh Claude Code session
+and it covers everything below, plus what each module does and what will catch you out.
+
 Read in this order:
 
 1. `CLAUDE.md` at the repo root — the safety invariants. They are not negotiable, and they exist

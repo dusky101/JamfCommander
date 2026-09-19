@@ -112,6 +112,15 @@ Write bodies are `Content-Type: application/xml`.
 ### Scripts (Pro)
 - List: `GET api/v1/scripts?page-size=2000&sort=name:asc` → `results[]`.
 - Delete: `DELETE api/v1/scripts/{id}`.
+- Read one: `GET api/v1/scripts/{id}` → the whole script record, `scriptContents` included.
+- Update: `PUT api/v1/scripts/{id}`, JSON, **the complete record**. This is the Pro API, so it does
+  *not* go through `genericRequest` (which sends `application/xml` for Classic writes).
+
+  `moveScript(id:toCategoryID:)` is **read-modify-write**, and deliberately so: it GETs the record,
+  changes only `categoryId` (a string, as Jamf returns it), and PUTs the same object back. Never send
+  a partial body here. Which fields the Pro API treats as optional on a PUT is not documented in this
+  project, and the field most likely to be lost by guessing is `scriptContents` — the script itself.
+  Round-tripping the raw JSON also preserves fields `ScriptRecord` does not model.
 
 ### Packages (Pro) — custom package upload
 

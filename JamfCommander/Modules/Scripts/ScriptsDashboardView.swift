@@ -23,6 +23,7 @@ struct ScriptsDashboardView: View {
     @State private var isBusy = false
     @State private var confirmation: ConfirmationData?
     @State private var results: [OperationResult] = []
+    @State private var resultTitle = "Scripts"
     @State private var showResults = false
 
     var filteredScripts: [ScriptRecord] {
@@ -65,7 +66,9 @@ struct ScriptsDashboardView: View {
                 ScriptActionBar(
                     selectedScripts: selectedScripts,
                     isBusy: isBusy,
+                    categories: categories,
                     onClearSelection: { withAnimation { selectedScriptIDs.removeAll() } },
+                    onRequestMove: { targets, category in requestMove(targets, to: category) },
                     onRequestDelete: { targets in requestDelete(targets) }
                 )
                 .frame(height: 180)
@@ -100,10 +103,12 @@ struct ScriptsDashboardView: View {
                             ScriptCategorySection(
                                 title: group.key,
                                 scripts: group.value,
+                                categories: categories,
                                 selectedIDs: $selectedScriptIDs,
                                 onInspect: { id in
                                     inspectorSelection = InspectorSelection(id: id)
                                 },
+                                onMove: { script, category in requestMove([script], to: category) },
                                 onDelete: { script in requestDelete([script]) }
                             )
                         }
@@ -119,7 +124,7 @@ struct ScriptsDashboardView: View {
         .animation(.easeInOut(duration: 0.2), value: selectedScriptIDs.isEmpty)
         .commanderConfirmation(data: $confirmation)
         .sheet(isPresented: $showResults) {
-            OperationResultView(title: "Delete Scripts", results: results) {
+            OperationResultView(title: resultTitle, results: results) {
                 showResults = false
                 Task { await refreshData() }
             }
@@ -205,6 +210,72 @@ struct ScriptsDashboardView: View {
         return "Nothing matches the current filters."
     }
 
+    /// Asks before moving. Reversible by hand, so the wording says so rather than warning.
+    private func requestMove(_ targets: [ScriptRecord], to category: Category) {
+        guard !targets.isEmpty else { return }
+
+        let what = targets.count == 1 ? "“\(targets[0].name)”" : "\(targets.count) scripts"
+        confirmation = ConfirmationData(
+            title: "Move \(targets.count == 1 ? "this script" : "\(targets.count) scripts") to \(category.name)?",
+            message: "\(what) will be filed under \(category.name). The script itself is unchanged, and any policy that runs it carries on running it.",
+            actionTitle: targets.count == 1 ? "Move" : "Move \(targets.count)",
+            role: nil,
+            action: { performMove(targets, to: category) }
+        )
+    }
+
+    /// Moves the confirmed scripts, reporting the real outcome of each.
+    private func performMove(_ targets: [ScriptRecord], to category: Category) {
+        guard !targets.isEmpty, !isBusy else { return }
+        isBusy = true
+
+        Task {
+            var outcome: [OperationResult] = []
+            let batchSize = 5
+            let batches = stride(from: 0, to: targets.count, by: batchSize).map {
+                Array(targets[$0..<min($0 + batchSize, targets.count)])
+            }
+
+            for (index, batch) in batches.enumerated() {
+                for script in batch {
+                    do {
+                        try await api.moveScript(id: script.id, toCategoryID: category.id)
+                        outcome.append(
+                            OperationResult(
+                                itemName: script.name,
+                                success: true,
+                                error: nil,
+                                fromCategory: script.safeCategory,
+                                toCategory: category.name
+                            )
+                        )
+                    } catch {
+                        outcome.append(
+                            OperationResult(
+                                itemName: script.name,
+                                success: false,
+                                error: "Jamf rejected the move. Check this API client may update scripts, then try again — the script itself is unchanged."
+                            )
+                        )
+                    }
+                }
+                if index < batches.count - 1 {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+            }
+
+            await MainActor.run {
+                results = outcome.sorted { lhs, rhs in
+                    if lhs.success != rhs.success { return !lhs.success }
+                    return lhs.itemName.localizedCaseInsensitiveCompare(rhs.itemName) == .orderedAscending
+                }
+                resultTitle = "Move to \(category.name)"
+                isBusy = false
+                showResults = true
+            }
+        }
+    }
+
     /// Asks before deleting. Shared by the action bar and the row context menu, so a delete is
     /// confirmed the same way however it was started.
     private func requestDelete(_ targets: [ScriptRecord]) {
@@ -262,6 +333,7 @@ struct ScriptsDashboardView: View {
                     if lhs.success != rhs.success { return !lhs.success }
                     return lhs.itemName.localizedCaseInsensitiveCompare(rhs.itemName) == .orderedAscending
                 }
+                resultTitle = "Delete Scripts"
                 isBusy = false
                 showResults = true
             }
@@ -281,8 +353,10 @@ struct ScriptsDashboardView: View {
 struct ScriptCategorySection: View {
     let title: String
     let scripts: [ScriptRecord]
+    let categories: [Category]
     @Binding var selectedIDs: Set<String>
     var onInspect: (Int) -> Void
+    var onMove: (ScriptRecord, Category) -> Void
     var onDelete: (ScriptRecord) -> Void
     
     @State private var isExpanded = true
@@ -329,6 +403,12 @@ struct ScriptCategorySection: View {
                                 Button("Inspect") { onInspect(script.intId) }
                             }
 
+                            Menu("Move to...") {
+                                ForEach(categories) { category in
+                                    Button(category.name) { onMove(script, category) }
+                                }
+                            }
+
                             Divider()
 
                             Button("Delete", role: .destructive) { onDelete(script) }
@@ -364,10 +444,15 @@ struct ScriptActionBar: View {
     let selectedScripts: [ScriptRecord]
     let isBusy: Bool
 
+    let categories: [Category]
+
     var onClearSelection: () -> Void
-    /// The host confirms and performs, so a delete started here and one started from a row's context
-    /// menu ask the same question.
+    /// The host confirms and performs, so an action started here and one started from a row's
+    /// context menu ask the same question.
+    var onRequestMove: ([ScriptRecord], Category) -> Void
     var onRequestDelete: ([ScriptRecord]) -> Void
+
+    @State private var showMovePopover = false
 
     var body: some View {
         HStack(spacing: 16) {
@@ -391,6 +476,24 @@ struct ScriptActionBar: View {
                 .foregroundColor(.secondary)
             }
             .frame(width: 170, alignment: .leading)
+
+            Divider()
+
+            // The reversible one leads, as it does in the other action bars.
+            ActionBarColumn(title: "Move to Category") {
+                Button { showMovePopover = true } label: {
+                    SoftIconLabel(systemImage: "folder", tint: .indigo)
+                }
+                .buttonStyle(.plain)
+                .disabled(isBusy || categories.isEmpty || selectedScripts.isEmpty)
+                .help("File the selected scripts under a category")
+                .popover(isPresented: $showMovePopover, arrowEdge: .top) {
+                    CategoryMovePicker(categories: categories) { category in
+                        showMovePopover = false
+                        onRequestMove(selectedScripts, category)
+                    }
+                }
+            }
 
             Divider()
 

@@ -244,6 +244,15 @@ The Scripts module uses the Jamf Pro scripts API. You can:
 - View script parameters.
 - View script source.
 - Export scripts to CSV.
+- Search and filter by category, with a chip for uncategorised scripts (Jamf returns the literal
+  "NONE" as a script's category when it has none).
+- Select scripts by clicking them, as in Policies and Profiles; right-click a row to inspect, move it
+  to a category, or delete it.
+- Bulk move to a category, and bulk delete, both confirmed by count and reported per item.
+
+Scripts carry no scope or enabled state in Jamf — they are run by whichever policies reference them —
+so no status is shown for them. Showing which policies run a script is planned; see
+`docs/roadmap/SCRIPT_USAGE.md`.
 
 ### Installomator
 
@@ -521,6 +530,7 @@ Actions that modify Jamf include:
 - Cloning policies and profiles.
 - Creating Installomator deployment policies.
 - Deleting policies and profiles.
+- Moving scripts between categories, and deleting scripts.
 - Disabling policies from the Unused audit, and moving or deleting what it lists.
 
 Deletion is permanent from the app's perspective. Make sure you have backups or a recovery process before using bulk delete actions.
