@@ -138,6 +138,9 @@ private struct HelpBlockView: View {
                     .stroke(tone.colour.opacity(0.35), lineWidth: 1)
             )
 
+        case .figure(let id):
+            HelpFigureView(id: id)
+
         case .divider:
             Divider()
         }

@@ -1,44 +1,39 @@
 # Welcome to Jamf Commander
 
-Jamf Commander is a native Mac app for Jamf Pro administrators. It lists, inspects and bulk-edits the
-things you would otherwise click through one at a time in the Jamf web console: configuration
-profiles, policies, scripts, packages, computers and categories.
+```figure
+app-identity
+```
 
-It is an administrative tool, not a viewer. It moves objects between categories, changes what they
-are scoped to, clones them, creates install policies, and deletes them — against whichever Jamf
-instance you have configured.
+## Before you start
 
-> **Important:** Every write lands on a real tenant and the Macs it manages. Deletion is permanent
-> from this app’s point of view. Rehearse a bulk action against a non-production instance before you
-> run it against the one your fleet is enrolled in.
+Two of the nine modules need something that lives outside this app: the **Installomator** script in
+your Jamf instance, and **DDM Explorer** on your Mac for authoring blueprints. Neither is needed to
+connect, and neither is needed for the other seven.
+
+*Prerequisites* says what each one is, why it is needed, and where to get it.
+
+Setting the app up for the first time? *Getting connected*, then *Creating the API client in Jamf
+Pro*, then *Privileges*, in that order.
 
 ## Using this guide
 
-This guide ships inside the app, so it always matches the version you are running. There is nothing
-to find online and nothing to keep in step.
+```figure
+help-index
+```
 
-- The list on the left is the whole index, grouped into sections.
-- The **search** box matches titles, summaries and the full text of every page, so you can look for
-  the error code Jamf returned, the word on a badge, or the field you are filling in, rather than
-  guessing which heading it lives under. Results are listed with the closest match first.
+- **Search** is the fast way in. Click it, or press **⌘F**, and type what you would say out loud —
+  the error code Jamf gave you, the word on a badge, the field you are filling in. Arrow keys move
+  through the results, Return opens one.
+- **The index** is grouped into three sections, closed until you open one. **Using the app** has a
+  page for every item in the sidebar, in the order they appear there.
 - **⌘?** opens this guide from anywhere, and it is in the sidebar footer beside Settings.
 
-## Where to start
+The illustrations are drawn with the app’s own code, so they show what you are actually running and
+cannot go stale.
 
-- **Setting the app up for the first time?** Read *Getting connected*, then *Creating the API client
-  in Jamf Pro* and *Privileges*, in that order.
-- **Using Installomator, or Blueprints?** Both need something that lives outside this app —
-  *Prerequisites* says what, why, and where to get it.
-- **Approving it before anyone points it at production?** *Which APIs this app uses* is the whole
-  surface in one page, written for exactly that.
-- **Using Blueprints?** They need a second, separate credential — *Creating the Blueprints
-  integration*.
-- **Setting it up for a colleague?** *Sharing your settings* covers moving a connection to another
-  Mac, and what that file contains.
-- **Want the lie of the land?** **Using the app** has a page for every item in the sidebar, in the
-  order they appear there.
-
-## A note on what this is
+> **Important:** Every write this app makes lands on a real tenant and the Macs it manages. Deletion
+> is permanent from this app’s point of view. Rehearse a bulk action against a non-production
+> instance before you run it against the one your fleet is enrolled in.
 
 Jamf Commander is not affiliated with Jamf. It uses the documented Jamf Pro APIs with credentials you
 create yourself, and it can only do what the API role you grant it allows.

@@ -39,6 +39,10 @@ nonisolated enum HelpRhythm {
         case .divider:
             return 22
 
+        case .figure:
+            // A figure is a block of its own, not an aside to the paragraph above it.
+            return 18
+
         case .paragraph, .code, .callout:
             // First thing under a heading: close, because the heading introduces it.
             if case .heading = previous { return 8 }

@@ -37,6 +37,10 @@ nonisolated enum HelpBlock: Sendable, Equatable {
     case numbered(start: Int, items: [String])
     /// A fenced code block. `language` is the fence's info string, or `nil`.
     case code(language: String?, text: String)
+    /// A live in-app figure, looked up by id in `HelpFigures`. Written as a fence whose info string
+    /// is `figure` and whose body is the id. Drawn from the app's own types and tokens, so an
+    /// illustration cannot go stale the way a screenshot does.
+    case figure(id: String)
     /// A coloured callout containing further blocks.
     case callout(HelpCallout, [HelpBlock])
     /// A horizontal rule.
@@ -44,6 +48,20 @@ nonisolated enum HelpBlock: Sendable, Equatable {
 }
 
 nonisolated enum HelpMarkdown {
+
+    /// Every figure id referenced in a block tree, in document order, recursing into callouts.
+    ///
+    /// Used to prove that every id the content asks for resolves to a real view — a typo should be
+    /// caught by whoever changes the content, not discovered by a reader.
+    static func figureIDs(in blocks: [HelpBlock]) -> [String] {
+        blocks.flatMap { block -> [String] in
+            switch block {
+            case .figure(let id): return [id]
+            case .callout(_, let inner): return figureIDs(in: inner)
+            default: return []
+            }
+        }
+    }
 
     /// Parse a Markdown document into ordered blocks.
     static func parse(_ markdown: String) -> [HelpBlock] {
@@ -83,8 +101,12 @@ nonisolated enum HelpMarkdown {
                     index += 1
                 }
                 if index < lines.count { index += 1 }
-                blocks.append(.code(language: info.isEmpty ? nil : info,
-                                    text: body.joined(separator: "\n")))
+                let text = body.joined(separator: "\n")
+                if info.lowercased() == "figure" {
+                    blocks.append(.figure(id: text.trimmingCharacters(in: .whitespacesAndNewlines)))
+                } else {
+                    blocks.append(.code(language: info.isEmpty ? nil : info, text: text))
+                }
                 continue
             }
 

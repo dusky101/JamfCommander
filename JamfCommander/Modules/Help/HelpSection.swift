@@ -6,7 +6,7 @@
 //  index. A pure value type so the manifest and the search index can use it off the main actor.
 //
 
-import Foundation
+import SwiftUI
 
 /// A top-level grouping in the help index. The `rawValue` order is the order sections appear.
 nonisolated enum HelpSection: Int, CaseIterable, Identifiable, Comparable, Sendable {
@@ -33,6 +33,20 @@ nonisolated enum HelpSection: Int, CaseIterable, Identifiable, Comparable, Senda
         // Was `stethoscope`, which reads as diagnostics: right for "If something fails" alone, wrong
         // once this section also holds the API and roadmap pages.
         case .reference: return "book.closed"
+        }
+    }
+
+    /// The section's own colour, used on its index header.
+    ///
+    /// Three hues kept clear of the nine in `ModulePalette`: a module's colour has to mean that
+    /// module wherever it appears, so the sections borrow none of them. Deliberately not `.secondary`
+    /// — as `.secondary` these headers were the dimmest thing in the window, quieter than the rows
+    /// they introduce.
+    var colour: Color {
+        switch self {
+        case .gettingStarted: return Color(red: 0.55, green: 0.60, blue: 1.000)
+        case .modules: return Color(red: 0.45, green: 0.80, blue: 0.95)
+        case .reference: return Color(red: 0.90, green: 0.75, blue: 0.45)
         }
     }
 

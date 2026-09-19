@@ -34,7 +34,7 @@ nonisolated enum HelpLibrary {
             id: "welcome",
             title: "Welcome to Jamf Commander",
             section: .gettingStarted,
-            summary: "What this app is, what it changes, and how to find your way around.",
+            summary: "The app, the version, and how to use this guide.",
             keywords: ["overview", "introduction", "start", "getting started", "first time",
                        "what is", "about", "help", "guide", "search", "index", "unofficial",
                        "disclaimer", "production", "safety"]),

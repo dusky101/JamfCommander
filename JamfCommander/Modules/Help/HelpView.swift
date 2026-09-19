@@ -42,12 +42,17 @@ struct HelpView: View {
     /// Loaded once when help opens: the manifest with every body read from the bundle.
     @State private var topics: [HelpTopic] = []
     @State private var selectedTopicID: HelpTopic.ID?
-    @State private var searchText = ""
     /// The content size of the window this sheet is attached to, once `HostWindowSizeReader` has it.
     @State private var hostSize: CGSize?
     /// Help opens ready to be searched. Without this the page takes first focus — it is focusable so
     /// that it can be scrolled from the keyboard — and opens wearing a focus ring.
-    @FocusState private var searchFocused: Bool
+    /// Which index sections are open. Everything starts closed except the section holding the page
+    /// you land on — an index that showed no sign of where you are is disorienting, and one section
+    /// open is not the wall of text the whole index was.
+    @State private var openSections: Set<HelpSection> = []
+    /// Whether the search panel is up. Search is a panel rather than a field in the index: as a
+    /// field it sat in the corner being ignored, and the index underneath it was doing the work.
+    @State private var isSearchPresented = false
 
     /// How large to draw the guide, given the window behind it. Generous, but always inside the
     /// window, and capped so it does not become an unreadably wide measure on a large display.
@@ -55,14 +60,6 @@ struct HelpView: View {
         guard let hostSize else { return CGSize(width: 900, height: 700) }
         return CGSize(width: min(max(hostSize.width - 120, 820), 1400),
                       height: min(max(hostSize.height - 100, 520), 1100))
-    }
-
-    private var isSearching: Bool {
-        !searchText.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private var matches: [HelpTopic] {
-        HelpSearch.filter(topics, query: searchText)
     }
 
     private var selectedTopic: HelpTopic? {
@@ -96,20 +93,12 @@ struct HelpView: View {
             // once here rather than in `body`.
             topics = HelpLibrary.loadTopics()
             selectInitialTopic()
-            searchFocused = true
         }
         .onChange(of: presenter.requestedTopic) {
             guard let requested = presenter.requestedTopic else { return }
-            searchText = ""
             selectedTopicID = requested
+            revealSelectedSection()
             presenter.requestedTopic = nil
-        }
-        // Searching used to leave the page alone, so typing "403" changed the list and nothing else:
-        // the reader kept staring at whatever page they had open, scrolled wherever they had left
-        // it, with no row highlighted because the selection was no longer in the results. Follow the
-        // best match instead, and only when the current page has actually dropped out.
-        .onChange(of: searchText) {
-            followSearch()
         }
     }
 
@@ -123,15 +112,13 @@ struct HelpView: View {
         }
         if let current = selectedTopicID, topics.contains(where: { $0.id == current }) { return }
         selectedTopicID = topics.first?.id
+        revealSelectedSection()
     }
 
-    /// Keep the page in step with the results: if the open topic still matches, leave it alone, so
-    /// narrowing a search does not yank the reader off the page they were reading.
-    private func followSearch() {
-        let results = matches
-        guard !results.isEmpty else { return }
-        if let current = selectedTopicID, results.contains(where: { $0.id == current }) { return }
-        selectedTopicID = results.first?.id
+    /// Open the section holding the selected topic, leaving the rest closed.
+    private func revealSelectedSection() {
+        guard let section = selectedTopic?.section else { return }
+        openSections.insert(section)
     }
 
     // MARK: - Index
@@ -139,15 +126,54 @@ struct HelpView: View {
     private var index: some View {
         VStack(spacing: 0) {
             header
-            searchField
+            searchButton
             Divider()
-
-            if matches.isEmpty {
-                emptyResults
-            } else {
-                topicList
+            topicList
+        }
+        .sheet(isPresented: $isSearchPresented) {
+            HelpSearchPanel(topics: topics) { chosen in
+                selectedTopicID = chosen
+                revealSelectedSection()
+                isSearchPresented = false
             }
         }
+    }
+
+    /// Opens the search panel. A button, not a text field: a field here is a small grey box in a
+    /// corner that people read as decoration, and this guide's whole case is that you look things up
+    /// rather than read it through.
+    private var searchButton: some View {
+        Button {
+            isSearchPresented = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                Text("Search the guide")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Text("⌘F")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.callout)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.7),
+                        in: .rect(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .keyboardShortcut("f", modifiers: .command)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .accessibilityLabel("Search the guide")
+        .accessibilityHint("Opens the search panel")
     }
 
     /// The sheet has no title bar of its own, so without this the guide opens as an anonymous panel
@@ -165,25 +191,15 @@ struct HelpView: View {
     @ViewBuilder
     private var topicList: some View {
         List(selection: $selectedTopicID) {
-            if isSearching {
-                // Flat and ranked. Grouping results by section promoted weak matches to sit beside
-                // the strong one in their section — see `HelpSearch.groups(for:)`.
+            ForEach(HelpSearch.groups(for: topics), id: \.section) { group in
                 Section {
-                    ForEach(matches) { topic in
-                        row(for: topic)
-                    }
-                } header: {
-                    Text(resultsSummary)
-                }
-            } else {
-                ForEach(HelpSearch.groups(for: matches), id: \.section) { group in
-                    Section {
+                    if openSections.contains(group.section) {
                         ForEach(group.topics) { topic in
                             row(for: topic)
                         }
-                    } header: {
-                        sectionHeader(group.section)
                     }
+                } header: {
+                    sectionHeader(group.section)
                 }
             }
         }
@@ -193,82 +209,43 @@ struct HelpView: View {
     private func row(for topic: HelpTopic) -> some View {
         HelpIndexRow(topic: topic,
                      isSelected: topic.id == selectedTopicID,
-                     showsSection: isSearching)
+                     showsSummary: false)
             .tag(topic.id)
     }
 
-    /// A section's header in the index.
+    /// A section's header — and the control that opens it.
     ///
-    /// The default sidebar-header treatment draws this in `.secondary` at caption size, which made
-    /// it the dimmest thing in the window — quieter than the summaries under every row it was meant
-    /// to introduce.
-    ///
-    /// Built from an `Image` and a `Text` with their own styles rather than from a `Label` with one
-    /// applied over it: `.listStyle(.sidebar)` re-applies its own header treatment to a `Label`, so
-    /// a single `.foregroundStyle(.primary)` on the outside was simply ignored. `.textCase(nil)`
-    /// stops the list uppercasing it for the same reason.
+    /// Built from an `Image` and a `Text` with their own styles rather than from a `Label`:
+    /// `.listStyle(.sidebar)` re-applies its own header treatment over a `Label`, so a single
+    /// `.foregroundStyle` on the outside was simply ignored. `.textCase(nil)` stops the list
+    /// uppercasing it for the same reason.
     private func sectionHeader(_ section: HelpSection) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: section.systemImage)
-                .font(.caption)
-                .foregroundStyle(.tint)
-            Text(section.title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.primary)
-        }
-        .textCase(nil)
-        .padding(.top, 4)
-    }
-
-    private var resultsSummary: String {
-        matches.count == 1 ? "1 result" : "\(matches.count) results"
-    }
-
-    /// An empty list under a search box reads as "help is broken" rather than "nothing matched".
-    /// This sits where the list would be: the previous version drew it *below* the list, which still
-    /// claimed the full height, so the message landed at the bottom of a tall empty column several
-    /// hundred points from the search box the reader was looking at.
-    private var emptyResults: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.title2)
-                .foregroundStyle(.tertiary)
-            Text("No topics match “\(searchText)”.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Text("Try a shorter term, or the words you would see on screen.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 40)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Search help", text: $searchText)
-                .textFieldStyle(.plain)
-                .focused($searchFocused)
-                .accessibilityLabel("Search help")
-
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
+        let isOpen = openSections.contains(section)
+        return Button {
+            withAnimation(.snappy(duration: 0.2)) {
+                if isOpen { openSections.remove(section) } else { openSections.insert(section) }
             }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isOpen ? "chevron.down" : "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10)
+                Image(systemName: section.systemImage)
+                    .font(.caption)
+                    .foregroundStyle(section.colour)
+                Text(section.title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(section.colour)
+                Spacer(minLength: 0)
+            }
+            .textCase(nil)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .accessibilityLabel(section.title)
+        .accessibilityHint(isOpen ? "Collapses this section" : "Expands this section")
     }
 
     // MARK: - Page
@@ -302,9 +279,13 @@ struct HelpView: View {
 private struct HelpIndexRow: View {
     let topic: HelpTopic
     let isSelected: Bool
-    /// While searching the row also names the section the page lives in — the grouping a flat
-    /// result list gives up.
-    let showsSection: Bool
+    /// Whether to draw the one-line summary under the title.
+    ///
+    /// Off while browsing, on in search results. Nineteen titles under three headings is a list you
+    /// can take in at a glance; the same nineteen with a two-line grey summary under each is a wall
+    /// of secondary text, and it was the single biggest reason the index read as wordy. In results
+    /// the trade reverses — you need the summary to judge a hit — so it earns its space there.
+    var showsSummary: Bool = false
 
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -336,20 +317,23 @@ private struct HelpIndexRow: View {
                     // stays legible against the selection fill.
                     .foregroundStyle(showsHoverFill && topic.module != nil ? highlight : Color.primary)
 
-                Text(showsSection ? "\(topic.section.title) · \(topic.summary)" : topic.summary)
-                    .font(.caption)
-                    // `.secondary` left this fainter than the summaries were worth: they are what
-                    // tells you which of nineteen pages you want, and at that weight they read as
-                    // disabled text rather than as the answer.
-                    .foregroundStyle(Color.primary.opacity(0.75))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                if showsSummary {
+                    Text("\(topic.section.title) · \(topic.summary)")
+                        .font(.caption)
+                        // `.secondary` left this fainter than the summary is worth: in a result it
+                        // is what tells you whether this is the page you want.
+                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Spacer(minLength: 0)
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(topic.title). \(topic.summary)")
         .background {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(highlight.opacity(showsHoverFill ? 0.10 : 0))
@@ -506,5 +490,181 @@ private struct HostWindowSizeReader: NSViewRepresentable {
         deinit {
             if let observer { NotificationCenter.default.removeObserver(observer) }
         }
+    }
+}
+
+// MARK: - Search
+
+/// The guide's search, as a panel rather than a field in the index.
+///
+/// Modelled on Spotlight, and for the same reason: a search you summon takes the whole of your
+/// attention, and a search box sitting in the corner of a sidebar does not. The index behind it is
+/// for browsing — nineteen titles under three headings — and this is for the other way in, when you
+/// already know the words you would type and want the page they are on.
+///
+/// Ranking is `HelpSearch`'s, unchanged: a flat list, best match first, because grouping results by
+/// section promotes weak matches to sit beside strong ones.
+private struct HelpSearchPanel: View {
+    let topics: [HelpTopic]
+    /// Called with the chosen topic's id. The caller owns selection and dismissal.
+    var onChoose: (HelpTopic.ID) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var highlighted: HelpTopic.ID?
+    @FocusState private var fieldFocused: Bool
+
+    private var results: [HelpTopic] {
+        HelpSearch.filter(topics, query: query)
+    }
+
+    private var isSearching: Bool {
+        !query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            field
+            Divider()
+            body(for: results)
+        }
+        .frame(width: 620, height: 460)
+        .appBackground()
+        .onAppear { fieldFocused = true }
+        // Arrow keys move the highlight without leaving the field, as Spotlight does — typing and
+        // choosing are the same gesture.
+        .onKeyPress(.upArrow) { move(-1) }
+        .onKeyPress(.downArrow) { move(1) }
+        .onKeyPress(.return) { choose() }
+        .onKeyPress(.escape) { dismiss(); return .handled }
+    }
+
+    private var field: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+
+            TextField("Search the guide", text: $query)
+                .textFieldStyle(.plain)
+                .font(.title2)
+                .focused($fieldFocused)
+                .onSubmit { choose() }
+                .accessibilityLabel("Search the guide")
+
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                    fieldFocused = true
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+    }
+
+    @ViewBuilder
+    private func body(for results: [HelpTopic]) -> some View {
+        if !isSearching {
+            prompt
+        } else if results.isEmpty {
+            empty
+        } else {
+            list(results)
+        }
+    }
+
+    private var prompt: some View {
+        VStack(spacing: 10) {
+            Text("Type what you would say out loud.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Text("The error code Jamf gave you, the word on a badge, the field you are filling in.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var empty: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.title)
+                .foregroundStyle(.tertiary)
+            Text("No topics match “\(query)”.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Text("Try a shorter term, or the words you would see on screen.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func list(_ results: [HelpTopic]) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    Text(results.count == 1 ? "1 result" : "\(results.count) results")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 10)
+                        .padding(.bottom, 4)
+
+                    ForEach(results) { topic in
+                        Button {
+                            onChoose(topic.id)
+                        } label: {
+                            HelpIndexRow(topic: topic,
+                                         isSelected: topic.id == highlighted,
+                                         showsSummary: true)
+                                .padding(.horizontal, 6)
+                        }
+                        .buttonStyle(.plain)
+                        .pointerStyle(.link)
+                        .id(topic.id)
+                    }
+                }
+                .padding(.bottom, 10)
+            }
+            .onChange(of: highlighted) {
+                guard let highlighted else { return }
+                withAnimation(.snappy(duration: 0.15)) { proxy.scrollTo(highlighted, anchor: .center) }
+            }
+        }
+        // A fresh query starts at the top, so Return always takes the best match rather than
+        // whatever happened to be highlighted for the previous one.
+        .onChange(of: query) { highlighted = results.first?.id }
+        .onAppear { highlighted = results.first?.id }
+    }
+
+    private func move(_ delta: Int) -> KeyPress.Result {
+        let results = self.results
+        guard !results.isEmpty else { return .ignored }
+        let current = results.firstIndex { $0.id == highlighted } ?? 0
+        let next = min(max(current + delta, 0), results.count - 1)
+        highlighted = results[next].id
+        return .handled
+    }
+
+    private func choose() -> KeyPress.Result {
+        guard let highlighted else { return .ignored }
+        onChoose(highlighted)
+        return .handled
+    }
+
+    private func choose() {
+        guard let highlighted else { return }
+        onChoose(highlighted)
     }
 }
