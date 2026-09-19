@@ -69,55 +69,6 @@ struct AddPackageView: View {
             Divider()
             content
         }
-        .toolbar {
-            // These were fixed-width Pickers in the header row, which could not compress: below
-            // roughly 1100pt the row's minimum exceeded its pane, the title wrapped onto three
-            // lines and the content overflowed the right edge. Toolbar items collapse into an
-            // overflow menu instead of overflowing.
-            if tab.isLibrary {
-                ToolbarItem(placement: .primaryAction) {
-                    Picker("Group", selection: $libraryGroupMode) {
-                        ForEach(PackageGroupMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .help("Group the list alphabetically or by category")
-                }
-            }
-
-            ToolbarItem(placement: .principal) {
-                Picker("View", selection: $tab) {
-                    Text(AddPackageTab.new.rawValue).tag(AddPackageTab.new)
-                    Text(uploadedTabLabel).tag(AddPackageTab.uploaded)
-                    Text(deployedTabLabel).tag(AddPackageTab.deployed)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .help("New uploads a package; Uploaded lists Jamf's package library; Deployed lists only the packages a policy installs.")
-            }
-
-            if tab.isLibrary {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: exportPackages) {
-                        Label("Export", systemImage: "arrow.down.doc")
-                    }
-                    .help(exportHelp)
-                    .disabled(!canExport)
-                }
-
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        Task { await reloadLibrary() }
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
-                    .help("Reload the package library")
-                    .disabled(isLoadingPackages || isScanningUsage)
-                }
-            }
-        }
         .task { await loadReferenceData() }
         .onChange(of: tab) {
             // The library — and especially the policy scan behind it — is only worth fetching once
@@ -128,6 +79,20 @@ struct AddPackageView: View {
 
     // MARK: - Header
 
+    /// Title on the left, controls on the right, as every other module does it — this was the one
+    /// view in the app putting its controls in the window toolbar, which is why it read as a
+    /// different app.
+    ///
+    /// The controls were moved to the toolbar originally because fixed-width pickers could not
+    /// compress: the row's minimum exceeded the pane, the title wrapped onto three lines and the
+    /// content ran off the right edge. They are back, but sized by their content rather than by a
+    /// `.frame`, and the title is the only part that gives way.
+    ///
+    /// The floor to measure against is the window's own 960pt minimum, not that less the sidebar:
+    /// `NavigationSplitView` collapses the sidebar before the window gets that narrow, handing the
+    /// whole width to the detail pane. Against 960pt this row needs 624pt — a 127pt group picker, a
+    /// 296.5pt view picker at counts larger than this tenant will produce, two 37.5pt icon buttons,
+    /// the gaps and the padding. Keep the buttons icon-only and that headroom holds.
     private var header: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
@@ -152,6 +117,48 @@ struct AddPackageView: View {
                     .padding(.vertical, 3)
                     .liquidGlassCapsule()
                     .fixedSize()
+            }
+
+            if tab.isLibrary {
+                Picker("Group", selection: $libraryGroupMode) {
+                    ForEach(PackageGroupMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .help("Group the list alphabetically or by category")
+            }
+
+            Picker("View", selection: $tab) {
+                Text(AddPackageTab.new.rawValue).tag(AddPackageTab.new)
+                Text(uploadedTabLabel).tag(AddPackageTab.uploaded)
+                Text(deployedTabLabel).tag(AddPackageTab.deployed)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .help("New uploads a package; Uploaded lists Jamf's package library; Deployed lists only the packages a policy installs.")
+
+            if tab.isLibrary {
+                Button(action: exportPackages) {
+                    Label("Export", systemImage: "arrow.down.doc")
+                }
+                .buttonStyle(.bordered)
+                .labelStyle(.iconOnly)
+                .help(exportHelp)
+                .disabled(!canExport)
+
+                Button {
+                    Task { await reloadLibrary() }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .labelStyle(.iconOnly)
+                .help("Reload the package library")
+                .disabled(isLoadingPackages || isScanningUsage)
             }
         }
         .padding()
