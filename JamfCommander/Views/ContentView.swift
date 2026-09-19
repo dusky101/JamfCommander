@@ -60,6 +60,16 @@ struct ContentView: View {
     @AppStorage("jamfInstanceURL") private var storedURL = ""
     @AppStorage("clientId") private var storedClientId = ""
     @AppStorage("clientSecret") private var storedClientSecret = ""
+
+    private var hasStoredCredentials: Bool {
+        !storedURL.isEmpty && !storedClientId.isEmpty && !storedClientSecret.isEmpty
+    }
+
+    /// Restoring a saved session on launch. Only ever true when there are credentials to restore —
+    /// somebody who has not connected yet should meet the login screen, not a loading curtain.
+    private var isRestoringSession: Bool {
+        isBusy && !isLoggedIn && hasStoredCredentials
+    }
     
     var body: some View {
         NavigationSplitView {
@@ -160,6 +170,17 @@ struct ContentView: View {
             // going quickly down the sidebar.
             .animation(reduceMotion ? nil : .smooth(duration: 0.34), value: selection.module)
         }
+        // Covers both columns while the session is restored, so the sidebar cannot be clicked into a
+        // module whose data has not started loading. It ends when authentication and the shared
+        // profile/category fetch finish — deliberately not when the first module finishes loading,
+        // which on a large tenant is most of a minute and would be a curtain rather than a wait.
+        .overlay {
+            if isRestoringSession {
+                RestoringSessionOverlay()
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: isRestoringSession)
         .sheet(isPresented: $settingsPresenter.isPresented) {
             ConfigurationView(api: api)
         }
@@ -259,5 +280,43 @@ struct ContentView: View {
                 statusMessage = "Failed to refresh data."
             }
         }
+    }
+}
+
+/// What the window shows while a saved session is being restored.
+///
+/// Opaque and hit-testable on purpose: it is not decoration, it is the thing stopping somebody
+/// clicking into a module before the app can answer.
+private struct RestoringSessionOverlay: View {
+    @State private var animateIcon = false
+
+    var body: some View {
+        ZStack {
+            AppBackground()
+                .ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                Image(systemName: "command.circle.fill")
+                    .font(.system(size: 52))
+                    .foregroundColor(.blue)
+                    .symbolEffect(.pulse, options: .repeating, value: animateIcon)
+
+                Text("Connecting to Jamf")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+
+                ProgressView()
+                    .controlSize(.small)
+
+                Text("Restoring your saved session.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        // Swallows every click underneath, which is the point.
+        .contentShape(Rectangle())
+        .onAppear { animateIcon = true }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Connecting to Jamf. Restoring your saved session.")
     }
 }
