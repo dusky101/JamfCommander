@@ -43,6 +43,19 @@ struct ScriptsDashboardView: View {
     private var selectedScripts: [ScriptRecord] {
         scripts.filter { selectedScriptIDs.contains($0.id) }
     }
+
+    /// Jamf has no category for "no category", so scripts without one would group under a heading the
+    /// filter bar could not offer a chip for. This adds that chip, with a sentinel id no real Jamf
+    /// category can hold.
+    private static let uncategorisedName = "Uncategorised"
+
+    private var filterCategories: [Category] {
+        var list = categories
+        if scripts.contains(where: { $0.safeCategory == Self.uncategorisedName }) {
+            list.append(Category(id: -1, name: Self.uncategorisedName))
+        }
+        return list
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -61,7 +74,7 @@ struct ScriptsDashboardView: View {
             } else {
                 FilterBar(
                     searchText: $searchText,
-                    categories: categories,
+                    categories: filterCategories,
                     selectedCategory: $selectedCategory,
                     customCount: { category in
                         scripts.filter { $0.safeCategory == category.name }.count

@@ -39,5 +39,13 @@ struct ScriptRecord: Identifiable, Codable, Hashable {
     var intId: Int { Int(id) ?? 0 }
     
     // Helper: Safe Category Name for Grouping
-    var safeCategory: String { categoryName ?? "Uncategorised" }
+    /// Jamf returns the literal string "NONE" as a script's category when it has none, which is not
+    /// a category and should not be shown as one.
+    var safeCategory: String {
+        guard let categoryName,
+              !categoryName.isEmpty,
+              categoryName.caseInsensitiveCompare("NONE") != .orderedSame
+        else { return "Uncategorised" }
+        return categoryName
+    }
 }

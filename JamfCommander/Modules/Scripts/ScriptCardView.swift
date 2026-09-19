@@ -12,10 +12,6 @@ struct ScriptCardView: View {
     let categoryName: String
     let osRequirements: String // New Property
     
-    var computedStatus: JamfItemStatus {
-        return .active
-    }
-    
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             // Icon
@@ -67,9 +63,11 @@ struct ScriptCardView: View {
             
             Spacer()
             
-            // Status Badge
-            StatusBadge(status: computedStatus)
-            
+            // No status badge. A script has no scope and no enabled state in Jamf — it is run by
+            // whichever policies reference it — so the badge here was hardcoded to "Scoped" and said
+            // the same thing about every script whether anything used it or not. Showing which
+            // policies run a script is real work; see docs/roadmap/SCRIPT_USAGE.md.
+
             // Chevron
             Image(systemName: "chevron.right")
                 .font(.caption)
