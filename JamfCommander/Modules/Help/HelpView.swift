@@ -4,7 +4,10 @@
 //
 //  In-app help: a searchable index on the left, the rendered page on the right.
 //
-//  Reachable from the sidebar footer and from the standard macOS Help menu (⌘?). It was a single
+//  Its own window, opened from the sidebar footer and from the standard macOS Help menu (⌘?) — so
+//  it can be left open beside the thing it describes, which is what reference material is for.
+//
+//  It was a single
 //  scrolling document, on the reasoning that an administrator setting the app up reads it top to
 //  bottom once. That still holds for *setup*, but most of what help now has to carry is reference —
 //  what a module lists, what a refusal means — and reference is looked up rather than read through.
@@ -18,34 +21,29 @@
 import SwiftUI
 import Combine
 
-/// Lets the Help menu open the sheet that `ContentView` owns.
+/// Carries a deep-link request into the guide's window.
+///
+/// The window itself is opened with `openWindow(id: HelpWindowID)`; this only says *which page* it
+/// should land on, for a caller that wants a particular topic rather than wherever the reader was.
 final class HelpPresenter: ObservableObject {
     static let shared = HelpPresenter()
     private init() {}
 
-    @Published var isPresented = false
     /// The topic to open on. `nil` opens wherever the reader last was, or the first topic.
     @Published var requestedTopic: HelpTopic.ID?
 
-    /// Open help at a particular page.
-    func present(_ topic: HelpTopic.ID? = nil) {
+    /// Ask the guide to open at a particular page. The caller opens the window.
+    func request(_ topic: HelpTopic.ID?) {
         requestedTopic = topic
-        isPresented = true
     }
 }
 
 struct HelpView: View {
-    var onDismiss: () -> Void
-
     @ObservedObject private var presenter = HelpPresenter.shared
 
     /// Loaded once when help opens: the manifest with every body read from the bundle.
     @State private var topics: [HelpTopic] = []
     @State private var selectedTopicID: HelpTopic.ID?
-    /// The content size of the window this sheet is attached to, once `HostWindowSizeReader` has it.
-    @State private var hostSize: CGSize?
-    /// Help opens ready to be searched. Without this the page takes first focus — it is focusable so
-    /// that it can be scrolled from the keyboard — and opens wearing a focus ring.
     /// Whether the search panel is up. Search is a panel rather than a field in the index: as a
     /// field it sat in the corner being ignored, and the index underneath it was doing the work.
     @State private var isSearchPresented = false
@@ -59,16 +57,6 @@ struct HelpView: View {
         let message: String
     }
 
-    /// How large to draw the guide, given the window behind it. Generous, but always inside the
-    /// window, and capped so it does not become an unreadably wide measure on a large display.
-    private var sheetSize: CGSize {
-        guard let hostSize else { return CGSize(width: 900, height: 700) }
-        // The cap is what the guide actually needs, not what the window can spare: an index of
-        // about 270pt plus a 620pt measure and its padding comes to roughly a thousand. At the
-        // previous 1400 the page was a narrow column of text stranded in an acre of empty pane.
-        return CGSize(width: min(max(hostSize.width - 120, 860), 1160),
-                      height: min(max(hostSize.height - 100, 560), 1040))
-    }
 
     private var selectedTopic: HelpTopic? {
         topics.first { $0.id == selectedTopicID }
@@ -81,22 +69,13 @@ struct HelpView: View {
         } detail: {
             page
         }
-        .frame(width: sheetSize.width, height: sheetSize.height)
-        // A sheet takes its size from its content's *ideal* size, not from the window it is
-        // presented on: `maxWidth: .infinity` bought nothing here, and the guide settled on its
-        // minimum — about 820×785pt — whether the window was 1428pt wide or 1500. Reference material
-        // that refuses the room it is given is the main reason this read as unfinished.
-        // `.presentationSizing(.page)` was tried first and only fixed the height, so the size is
-        // measured from the window the sheet is attached to and applied directly.
-        .background(HostWindowSizeReader { hostSize = $0 })
+        // A floor, not a target: the scene's `.defaultSize` decides how it opens and the reader
+        // decides after that. Below this the index and a readable measure stop fitting side by side.
+        .frame(minWidth: 860, minHeight: 560)
         .appBackground()
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 exportMenu
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Done", action: onDismiss)
-                    .keyboardShortcut(.escape, modifiers: [])
             }
         }
         .alert(item: $exportOutcome) { outcome in
@@ -468,75 +447,6 @@ private struct HelpPage: View {
     }
 }
 
-// MARK: - Host window size
-
-/// Reports the content size of the window a sheet is presented on, and again whenever it is resized.
-///
-/// A sheet cannot read its container from SwiftUI: it is sized from its own content's ideal size, so
-/// `maxWidth: .infinity` and `.presentationSizing(.page)` both left the guide far narrower than the
-/// window behind it. Reaching for the parent window is the only way to make the sheet track it.
-private struct HostWindowSizeReader: NSViewRepresentable {
-    var onChange: (CGSize) -> Void
-
-    func makeNSView(context: Context) -> NSView {
-        let view = ReaderView()
-        view.onChange = onChange
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? ReaderView)?.onChange = onChange
-    }
-
-    final class ReaderView: NSView {
-        var onChange: ((CGSize) -> Void)?
-        private var observer: NSObjectProtocol?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            stopObserving()
-            guard window != nil else { return }
-            // `sheetParent` is not set until the sheet has been attached, which happens *after* this
-            // view reaches its window. Reading it here returns nil, the fallback then measures the
-            // sheet's own window, and the guide sizes itself from its own placeholder size and never
-            // corrects — so resolve the host on the next turn of the run loop instead.
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                // `sheetParent` while the guide is a sheet; `window` if it is ever given a scene of
-                // its own, so this keeps working rather than silently reporting nothing.
-                guard let host = self.window?.sheetParent ?? self.window else { return }
-                self.attach(to: host)
-            }
-        }
-
-        private func attach(to host: NSWindow) {
-            report(host)
-            observer = NotificationCenter.default.addObserver(
-                forName: NSWindow.didResizeNotification,
-                object: host,
-                queue: .main
-            ) { [weak self] notification in
-                guard let host = notification.object as? NSWindow else { return }
-                self?.report(host)
-            }
-        }
-
-        private func report(_ host: NSWindow) {
-            onChange?(host.contentLayoutRect.size)
-        }
-
-        private func stopObserving() {
-            if let observer {
-                NotificationCenter.default.removeObserver(observer)
-                self.observer = nil
-            }
-        }
-
-        deinit {
-            if let observer { NotificationCenter.default.removeObserver(observer) }
-        }
-    }
-}
 
 // MARK: - Search
 

@@ -336,7 +336,19 @@ them. That is real work in the modules, not in the guide, and it should be decid
 
 ## Open questions
 
-1. **Sheet or window?** Still open, and still the maintainer's call. Help is a sheet, so it cannot
+1. ~~**Sheet or window?**~~ **Answered: window** (19 September 2026). The maintainer worked it out
+   from the reference app's title bar: *"why don't i have the red green and yellow buttons and the
+   minimise side bar like ssmacos then … mine seems squashed up"*. He was right about the cause. A
+   sheet has no title bar, so the page began flush against the top edge; and a sheet cannot be left
+   open beside the thing it describes, which is the whole point of reference material.
+
+   `Window("Jamf Commander Guide", id: HelpWindowID)` in `JamfCommanderApp`, `.defaultSize(1100×900)`,
+   `.restorationBehavior(.disabled)` so a guide left open does not reopen in front of the app next
+   launch. Both entry points call `openWindow(id:)`. `HelpPresenter` lost `isPresented` and now only
+   carries a deep-link request; `HostWindowSizeReader` and the sheet sizing went with it, because a
+   window is sized by its scene and by the reader.
+
+   **Previously:** still open, and still the maintainer's call. Help is a sheet, so it cannot
    be left open beside the thing it describes — which is what reference material is for. The
    reference app uses a separate `Window` scene. It affects both entry points (sidebar footer and
    ⌘?) and is a decision, not a detail. Phase 2a fixed the *size* complaint without touching this:

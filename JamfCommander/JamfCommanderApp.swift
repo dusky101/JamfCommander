@@ -9,6 +9,8 @@ import SwiftUI
 
 @main
 struct JamfCommanderApp: App {
+    @Environment(\.openWindow) private var openWindow
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -42,7 +44,7 @@ struct JamfCommanderApp: App {
             // a help book that doesn't exist.
             CommandGroup(replacing: .help) {
                 Button("Jamf Commander Help") {
-                    HelpPresenter.shared.isPresented = true
+                    openWindow(id: HelpWindowID)
                 }
                 .keyboardShortcut("?", modifiers: .command)
             }
@@ -52,5 +54,23 @@ struct JamfCommanderApp: App {
         // above the content's minimum, and the content's *ideal* size no longer resizes it.
         // (`.automatic` and `.contentSize` both let the content drive the frame — that was the bug.)
         .windowResizability(.contentMinSize)
+
+        // The guide is a **window**, not a sheet.
+        //
+        // It was a sheet, and a sheet has no title bar: no traffic lights, no title, and no sidebar
+        // toggle, so the page began flush against the top edge and read as cramped. More to the
+        // point, a sheet cannot be left open beside the thing it describes, which is what reference
+        // material is for — you cannot read the *Privileges* page while filling in the API role.
+        //
+        // `.restorationBehavior(.disabled)` so a guide left open does not reopen on the next launch
+        // in front of the app it is meant to sit beside.
+        Window("Jamf Commander Guide", id: HelpWindowID) {
+            HelpView()
+        }
+        .defaultSize(width: 1100, height: 900)
+        .restorationBehavior(.disabled)
     }
 }
+
+/// The guide's window identity, shared by every route into it.
+let HelpWindowID = "help"

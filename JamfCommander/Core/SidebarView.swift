@@ -140,6 +140,9 @@ struct SidebarHint {
 }
 
 struct SidebarView: View {
+    /// The guide is its own window now, not a sheet the root view presents.
+    @Environment(\.openWindow) private var openWindow
+
     @Binding var currentModule: AppModule
     
     var body: some View {
@@ -212,7 +215,7 @@ struct SidebarView: View {
                 title: "Help",
                 icon: "questionmark.circle",
                 help: "Jamf API setup, the Installomator prerequisite, and what each section does",
-                action: { HelpPresenter.shared.isPresented = true }
+                action: { openWindow(id: HelpWindowID) }
             )
         }
         .padding(.top, 4)
