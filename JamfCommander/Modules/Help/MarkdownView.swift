@@ -18,6 +18,36 @@ struct MarkdownView: View {
     /// than as a dialog, and so the headings above it have somewhere to go.
     static let bodyFont: Font = .title3
 
+    /// Inline Markdown — bold, italic, links, code spans — with code spans given a monospaced font.
+    ///
+    /// The font has to be applied here. `AttributedString(markdown:)` marks a code span with
+    /// `inlinePresentationIntent.code`, but SwiftUI's `Text` does not render that intent as
+    /// monospaced: it draws it in the surrounding body font, silently. Every `.pkg`, every
+    /// `blueprints:read`, every hostname in this guide was rendering as ordinary prose.
+    ///
+    /// Ranges are collected before anything is written rather than mutated inside the `runs` loop:
+    /// `runs` is a view over the string being changed, and editing mid-iteration re-runs the
+    /// attribute boundaries underneath the iteration.
+    ///
+    /// A document that will not parse is returned verbatim — a formatting slip should cost the
+    /// styling, never the sentence.
+    static func inline(_ source: String) -> AttributedString {
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        guard var attributed = try? AttributedString(markdown: source, options: options) else {
+            return AttributedString(source)
+        }
+
+        var codeRanges: [Range<AttributedString.Index>] = []
+        for run in attributed.runs where run.inlinePresentationIntent?.contains(.code) == true {
+            codeRanges.append(run.range)
+        }
+        for range in codeRanges {
+            attributed[range].font = .system(.callout, design: .monospaced)
+        }
+        return attributed
+    }
+
     let blocks: [HelpBlock]
     /// The module this page documents, when it documents one. Its colour and symbol dress the page's
     /// level-1 heading, so a module looks the same in the guide as it does in the sidebar.
@@ -59,14 +89,12 @@ private struct HelpBlockView: View {
                     Image(systemName: module.icon)
                 }
                 .font(headingFont(1))
-                .fontWeight(.bold)
                 .foregroundStyle(module.accentColour)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityAddTraits(.isHeader)
             } else {
                 Text(text)
                     .font(headingFont(level))
-                    .fontWeight(level <= 2 ? .bold : .semibold)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityAddTraits(.isHeader)
             }
@@ -165,23 +193,26 @@ private struct HelpBlockView: View {
     /// Inline Markdown as styled text. A document that will not parse is shown verbatim rather than
     /// dropped — a formatting slip should cost the styling, never the sentence.
     private func inline(_ markdown: String) -> Text {
-        if let attributed = try? AttributedString(
-            markdown: markdown,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
-            return Text(attributed)
-        }
-        return Text(markdown)
+        Text(MarkdownView.inline(markdown))
     }
 
     /// Running text for the guide — a step up from `.body`, so the page reads as a document rather
     /// than as a dialog, and so the headings above it have somewhere to go.
+    /// The guide's type scale, one step up from the app's own chrome.
+    ///
+    /// A reference page is *read*, not scanned like a toolbar. Shifting the whole scale up a step
+    /// keeps the hierarchy intact while making the running text comfortable — and it stays on
+    /// semantic text styles, so it still follows the reader's accessibility text size rather than
+    /// being pinned to a hard-coded point size.
+    ///
+    /// Weight is part of the font rather than a separate `.fontWeight`, so a heading is one value
+    /// and cannot be given a size here and a weight somewhere else.
     private func headingFont(_ level: Int) -> Font {
         switch level {
-        case 1: return .largeTitle
-        case 2: return .title
-        case 3: return .title2
-        default: return .title3
+        case 1: return .largeTitle.bold()
+        case 2: return .title.bold()
+        case 3: return .title2.weight(.semibold)
+        default: return .title3.weight(.semibold)
         }
     }
 }
