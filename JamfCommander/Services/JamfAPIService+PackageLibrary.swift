@@ -152,6 +152,34 @@ extension JamfAPIService {
             return cached.scan
         }
 
+        // Somebody is already reading the whole estate — wait for their answer rather than asking
+        // Jamf the same question twice at once. See `SessionCache.runningEstateScan`.
+        if !bypassingCache,
+           let running = SessionCache.shared.runningEstateScan,
+           running.knownScriptIDs == knownScriptIDs {
+            return try await running.task.value
+        }
+
+        // Unstructured on purpose: this must survive the view that asked for it. The Dashboard
+        // starts this scan after its tiles are already up, so it is routinely still running when
+        // somebody moves on — and the work it has done belongs to every module, not just the one
+        // that happened to trigger it.
+        let task = Task {
+            try await self.performEstateScan(knownScriptIDs: knownScriptIDs, onPolicy: onPolicy)
+        }
+        SessionCache.shared.setRunningEstateScan(task, knownScriptIDs: knownScriptIDs)
+        defer { SessionCache.shared.clearRunningEstateScan(ifCurrent: task) }
+
+        return try await task.value
+    }
+
+    /// The scan itself. Only ever called from `scanPolicyEstate`, which decides whether it is needed.
+    ///
+    /// - Parameter onPolicy: belongs to whoever started the scan. A later caller that joins one
+    ///   already in flight gets the finished estate and no callbacks — there is nothing to watch
+    ///   climb when the work is already under way.
+    private func performEstateScan(knownScriptIDs: Set<String>,
+                                   onPolicy: (@Sendable (Policy) -> Void)?) async throws -> PolicyEstateScan {
         let listResponse = try await genericFetch(
             endpoint: "JSSResource/policies",
             responseType: PolicyListResponse.self

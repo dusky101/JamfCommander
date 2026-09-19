@@ -190,6 +190,54 @@ final class SessionCache: ObservableObject {
         readAt[entry] = Date()
     }
 
+    // MARK: - The scan already running
+
+    /// The estate scan currently in flight, if there is one, and the script ids it was started with.
+    ///
+    /// Two separate problems, one answer.
+    ///
+    /// **A scan nobody waits for used to be thrown away.** The Dashboard starts its estate scan
+    /// *after* the tiles are on screen, so the Dashboard looks finished while the Unused tile is
+    /// still counting. Clicking away cancelled it — on a 249-policy tenant, 110 policies read and
+    /// discarded — and the next module started from nothing. That was the right behaviour before
+    /// there was a cache, and the comment in `DashboardView` still said so: an abandoned scan was
+    /// waste. It is not waste any more; it fills the cache for every other module. The task below
+    /// is therefore **unstructured**, so it outlives the view that asked for it and runs to
+    /// completion.
+    ///
+    /// **Two modules used to be able to scan at once.** With the first problem fixed they would:
+    /// the Dashboard's scan would still be running when the next module asked for one. A second
+    /// caller now waits for the first instead of starting its own — which is also the only polite
+    /// thing to do to a tenant that is deliberately read in batches of 10.
+    private(set) var runningEstateScan: (task: Task<PolicyEstateScan, Error>, knownScriptIDs: Set<String>)?
+
+    /// Whether an estate scan is in flight, published so the UI can say so.
+    ///
+    /// Separate from `runningEstateScan` because that carries a `Task`, which is not something a
+    /// view should be handed. This is the only part of it a view has any business knowing.
+    @Published private(set) var isScanningEstate = false
+
+    /// Registers the scan now running, so anything else that asks can wait for it.
+    func setRunningEstateScan(_ task: Task<PolicyEstateScan, Error>?, knownScriptIDs: Set<String>) {
+        if let task {
+            runningEstateScan = (task, knownScriptIDs)
+        } else {
+            runningEstateScan = nil
+        }
+        isScanningEstate = runningEstateScan != nil
+    }
+
+    /// Clears the record of a running scan, but only if it is still the one named.
+    ///
+    /// A Refresh pressed mid-scan starts a second and registers it; the first must not then wipe
+    /// that registration as it finishes, or the next caller would start a third.
+    func clearRunningEstateScan(ifCurrent task: Task<PolicyEstateScan, Error>) {
+        if runningEstateScan?.task == task {
+            runningEstateScan = nil
+            isScanningEstate = false
+        }
+    }
+
     // MARK: - Invalidation
 
     /// Drops every entry in a domain. Called when a write dirties that domain.

@@ -24,6 +24,16 @@ struct ContentView: View {
 
     @State private var selection = ModuleSelection(module: .dashboard)
 
+    /// Where the sidebar was asked to go while the estate scan was still running.
+    ///
+    /// The Dashboard raises its tiles before it starts reading every policy, so it looks finished
+    /// while the Unused count is still climbing. Moving on then is no longer harmful — the scan
+    /// survives it, and the destination joins that scan rather than starting another — but it does
+    /// mean sitting in front of a module that appears to be loading slowly for reasons of its own.
+    /// The move is held here instead, explained, and made as soon as the scan lands.
+    @State private var moduleAwaitingScan: AppModule?
+    @ObservedObject private var cache = SessionCache.shared
+
     /// What every child still sees: a plain `Binding<AppModule>`. Setting it works out which way
     /// through the sidebar the move went, so the sidebar and the dashboard tiles need to know
     /// nothing about transitions.
@@ -32,6 +42,14 @@ struct ContentView: View {
             get: { selection.module },
             set: { newModule in
                 guard newModule != selection.module else { return }
+
+                // Hold the move while every policy is still being read, rather than landing on a
+                // module that can only wait for the same scan with nothing to explain itself.
+                if cache.isScanningEstate {
+                    moduleAwaitingScan = newModule
+                    return
+                }
+
                 selection = ModuleSelection(
                     module: newModule,
                     direction: newModule.navigationIndex >= selection.module.navigationIndex
@@ -186,9 +204,21 @@ struct ContentView: View {
             if isPreparing {
                 PreparingOverlay(instanceURL: storedURL)
                     .transition(.opacity)
+            } else if let moduleAwaitingScan {
+                EstateScanGate(destination: moduleAwaitingScan, origin: selection.module) {
+                    self.moduleAwaitingScan = nil
+                }
+                .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.25), value: isPreparing)
+        .animation(.easeInOut(duration: 0.2), value: moduleAwaitingScan)
+        // The scan has landed — make the move that was waiting on it.
+        .onChange(of: cache.isScanningEstate) { _, isScanning in
+            guard !isScanning, let destination = moduleAwaitingScan else { return }
+            moduleAwaitingScan = nil
+            currentModule.wrappedValue = destination
+        }
         .sheet(isPresented: $settingsPresenter.isPresented) {
             ConfigurationView(api: api)
         }

@@ -200,6 +200,58 @@ Two consequences worth knowing:
   `START_HERE.md` warns about. Ordering within `deployed` changed from list order to name order,
   which is invisible: `PackagesDashboardView` sorts every row by display name itself.
 
+### An interrupted scan used to throw its work away
+
+Even with the duplicate scan gone, Installomator took 24 seconds once. The console said why:
+
+```
+[Packages] Estate scan: 110 policies read …
+[Packages] Estate scan incomplete — not cached     ← cancelled at 110 of 249
+[Packages] Estate scan: 249 policies read …        ← Installomator started over
+```
+
+The maintainer had moved on before the Unused tile finished counting, which is easy to do because
+**the Dashboard looks finished while it is still scanning**: `loadHeadlineTiles` deliberately runs
+*after* the tiles are up, so every other number is already filled in. Leaving cancelled the scan,
+110 policies of work were discarded, and the next module began from nothing.
+
+`DashboardView` still carried the comment that justified that — *"an abandoned scan is waste, and
+the tiles are rebuilt on the way back in"*. True before there was a cache. Not true now: an
+abandoned scan fills the cache for every other module.
+
+Two changes, in `SessionCache.runningEstateScan` and the top of `scanPolicyEstate`:
+
+- **The scan is an unstructured `Task`**, so it outlives the view that asked for it and runs to
+  completion. Nothing is discarded, and it caches normally.
+- **A second caller joins the scan already running.** Without this the first change would make
+  matters worse: the Dashboard's scan would still be going when the next module asked, and two full
+  passes would run at once against a tenant deliberately read in batches of 10.
+
+`onPolicy` belongs to whoever started the scan; a caller joining one in flight gets the finished
+estate and no callbacks. A Refresh always starts its own scan and becomes the registered one —
+`clearRunningEstateScan(ifCurrent:)` stops the older scan wiping that registration as it finishes.
+
+**This is the in-flight coalescing phase 1 decided not to build**, on the grounds that *"no current
+screen does this, so adding it would have been speculative"*. That was wrong: the Dashboard does it
+every time somebody moves on before the Unused tile settles.
+
+### `EstateScanGate` — the wait, moved somewhere it can be explained
+
+With the above, navigating mid-scan is no longer harmful. It still *waits*, though, and waiting
+inside Installomator with no explanation reads as "Installomator is slow" rather than "the estate is
+still being read". So a sidebar move made while `SessionCache.isScanningEstate` is true is held in
+`ContentView.moduleAwaitingScan`, an overlay says what is happening, and the move is made on its own
+the moment the scan lands.
+
+There is deliberately **no "go anyway"**: going anyway waits for the same scan with less to look at.
+The way out is to stay where you are, and the button names that module rather than assuming the
+Dashboard — a Refresh from the Unused module starts the same scan.
+
+This is a blanket hold on module navigation, not only on the three modules that need the estate. It
+was built that way because it is predictable and the wait is the same either way; narrowing it to
+`installomator`, `redundant` and `packages` is a small change if the blanket version reads as
+heavy-handed.
+
 ### Blueprints are deliberately excluded
 
 They come from the Platform API Gateway — a different host with credentials set separately in
@@ -287,10 +339,14 @@ sheet while another is still on screen does not reliably work on macOS, which is
    cache hits. "Read … ago" sits beside its Refresh button, and under the Dashboard's tiles.
 2. **Back to the Dashboard.** No `[Installomator] Parsed 1268 …` a second time, and no second
    `[Packages] Estate scan:`.
-3. **Installomator, from a loaded Dashboard.** Should now be quick rather than ~20 seconds, and the
-   console should show **no** `[Installomator] Fetched 249 policies from Jamf` line at all — that
-   read no longer exists.
-3. **Refresh on any module.** The stamp resets; the console shows the read actually happening.
+3. **Installomator, from a loaded Dashboard.** Quick rather than ~20 seconds, with **no**
+   `[Installomator] Fetched 249 policies from Jamf` line at all — that read no longer exists.
+   **Proven 20 September 2026**: one `[Packages] Estate scan:` line, then
+   `[Installomator] Loaded 1287 items` straight off it.
+4. **Click a sidebar module while the Unused tile is still counting.** The gate should appear naming
+   where it is going, the module should open by itself when the scan lands, and the console should
+   show **one** `Estate scan:` line with no `incomplete — not cached`.
+5. **Refresh on any module.** The stamp resets; the console shows the read actually happening.
 4. **Delete a policy, or move one to a category.** The list must come back *without* it. If it comes
    back with it, the `requestRefresh()` isolation fix is not actually closed.
 5. **Settings → General.** Switch to **Live** — every module should read from Jamf again on every
