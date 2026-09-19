@@ -118,12 +118,20 @@ the day work starts, never in advance.
 
 Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
 `docs/roadmap/MULTIPLE_ENVIRONMENTS.md`, `docs/roadmap/HELP_PDF_EXPORT.md`,
-`docs/roadmap/PROFILE_TO_BLUEPRINT.md`.
+`docs/roadmap/PROFILE_TO_BLUEPRINT.md`, `docs/roadmap/SHEET_NAVIGATION.md`.
 
-Three handovers exist in `docs/handovers/`:
+**The next session's work is already written up:** `docs/prompts/CACHING_AND_SHEETS_PROMPT.md`,
+over `CACHING_HANDOVER.md` and `SHEET_NAVIGATION_HANDOVER.md`. Caching first, then the sheets.
 
-- **Help overhaul** — rewritten on 19 September 2026 against the code as it stood that day, with a
-  proven/unproven table. Current; trust it, and update it when phase 2 lands.
+Five handovers exist in `docs/handovers/`:
+
+- **Caching** and **Sheet navigation** — both written 19 September 2026 for the session that starts
+  next. Neither has any code yet; each says so in its first line.
+
+
+- **Help overhaul** — **complete**, four phases, 19 September 2026. Twenty pages, eleven figures
+  built from the app's real views, a search panel and PDF export. Its proven/unproven table is
+  current and its remaining open questions are the maintainer's calls, not work to pick up.
 - **Sidebar restructure** — written *before* its work began, which is what the rule above now
   forbids. **Re-verify its code facts against the repository before acting on it**; the sidebar has
   moved since.
