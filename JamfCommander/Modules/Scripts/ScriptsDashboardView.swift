@@ -66,7 +66,7 @@ struct ScriptsDashboardView: View {
                     selectedScripts: selectedScripts,
                     isBusy: isBusy,
                     onClearSelection: { withAnimation { selectedScriptIDs.removeAll() } },
-                    onConfirmedDelete: { targets in performDelete(targets) }
+                    onRequestDelete: { targets in requestDelete(targets) }
                 )
                 .frame(height: 180)
                 .transition(.move(edge: .top).combined(with: .opacity))
@@ -103,7 +103,8 @@ struct ScriptsDashboardView: View {
                                 selectedIDs: $selectedScriptIDs,
                                 onInspect: { id in
                                     inspectorSelection = InspectorSelection(id: id)
-                                }
+                                },
+                                onDelete: { script in requestDelete([script]) }
                             )
                         }
                     }
@@ -204,6 +205,21 @@ struct ScriptsDashboardView: View {
         return "Nothing matches the current filters."
     }
 
+    /// Asks before deleting. Shared by the action bar and the row context menu, so a delete is
+    /// confirmed the same way however it was started.
+    private func requestDelete(_ targets: [ScriptRecord]) {
+        guard !targets.isEmpty else { return }
+
+        let names = targets.count == 1 ? "“\(targets[0].name)”" : "\(targets.count) scripts"
+        confirmation = ConfirmationData(
+            title: targets.count == 1 ? "Delete this script?" : "Delete \(targets.count) scripts from Jamf?",
+            message: "This permanently removes \(names) from this Jamf instance and cannot be undone. Any policy that runs one of them will fail from the next time it tries.",
+            actionTitle: targets.count == 1 ? "Delete" : "Delete \(targets.count)",
+            role: .destructive,
+            action: { performDelete(targets) }
+        )
+    }
+
     /// Deletes the confirmed scripts, one batch at a time, reporting the real outcome of each.
     private func performDelete(_ targets: [ScriptRecord]) {
         guard !targets.isEmpty, !isBusy else { return }
@@ -267,6 +283,7 @@ struct ScriptCategorySection: View {
     let scripts: [ScriptRecord]
     @Binding var selectedIDs: Set<String>
     var onInspect: (Int) -> Void
+    var onDelete: (ScriptRecord) -> Void
     
     @State private var isExpanded = true
     
@@ -295,34 +312,32 @@ struct ScriptCategorySection: View {
             if isExpanded {
                 VStack(spacing: 8) {
                     ForEach(scripts) { script in
-                        HStack(spacing: 12) {
-                            Button {
-                                toggle(script)
-                            } label: {
-                                Image(systemName: selectedIDs.contains(script.id) ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(selectedIDs.contains(script.id) ? .blue : .secondary.opacity(0.4))
-                            }
-                            .buttonStyle(.plain)
-                            .pointerStyle(.link)
-                            .accessibilityLabel(selectedIDs.contains(script.id) ? "Deselect \(script.name)" : "Select \(script.name)")
-
-                            ScriptCardView(
-                                script: script,
-                                categoryName: title,
-                                osRequirements: script.osRequirements ?? "Any"
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.blue.opacity(selectedIDs.contains(script.id) ? 0.7 : 0), lineWidth: 2)
-                            )
-                            .onTapGesture {
-                                onInspect(script.intId)
-                            }
-                            .contextMenu {
+                        ScriptCardView(
+                            script: script,
+                            categoryName: title,
+                            osRequirements: script.osRequirements ?? "Any"
+                        )
+                        // Tap selects, exactly as it does in Profiles and Policies. It used to open
+                        // the inspector, which is why Scripts was the one module where you could not
+                        // pick several rows and act on them together.
+                        .onTapGesture {
+                            toggle(script)
+                        }
+                        .contextMenu {
+                            // Inspecting one row makes no sense while several are selected.
+                            if selectedIDs.count <= 1 || !selectedIDs.contains(script.id) {
                                 Button("Inspect") { onInspect(script.intId) }
                             }
+
+                            Divider()
+
+                            Button("Delete", role: .destructive) { onDelete(script) }
                         }
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(selectedIDs.contains(script.id) ? Color.blue : Color.clear, lineWidth: 2)
+                        )
+                        .accessibilityAddTraits(selectedIDs.contains(script.id) ? [.isSelected] : [])
                     }
                 }
                 .padding(.top, 8)
@@ -350,9 +365,9 @@ struct ScriptActionBar: View {
     let isBusy: Bool
 
     var onClearSelection: () -> Void
-    var onConfirmedDelete: ([ScriptRecord]) -> Void
-
-    @State private var confirmation: ConfirmationData?
+    /// The host confirms and performs, so a delete started here and one started from a row's context
+    /// menu ask the same question.
+    var onRequestDelete: ([ScriptRecord]) -> Void
 
     var body: some View {
         HStack(spacing: 16) {
@@ -387,7 +402,7 @@ struct ScriptActionBar: View {
                     isDisabled: isBusy || selectedScripts.isEmpty,
                     help: "Permanently remove the selected scripts from Jamf"
                 ) {
-                    requestDelete()
+                    onRequestDelete(selectedScripts)
                 }
             }
 
@@ -397,19 +412,5 @@ struct ScriptActionBar: View {
         .appBarBackground(cornerRadius: 16)
         .padding(.horizontal)
         .padding(.bottom, 10)
-        .commanderConfirmation(data: $confirmation)
-    }
-
-    private func requestDelete() {
-        let targets = selectedScripts
-        guard !targets.isEmpty else { return }
-
-        confirmation = ConfirmationData(
-            title: "Delete \(targets.count) script\(targets.count == 1 ? "" : "s") from Jamf?",
-            message: "This permanently removes them from this Jamf instance and cannot be undone. Any policy that runs one of them will fail from the next time it tries.",
-            actionTitle: "Delete \(targets.count)",
-            role: .destructive,
-            action: { onConfirmedDelete(targets) }
-        )
     }
 }
