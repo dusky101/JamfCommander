@@ -57,6 +57,25 @@ enum AppModule: String, CaseIterable, Identifiable {
         }
     }
 
+    /// One short line under the label in the sidebar, for a module whose name does not say what it
+    /// does. Every other module is named after the kind of Jamf object it shows, so it needs none.
+    var sidebarSubtitle: String? {
+        switch self {
+        case .installomator: return "Install apps from labels"
+        case .redundant: return "Audit what nothing uses"
+        default: return nil
+        }
+    }
+
+    /// The explanation this row offers on hover, until somebody turns it off.
+    var sidebarHint: SidebarHint? {
+        switch self {
+        case .installomator: return .installomator
+        case .redundant: return .redundant
+        default: return nil
+        }
+    }
+
     /// The module's colour, matched to its tile on the dashboard so a module is the same colour
     /// wherever you meet it. Scripts is deliberately the same neutral grey as its tile.
     var accentColour: Color {
@@ -91,6 +110,33 @@ struct SidebarHint {
         body: "Reads Installomator's published list of applications — over a thousand of them, kept current by the project — and shows which ones this Jamf instance already installs. Deploying one creates its install policy for you, instead of building each policy by hand.",
         storageKey: "showInstallomatorSidebarHint"
     )
+
+    /// "Unused" says what the module lists but not what counts as unused, which is the part that
+    /// decides whether somebody trusts the list enough to act on it.
+    static let redundant = SidebarHint(
+        title: "Unused",
+        body: "Finds objects that appear to do nothing: policies that are disabled or scoped to nobody, profiles with no scope, and packages no policy installs. Every row gives its reason. You can file them under a category, disable them, or delete them — packages are only ever reported.",
+        storageKey: "showRedundantSidebarHint"
+    )
+
+    // MARK: - All hints
+
+    /// Every hint the app offers. Settings restores them together, so a new one must be listed here
+    /// or it becomes the one explanation nobody can get back.
+    static let all: [SidebarHint] = [.installomator, .redundant]
+
+    /// The hints currently switched off. An absent key means the hint has never been dismissed, so
+    /// only an explicit `false` counts — matching how a row decides whether to offer its hint.
+    static var suppressed: [SidebarHint] {
+        all.filter { UserDefaults.standard.object(forKey: $0.storageKey) as? Bool == false }
+    }
+
+    /// Switches every hint back on.
+    static func restoreAll() {
+        for hint in all {
+            UserDefaults.standard.set(true, forKey: hint.storageKey)
+        }
+    }
 }
 
 struct SidebarView: View {
@@ -141,14 +187,14 @@ struct SidebarView: View {
         .padding(.vertical)
     }
 
-    /// One sidebar entry. Shared by the scrolling list and the pinned Redundant entry so the two
-    /// cannot drift apart in appearance or behaviour.
+    /// One sidebar entry. Shared by the scrolling list and the pinned Installomator and Unused
+    /// entries so the three cannot drift apart in appearance or behaviour.
     private func moduleButton(for module: AppModule) -> some View {
         SidebarModuleRow(
             module: module,
             isSelected: currentModule == module,
-            subtitle: module == .installomator ? "Install apps from labels" : nil,
-            hint: module == .installomator ? .installomator : nil,
+            subtitle: module.sidebarSubtitle,
+            hint: module.sidebarHint,
             action: { currentModule = module }
         )
     }
