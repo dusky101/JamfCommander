@@ -323,6 +323,100 @@ struct InstallomatorLabelFormatter {
         "cli": "CLI", "sdk": "SDK", "jdk": "JDK", "jre": "JRE", "ide": "IDE", "vpn": "VPN",
         "security": "Security", "protect": "Protect", "defender": "Defender",
         "antivirus": "Antivirus",
+
+        // Added 20 September 2026, after `acroniscyberprotectconnectagent` came through as one
+        // unbroken word. Adding vocabulary is the cheapest thing that improves this: the
+        // all-or-nothing rule in `segmentedName(from:)` means a token that never matches costs
+        // nothing, and a label only segments when *every* character is accounted for.
+        //
+        // A general English dictionary was measured as an alternative and is worse than useless —
+        // it splits "microsoftteams" into "micros · oft · teams". Brand names are not dictionary
+        // words. See `docs/roadmap/POLICY_NAME_SUGGESTIONS.md`.
+
+        // Vendors and brands
+        "a": "A", "acronis": "Acronis", "autodesk": "Autodesk", "veeam": "Veeam", "nessus": "Nessus",
+        "tenable": "Tenable", "qualys": "Qualys", "rapid": "Rapid", "trellix": "Trellix",
+        "kandji": "Kandji", "addigy": "Addigy", "munki": "Munki", "mosyle": "Mosyle",
+        "nomad": "NoMAD", "privileges": "Privileges", "suspicious": "Suspicious",
+        "package": "Package", "installomator": "Installomator", "autopkg": "AutoPkg",
+        "atlassian": "Atlassian", "bitbucket": "Bitbucket", "jira": "Jira",
+        "zscaler": "Zscaler", "netskope": "Netskope", "proofpoint": "Proofpoint",
+        "mimecast": "Mimecast", "barracuda": "Barracuda", "fortinet": "Fortinet",
+        "forticlient": "FortiClient", "paloalto": "Palo Alto", "globalprotect": "GlobalProtect",
+        "openvpn": "OpenVPN", "wireguard": "WireGuard", "tunnelblick": "Tunnelblick",
+        "tailscale": "Tailscale", "cloudflare": "Cloudflare", "duo": "Duo", "okta": "Okta",
+        "onepassword": "1Password", "dashlane": "Dashlane", "nordpass": "NordPass",
+        "obsidian": "Obsidian", "devonthink": "DEVONthink", "omnigraffle": "OmniGraffle",
+        "omnifocus": "OmniFocus", "omnioutliner": "OmniOutliner", "scrivener": "Scrivener",
+        "sketch": "Sketch", "affinity": "Affinity", "pixelmator": "Pixelmator",
+        "lightroom": "Lightroom", "photoshop": "Photoshop", "illustrator": "Illustrator",
+        "premiere": "Premiere", "acrobat": "Acrobat", "creative": "Creative",
+        "vlc": "VLC", "obs": "OBS", "ffmpeg": "FFmpeg", "davinci": "DaVinci",
+        "resolve": "Resolve", "reaper": "REAPER", "ableton": "Ableton", "audition": "Audition",
+        "sublime": "Sublime", "atom": "Atom", "brackets": "Brackets", "nova": "Nova",
+        "xcode": "Xcode", "android": "Android", "flutter": "Flutter", "node": "Node",
+        "yarn": "Yarn", "rust": "Rust", "golang": "Go", "dotnet": ".NET", "java": "Java",
+        "eclipse": "Eclipse", "intellij": "IntelliJ", "pycharm": "PyCharm", "webstorm": "WebStorm",
+        "datagrip": "DataGrip", "rider": "Rider", "clion": "CLion", "goland": "GoLand",
+        "anaconda": "Anaconda", "miniconda": "Miniconda", "matlab": "MATLAB",
+        "mathematica": "Mathematica", "rstudio": "RStudio", "stata": "Stata",
+        "chrome": "Chrome", "chromium": "Chromium", "edge": "Edge", "brave": "Brave",
+        "vivaldi": "Vivaldi", "opera": "Opera", "safari": "Safari", "arc": "Arc",
+        "teams": "Teams", "outlook": "Outlook", "onedrive": "OneDrive", "sharepoint": "SharePoint",
+        "onenote": "OneNote", "excel": "Excel", "word": "Word", "powerpoint": "PowerPoint",
+        "discord": "Discord", "telegram": "Telegram", "signal": "Signal", "whatsapp": "WhatsApp",
+        "mattermost": "Mattermost", "rocket": "Rocket", "jitsi": "Jitsi", "bluescape": "Bluescape",
+        "box": "Box", "egnyte": "Egnyte", "syncthing": "Syncthing", "rclone": "rclone",
+        "carbon": "Carbon", "copy": "Copy", "cloner": "Cloner", "superduper": "SuperDuper",
+        "daisydisk": "DaisyDisk", "grandperspective": "GrandPerspective", "appcleaner": "AppCleaner",
+        "keka": "Keka", "unarchiver": "Unarchiver", "betterzip": "BetterZip",
+        "alfred": "Alfred", "raycast": "Raycast", "bartender": "Bartender", "rectangle": "Rectangle",
+        "magnet": "Magnet", "istat": "iStat", "menus": "Menus", "stats": "Stats",
+        "karabiner": "Karabiner", "elements": "Elements", "hammerspoon": "Hammerspoon",
+        "iterm": "iTerm", "warp": "Warp", "kitty": "kitty", "alacritty": "Alacritty",
+        "tunnelbear": "TunnelBear", "transmit": "Transmit", "forklift": "ForkLift",
+        "sourcegraph": "Sourcegraph", "fork": "Fork", "tower": "Tower", "kaleidoscope": "Kaleidoscope",
+
+        // Product nouns
+        "cyber": "Cyber", "endpoint": "Endpoint", "workspace": "Workspace", "engine": "Engine",
+        "framework": "Framework", "runtime": "Runtime", "toolkit": "Toolkit", "utility": "Utility",
+        "utilities": "Utilities", "assistant": "Assistant", "helper": "Helper", "daemon": "Daemon",
+        "service": "Service", "services": "Services", "sync": "Sync", "share": "Share",
+        "meeting": "Meeting", "meetings": "Meetings", "conference": "Conference", "chat": "Chat",
+        "mail": "Mail", "calendar": "Calendar", "notes": "Notes", "tasks": "Tasks",
+        "board": "Board", "space": "Space", "hub": "Hub", "center": "Center", "centre": "Centre",
+        "control": "Control", "access": "Access", "identity": "Identity", "vault": "Vault",
+        "guard": "Guard", "shield": "Shield", "scan": "Scan",
+        "analyzer": "Analyzer", "inspector": "Inspector", "profiler": "Profiler",
+        "designer": "Designer", "builder": "Builder", "creator": "Creator", "maker": "Maker",
+        "capture": "Capture", "record": "Record", "stream": "Stream", "broadcast": "Broadcast",
+        "media": "Media", "audio": "Audio", "video": "Video", "photo": "Photo", "image": "Image",
+        "graphics": "Graphics", "render": "Render", "print": "Print", "scanmate": "ScanMate",
+        "file": "File", "files": "Files", "folder": "Folder", "disk": "Disk", "drives": "Drives",
+        "network": "Network", "wifi": "Wi-Fi", "ethernet": "Ethernet", "proxy": "Proxy",
+        "firewall": "Firewall", "malware": "Malware", "threat": "Threat", "detection": "Detection",
+        "response": "Response", "compliance": "Compliance", "audit": "Audit", "report": "Report",
+        "dashboard": "Dashboard", "analytics": "Analytics", "insights": "Insights",
+        "admin": "Admin", "install": "Install", "setup": "Setup", "config": "Config",
+        "settings": "Settings", "preferences": "Preferences", "extension": "Extension",
+        "plugin": "Plugin", "addon": "Add-on", "module": "Module",
+        "desk": "Desk", "support": "Support", "ticket": "Ticket",
+        "virtual": "Virtual", "machine": "Machine", "container": "Container", "cluster": "Cluster",
+        "database": "Database", "query": "Query", "table": "Table", "sheet": "Sheet",
+        "mobile": "Mobile", "phone": "Phone", "tablet": "Tablet", "watch": "Watch",
+        "smart": "Smart", "quick": "Quick", "fast": "Fast", "easy": "Easy", "simple": "Simple",
+        "free": "Free", "lite": "Lite", "mini": "Mini", "micro": "Micro", "ultra": "Ultra",
+        "plus": "Plus", "max": "Max", "one": "One", "go": "Go", "now": "Now", "live": "Live",
+        "open": "Open", "edit": "Edit", "view": "View", "read": "Read", "write": "Write",
+        "play": "Play", "send": "Send", "receive": "Receive", "transfer": "Transfer",
+        "upload": "Upload", "download": "Download", "importer": "Importer", "exporter": "Exporter",
+        "text": "Text", "code": "Code", "script": "Script", "shell": "Shell", "command": "Command",
+        "line": "Line", "screen": "Screen", "window": "Window", "menu": "Menu", "bar": "Bar",
+        "attributes": "Attributes", "properties": "Properties", "metadata": "Metadata",
+        "rename": "Rename", "duplicate": "Duplicate", "compare": "Compare", "merge": "Merge",
+        "search": "Search", "filter": "Filter", "sort": "Sort", "index": "Index",
+        "better": "Better", "power": "Power", "super": "Super", "master": "Master",
+        "total": "Total", "complete": "Complete", "full": "Full", "all": "All",
     ]
 
     /// Main entry point: returns a human-readable name for a label
@@ -344,7 +438,25 @@ struct InstallomatorLabelFormatter {
     /// Whether a display name still looks like a raw label — one long unbroken word — so the UI can
     /// invite the administrator to check it before it becomes a policy name.
     static func looksUnsegmented(_ displayName: String) -> Bool {
-        !displayName.contains(" ") && displayName.count > 12
+        displayName.split(separator: " ").contains(where: looksLikeOneRunOnWord)
+    }
+
+    /// Whether a single word is an unbroken run nobody can read.
+    ///
+    /// Per word, not per name. The old test asked whether the *whole* display name contained a
+    /// space, so "Abetterfinderattributes 7" passed as fine — the trailing digit had given it a
+    /// space, while the part that needed reading was untouched. A name is only as legible as its
+    /// worst word.
+    ///
+    /// An internal capital counts as a boundary, because it is one a reader can see:
+    /// "GrandPerspective" is legible and "Abetterfinderattributes" is not, at the same length.
+    ///
+    /// `nonisolated` because `looksUnsegmented` is called from wherever a name is rendered, and a
+    /// pure string test has no business being main-actor bound (the project defaults every type to
+    /// `MainActor`).
+    nonisolated private static func looksLikeOneRunOnWord(_ word: Substring) -> Bool {
+        guard word.count > 12, word.allSatisfy(\.isLetter) else { return false }
+        return word.dropFirst().allSatisfy { !$0.isUppercase }
     }
 
     /// Splits an all-lowercase, all-letters label into `knownTokens`, longest match first.
@@ -354,12 +466,26 @@ struct InstallomatorLabelFormatter {
     /// coincidence than a real word boundary, and a label that only half-decomposes falls through
     /// to the heuristic untouched.
     private static func segmentedName(from label: String) -> String? {
-        // Anything with capitals or digits already gives the heuristic a boundary to split on.
-        guard label == label.lowercased(), label.allSatisfy(\.isLetter) else { return nil }
+        // Capitals already give the heuristic boundaries to split on, so it can have those.
+        //
+        // **Digits used to disqualify a label here**, on the reasoning that a digit is a boundary
+        // the heuristic can find on its own. It is — but finding *one* boundary is not the same as
+        // segmenting: `abetterfinderattributes7` came out as "Abetterfinderattributes 7", which
+        // splits off the 7 and leaves the part that actually needed reading untouched. The digit
+        // was refusing the dictionary a look at the letters. Digit runs are now tokens of their
+        // own, so that label segments into "A Better Finder Attributes 7".
+        guard label == label.lowercased() else { return nil }
 
         var remaining = Substring(label)
         var parts: [String] = []
         while !remaining.isEmpty {
+            if remaining.first?.isNumber == true {
+                // A run of digits stands for itself — a version, an edition, "360".
+                let digits = remaining.prefix { $0.isNumber }
+                parts.append(String(digits))
+                remaining = remaining.dropFirst(digits.count)
+                continue
+            }
             guard let token = longestToken(prefixing: remaining),
                   let display = knownTokens[token] else { return nil }
             parts.append(display)

@@ -72,12 +72,20 @@ private struct WindowCloseGuard: ViewModifier {
     let onDiscard: (() -> Void)?
 
     @State private var isAsking = false
-    /// The window being guarded.
+
+    /// The window being guarded, in a box.
     ///
     /// Held because `NSApp.keyWindow` is the wrong answer at the moment it is needed: while the
     /// alert is up, *the alert* is the key window, so closing it dismissed the warning and left the
     /// window it was warning about standing open.
-    @State private var guardedWindow: NSWindow?
+    ///
+    /// **In a reference box rather than `@State` directly.** The window arrives from
+    /// `updateNSView`, which runs *during* a view update, and assigning to `@State` there is
+    /// "Modifying state during view update, this will cause undefined behavior" — SwiftUI says so
+    /// in the console, and it is right. Writing through a stable reference is not a state change,
+    /// so nothing is invalidated and nothing re-enters. The `@State` here holds the box, which
+    /// never changes; only its contents do, and no view reads them during an update.
+    @State private var guarded = GuardedWindowBox()
 
     func body(content: Content) -> some View {
         content
@@ -89,7 +97,7 @@ private struct WindowCloseGuard: ViewModifier {
                         return false
                     },
                     onAttach: { window in
-                        guardedWindow = window
+                        guarded.window = window
                     }
                 )
                 .frame(width: 0, height: 0)
@@ -101,7 +109,7 @@ private struct WindowCloseGuard: ViewModifier {
                     onDiscard?()
                     // `close()` rather than `performClose(_:)`: it does not consult the delegate,
                     // so the window goes without being asked about a second time.
-                    guardedWindow?.close()
+                    guarded.window?.close()
                 } label: {
                     // White, explicitly. A `.destructive` button in this app renders its label in
                     // red *on* the red fill, which is legible in a screenshot and not on a screen.
@@ -114,6 +122,14 @@ private struct WindowCloseGuard: ViewModifier {
                 Text(message)
             }
     }
+}
+
+/// Somewhere to put the window that is not SwiftUI state.
+///
+/// `weak` because the window owns the view hierarchy this modifier lives in; a strong reference
+/// here would be a cycle through AppKit.
+private final class GuardedWindowBox {
+    weak var window: NSWindow?
 }
 
 // MARK: - The one AppKit question
