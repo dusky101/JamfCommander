@@ -220,7 +220,14 @@ enum RedundantAudit {
 
     /// Whether this profile would be listed. Also decidable on its own — a profile is judged by its
     /// own scope and nothing else.
-    nonisolated static func isRedundant(_ profile: ConfigProfile) -> Bool { !profile.isActive }
+    /// A profile reaches nothing.
+    ///
+    /// `scopeIsKnown` first: a profile whose scope could not be read is **not** listed as unused.
+    /// Its `isActive` is a default rather than a finding, and listing it would put an object in
+    /// front of a bulk delete on the strength of a failed request.
+    nonisolated static func isRedundant(_ profile: ConfigProfile) -> Bool {
+        profile.scopeIsKnown && !profile.isActive
+    }
 
     static func items(
         policies: [Policy],

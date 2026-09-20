@@ -79,7 +79,17 @@ class JamfAPIService: ObservableObject {
             return cached
         }
         let fresh = try await fetchProfilesUncached()
-        storeInCache(fresh, as: .profiles)
+
+        // Only a complete read is worth keeping, for the same reason `fetchPolicies` insists on one:
+        // a profile whose scope could not be read is a hole, and caching it makes that hole the
+        // session's answer. A partial read is still returned — the list is better than nothing —
+        // but the next module to ask gets another go at the ones that failed.
+        if fresh.allSatisfy(\.scopeIsKnown) {
+            storeInCache(fresh, as: .profiles)
+        } else {
+            let unread = fresh.filter { !$0.scopeIsKnown }.count
+            print("[Profiles] \(unread) of \(fresh.count) scopes unread — not cached")
+        }
         return fresh
     }
 
@@ -124,8 +134,12 @@ class JamfAPIService: ObservableObject {
                         enrichedProfile.isActive = activeStatus
                         return enrichedProfile
                     } catch {
-                        // If detail fetch fails, return the basic profile (better than nothing!)
-                        return profile
+                        // If detail fetch fails, return the basic profile (better than nothing!) —
+                        // but say that its scope was never read, so nothing downstream mistakes the
+                        // default for a finding.
+                        var unread = profile
+                        unread.scopeIsKnown = false
+                        return unread
                     }
                 }
             }

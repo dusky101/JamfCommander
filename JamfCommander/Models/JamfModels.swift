@@ -25,13 +25,28 @@ struct ConfigProfile: Identifiable, Codable, Hashable, Sendable {
     let name: String
     var categoryName: String = "Uncategorised" // Default state
     var isActive: Bool = true // NEW: Determined by scope (default true until we fetch details)
-    
+
+    /// Whether `isActive` is an answer or a default.
+    ///
+    /// `fetchProfiles` reads the basic list and then hydrates each profile's scope separately. When
+    /// a hydration fails it returns the basic record rather than dropping the profile — reasonable,
+    /// but the record then carries `isActive = true` because that is the default, not because
+    /// anything read the scope. The Unused audit judges profiles on exactly that field, so those
+    /// profiles were quietly counted as scoped, and the audit's total moved run to run with however
+    /// many hydrations happened to succeed: 130, 125, 127 for the same estate within minutes.
+    ///
+    /// **Unknown is not the same as either answer.** An audit that decides what nothing uses must
+    /// say so rather than guess.
+    var scopeIsKnown: Bool = true
+
     // Standard Init
-    init(id: Int, name: String, categoryName: String = "Uncategorised", isActive: Bool = true) {
+    init(id: Int, name: String, categoryName: String = "Uncategorised", isActive: Bool = true,
+         scopeIsKnown: Bool = true) {
         self.id = id
         self.name = name
         self.categoryName = categoryName
         self.isActive = isActive
+        self.scopeIsKnown = scopeIsKnown
     }
     
     // Decoding just ID and Name from the basic list
