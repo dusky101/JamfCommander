@@ -248,24 +248,33 @@ out of the window behave identically.
 Worth remembering when converting the others: **a Cancel button is not a window close.** Anything
 relying on the guard has to go through `performClose`.
 
-### Open: a layout-recursion message on first open
+### A scroll view inside a scroll view — the conversion's own bug
 
 `_NSDetectedLayoutRecursion` — *"It's not legal to call -layoutSubtreeIfNeeded on a view which is
-already being laid out"* — appears in the console the first time the deployment window opens.
+already being laid out"* — appeared on the first open of the deployment window.
 
-**Not diagnosed, and not proven fixed.** `WindowCloseGuard` was the prime suspect: `updateNSView`
-was installing the window delegate synchronously, and mutating a window inside a view update is
-exactly what provokes this. That was split so the closure is refreshed synchronously and the
-delegate is only ever attached on a deferred turn — correct regardless — but the message appeared
-again afterwards.
+**Cause: the category step put a `List` inside `stepDetail`'s `ScrollView`.** On macOS a `List`
+nested in a scroll view is the classic trigger for this, and `.searchable` on the nested list
+compounds it. The sheet this came from kept that list in its own **non-scrolling column**, so the
+nesting is something the conversion introduced — it was not there before.
 
-**The trap when testing it:** AppKit logs this **once per process**. Opening the window a second
-and third time in the same run is silent whether or not anything is fixed, so it can only be
-evaluated from a fresh launch. That is how it looked resolved when it was not.
+The category step is now plain rows in a `VStack` with an inline search field, scrolling with the
+page. That is better regardless: the list is no longer trapped in a 320pt box on an 800pt window.
 
-It is a console warning, not a visible fault: the window opens, behaves, and closes correctly. If
-the next session wants it, `_NSDetectedLayoutRecursion` is a symbolic breakpoint and the backtrace
-will name the real culprit — which may well not be this file.
+**`WindowCloseGuard` was suspected first and was not the cause.** Its delegate installation was
+moved out of the view update anyway, which is correct practice — mutating a window inside
+`updateNSView` is a real hazard — but it did not fix this and was not what caused it.
+
+**When converting the remaining two windows, this is the thing to look for.** `stepDetail` is a
+`ScrollView`; anything put inside it that scrolls on its own — a `List`, a `Table`, another
+`ScrollView`, anything `.searchable` — will nest. `scopeComputerPicker` and `scopeGroupPicker`
+still contain `ScrollView`s and are still nested, **as they were in the original sheet**. They have
+not misbehaved, so they were left alone; if this message returns from the Scope step, that is where
+it is coming from.
+
+**Testing it needs a fresh launch.** AppKit logs it **once per process**, so reopening the window a
+second and third time in the same run is silent whether or not anything is fixed. That is how it
+first looked resolved when it was not.
 
 ### The close warning — built, and shared
 

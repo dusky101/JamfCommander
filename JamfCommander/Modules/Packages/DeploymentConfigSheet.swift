@@ -714,23 +714,71 @@ struct DeploymentConfigSheet: View {
 
     // MARK: - The steps themselves
 
+    /// The categories, as plain rows rather than a `List`.
+    ///
+    /// **A `List` here was a scroll view inside a scroll view**, since `stepDetail` is a
+    /// `ScrollView`. On macOS that is the classic cause of *"It's not legal to call
+    /// -layoutSubtreeIfNeeded on a view which is already being laid out"*, and `.searchable` on a
+    /// nested list compounds it. The sheet this came from had the list in its own non-scrolling
+    /// column, so the nesting is something the conversion introduced.
+    ///
+    /// Rows in a `VStack` scroll with the page instead, which is also better: the list is no longer
+    /// trapped in a 320pt box on a window that may be 800pt tall. The search field is inline for the
+    /// same reason — `.searchable` belongs to a scrolling container, and there is not one here now.
     private var categoryStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            List(selection: $selectedCategory) {
-                ForEach(filteredCategories) { category in
-                    HStack {
-                        Image(systemName: "folder")
-                        Text(category.name)
-                        Spacer()
-                        if selectedCategory?.id == category.id {
-                            Image(systemName: "checkmark").foregroundColor(.blue)
-                        }
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                TextField("Search categories…", text: $searchText)
+                    .textFieldStyle(.plain)
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
                     }
-                    .tag(category)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
                 }
             }
-            .searchable(text: $searchText)
-            .frame(height: 320)
+            .padding(8)
+
+            Divider()
+
+            if filteredCategories.isEmpty {
+                Text(searchText.isEmpty
+                     ? "This instance has no categories yet. Create one below."
+                     : "No category matches “\(searchText)”.")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(filteredCategories) { category in
+                        let isChosen = selectedCategory?.id == category.id
+
+                        Button {
+                            selectedCategory = category
+                        } label: {
+                            HStack {
+                                Image(systemName: "folder")
+                                Text(category.name)
+                                Spacer()
+                                if isChosen {
+                                    Image(systemName: "checkmark").foregroundColor(.blue)
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .background(isChosen ? Color.accentColor.opacity(0.18) : Color.clear)
+                        .accessibilityAddTraits(isChosen ? [.isSelected] : [])
+                    }
+                }
+            }
 
             Divider()
 
