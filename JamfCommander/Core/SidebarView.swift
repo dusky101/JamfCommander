@@ -427,14 +427,15 @@ private struct SidebarHintCard: View {
                     UserDefaults.standard.set(!suppressed, forKey: hint.storageKey)
                     guard suppressed else { return }
 
-                    // Deferred by one runloop turn. Dismissing here tore the popover down from
-                    // inside the checkbox's own change handler — while AppKit was still committing
-                    // its animation — which is what produced "Invalid attempt to open a new
-                    // transaction during CA commit" and the `entangle context after pre-commit`
-                    // chatter beside it. A turn later the commit has finished and the popover can
-                    // be closed like anything else. The tick is still visibly ticked on the way out,
-                    // which is an improvement: it used to vanish mid-animation.
-                    DispatchQueue.main.async { onDismiss() }
+                    // A second, not a runloop turn. Dismissing from inside the checkbox's own
+                    // change handler tore the popover down while AppKit was still committing its
+                    // animation — "Invalid attempt to open a new transaction during CA commit" and
+                    // the `entangle context after pre-commit` chatter beside it. One turn was not
+                    // enough to clear it.
+                    //
+                    // It reads better as well as quieter: the tick is visibly ticked, and the card
+                    // goes a moment later rather than snatching itself away as you click.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { onDismiss() }
                 }
                 .help("You can bring this back from Settings → General")
         }

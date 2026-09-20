@@ -49,6 +49,12 @@ struct DashboardView: View {
     @State private var isLoadingInstallomator = true
     @State private var unusedCount: Int?
     @State private var isLoadingUnused = true
+    /// Which run of the Unused tile is current.
+    ///
+    /// The progressive count below is fed by fire-and-forget tasks, and a task that lands after the
+    /// figure it was building has been finalised would add to it. This is how one is told it is too
+    /// late. See `loadUnusedTile`.
+    @State private var unusedTileRun = 0
     
     // Data Lists
     @State private var categories: [Category] = []
@@ -605,9 +611,18 @@ struct DashboardView: View {
         // own — disabled, or scoped to nobody — so counting one the moment it arrives is a fact, not
         // a guess. Packages are the exception: nothing can be called unattached until *every* policy
         // has been read, so they land in the final figure below and the tile glides up to it.
+        //
+        // **Each bump is a fire-and-forget task, and some of them land late.** They used to land on
+        // whatever `unusedCount` held at the time — including the finished figure assigned below —
+        // so the tile settled on the right answer plus however many bumps were still in flight. It
+        // read 120, 124, 126, 127 or 128 for the same estate depending on timing. `run` is how a
+        // stale bump is told the total it was building no longer exists.
+        unusedTileRun += 1
+        let run = unusedTileRun
         let bump: @Sendable (Policy) -> Void = { policy in
             guard RedundantAudit.isRedundant(policy) else { return }
             Task { @MainActor in
+                guard run == unusedTileRun else { return }
                 unusedCount = (unusedCount ?? 0) + 1
             }
         }
@@ -624,6 +639,10 @@ struct DashboardView: View {
             categories.map { (String($0.id), $0.name) },
             uniquingKeysWith: { first, _ in first }
         )
+
+        // Closes this run: any bump still queued is now stale and will not be added to the figure
+        // below, which is the whole answer rather than a running total.
+        unusedTileRun += 1
 
         unusedCount = RedundantAudit.items(
             policies: estate.policies,
