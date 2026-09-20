@@ -44,7 +44,10 @@ final class SettingsPresenter: ObservableObject {
 enum SettingsPage: String, CaseIterable, Identifiable {
     case general = "General"
     case jamfPro = "Jamf Pro"
-    case platform = "Platform"
+    /// Named to sit beside **Jamf Pro** rather than alone as "Platform", which said nothing about
+    /// which Jamf this is. They are two different systems with two different credentials, and the
+    /// commonest setup mistake is assuming the Jamf Pro client works here.
+    case jamfPlatform = "Jamf Platform"
     case transfer = "Import & Export"
 
     var id: String { rawValue }
@@ -53,7 +56,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape"
         case .jamfPro: "key.horizontal"
-        case .platform: "square.stack.3d.up"
+        case .jamfPlatform: "square.stack.3d.up"
         case .transfer: "arrow.up.arrow.down.circle"
         }
     }
@@ -62,14 +65,63 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .general: "How the app behaves: where its data comes from, and the guidance it offers."
-        case .jamfPro: "The Jamf Pro API client this app authenticates with."
-        case .platform: "The Jamf Platform API Gateway credentials that Blueprints needs. Created in Jamf Account, not in Jamf Pro."
+        case .jamfPro: "An API client created in Jamf Pro. Every module except Blueprints uses it."
+        case .jamfPlatform: "A separate integration created in Jamf Account, for Jamf's Platform API Gateway. Only Blueprints needs it, and the Jamf Pro client above will not work here."
         case .transfer: "Move a configuration between Macs as a .jamfconfig file."
         }
     }
 
     /// Whether this page holds credentials, and so whether "Clear All" belongs beneath it.
     var holdsCredentials: Bool { self != .general }
+
+    /// How to obtain what this page asks for.
+    ///
+    /// Condensed from the guide rather than written afresh — `Resources/Help/api-client.md`,
+    /// `blueprints-integration.md` and `settings-files.md` are the source, and `helpLinks` below
+    /// sends the reader to them for the full version. Two copies of a setup procedure drift; a
+    /// summary that names the page it came from does not.
+    var setupSteps: [String] {
+        switch self {
+        case .general:
+            []
+        case .jamfPro:
+            [
+                "In Jamf Pro, go to Settings → System → API roles and clients.",
+                "On API Roles, choose New. Name it, add the privileges this app needs, and save.",
+                "On API Clients, choose New. Assign that role, set a token lifetime — 30 minutes is ample — then save and Enable it.",
+                "Choose Generate client secret and copy it at once. Jamf shows it only the once.",
+                "Copy the Client ID from the same screen, and use your Jamf URL above."
+            ]
+        case .jamfPlatform:
+            [
+                "Sign in to Jamf Account — not Jamf Pro — and choose Integrations.",
+                "Choose Create integration and give it a name.",
+                "Set the scope level to platform environment. An integration scoped to a single tenant cannot reach these APIs, and this is the step that most often goes wrong.",
+                "Grant six capabilities: blueprints:read, create, update, delete and deploy, plus device-groups:read.",
+                "Create it, then copy the client ID and secret.",
+                "Copy the environment ID from the Integration details panel — it is a UUID."
+            ]
+        case .transfer:
+            [
+                "Export writes a .jamfconfig file carrying both sets of credentials.",
+                "Import merges what the file holds: anything it does not carry is left exactly as it is."
+            ]
+        }
+    }
+
+    /// Pages of the guide worth opening from here, most relevant first.
+    var helpLinks: [(title: String, topic: String)] {
+        switch self {
+        case .general:
+            []
+        case .jamfPro:
+            [("Creating the API client", "api-client"), ("Which privileges to grant", "privileges")]
+        case .jamfPlatform:
+            [("Creating the Blueprints integration", "blueprints-integration")]
+        case .transfer:
+            [("Configuration files", "settings-files")]
+        }
+    }
 }
 
 struct ConfigurationView: View {
@@ -88,6 +140,7 @@ struct ConfigurationView: View {
     @AppStorage(PlatformCredentialsStore.clientIdKey) private var platformClientId = ""
     @AppStorage(PlatformCredentialsStore.clientSecretKey) private var platformClientSecret = ""
 
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject private var presenter = SettingsPresenter.shared
     /// The page on screen. Survives the window being closed and reopened, which is the point of a
     /// window: you come back to where you were, unless a caller asked for somewhere specific.
@@ -141,80 +194,153 @@ struct ConfigurationView: View {
     // MARK: - Rail
 
     private var rail: some View {
-        List(SettingsPage.allCases, selection: Binding(
-            get: { page },
-            // A rail selection is never empty: clicking the selected row again would otherwise
-            // deselect it and leave the detail pane blank.
-            set: { if let new = $0 { page = new } }
-        )) { option in
-            Label(option.rawValue, systemImage: option.icon)
-                .tag(option)
-                .help(option.summary)
+        VStack(spacing: 0) {
+            // The sidebar of a `NavigationSplitView` runs the full height of the window, so the
+            // traffic lights float *over* its first row — they hid "General" entirely, and no
+            // amount of padding on a header fixed it because the header then collided instead.
+            // This reserves the strip they occupy and nothing is drawn in it. The app already
+            // solves this twice by hand: `ContentView`'s brand header and the guide's index header
+            // both carry a top padding whose only job is this.
+            //
+            // No "Settings" heading here: the window's own title bar already says it, and a second
+            // copy in the rail was one of three the window ended up showing.
+            Color.clear
+                .frame(height: 30)
+
+            List(SettingsPage.allCases, selection: Binding(
+                get: { page },
+                // A rail selection is never empty: clicking the selected row again would otherwise
+                // deselect it and leave the detail pane blank.
+                set: { if let new = $0 { page = new } }
+            )) { option in
+                Label(option.rawValue, systemImage: option.icon)
+                    .tag(option)
+                    .help(option.summary)
+            }
+            .listStyle(.sidebar)
         }
-        .navigationTitle("Settings")
     }
 
     // MARK: - Detail
 
+    /// Everything in one `ScrollView`, header included.
+    ///
+    /// Not a `VStack` with a pinned header above a scroll area, which is what this was: the detail
+    /// pane also runs under the title bar, and a `VStack` there is drawn beneath the window's title
+    /// — so the page heading sat behind the word "Settings". A `ScrollView` is inset for the title
+    /// bar automatically, which is why `HelpPage` has looked right since the day the guide was
+    /// converted.
     private var detail: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(page.rawValue)
-                    .font(.title2)
-                    .fontWeight(.bold)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(page.rawValue)
+                        .font(.title)
+                        .fontWeight(.bold)
 
-                Text(page.summary)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text(page.summary)
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !page.setupSteps.isEmpty {
+                    setupCard
+                }
+
+                switch page {
+                case .general:
+                    SettingsGeneralSection()
+                case .jamfPro:
+                    SettingsJamfProSection()
+                case .jamfPlatform:
+                    SettingsPlatformSection(api: api)
+                case .transfer:
+                    SettingsTransferSection(onImport: importSettings, onExport: exportSettings)
+                }
             }
+            .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
-            .padding(.top)
-            .padding(.bottom, 12)
+        }
+        // Only under the pages that hold credentials, and only when there is something to clear.
+        // It empties **both** APIs wherever it is pressed — the help text says so, and that is why
+        // it is not offered under General, where it would read as clearing what is on screen.
+        .safeAreaInset(edge: .bottom) {
+            if page.holdsCredentials, hasJamfProSettings || hasPlatformSettings {
+                VStack(spacing: 0) {
+                    Divider()
+                    HStack {
+                        Button(action: clearAllSettings) {
+                            Label("Clear All", systemImage: "trash")
+                                .foregroundColor(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove every stored credential, for both APIs")
 
-            Divider()
+                        Spacer()
+                    }
+                    .padding()
+                }
+                .background(.ultraThinMaterial)
+            }
+        }
+        // There is no Done button. A window closes the way every other window closes, and "Done"
+        // reads as "save" — which these fields do not need, since every one is `@AppStorage` and is
+        // stored as it is typed.
+    }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    switch page {
-                    case .general:
-                        SettingsGeneralSection()
-                    case .jamfPro:
-                        SettingsJamfProSection()
-                    case .platform:
-                        SettingsPlatformSection(api: api)
-                    case .transfer:
-                        SettingsTransferSection(onImport: importSettings, onExport: exportSettings)
+    /// How to obtain what this page asks for, and where to read the long version.
+    private var setupCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Setting this up", systemImage: "list.number")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(page.setupSteps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(index + 1).")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .monospacedDigit()
+                            // So the text of every step starts at the same x.
+                            .frame(width: 18, alignment: .trailing)
+
+                        Text(step)
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // Only under the pages that hold credentials, and only when there is something to
-            // clear. It empties **both** APIs wherever it is pressed — the help text says so, and
-            // that is why it is not offered under General, where it would read as clearing the
-            // preferences on screen.
-            if page.holdsCredentials, hasJamfProSettings || hasPlatformSettings {
+            if !page.helpLinks.isEmpty {
                 Divider()
 
-                HStack {
-                    Button(action: clearAllSettings) {
-                        Label("Clear All", systemImage: "trash")
-                            .foregroundColor(.red)
+                // Deep links into the guide rather than the whole procedure repeated here. The
+                // guide is the source; this card is the summary, and one of them has screenshots
+                // and Jamf's own documentation links.
+                HStack(spacing: 12) {
+                    ForEach(page.helpLinks, id: \.topic) { link in
+                        Button {
+                            HelpPresenter.shared.request(link.topic)
+                            openWindow(id: HelpWindowID)
+                        } label: {
+                            Label(link.title, systemImage: "book")
+                                .font(.callout)
+                        }
+                        .buttonStyle(.link)
                     }
-                    .buttonStyle(.plain)
-                    .help("Remove every stored credential, for both APIs")
 
                     Spacer()
                 }
-                .padding()
             }
         }
-        // There is no Done button. A window is closed the way every other window is closed, and a
-        // Done button inside one reads as "save", which these fields do not need — every one of
-        // them is `@AppStorage` and is already stored as it is typed.
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        .cornerRadius(10)
     }
 
     // MARK: - Actions

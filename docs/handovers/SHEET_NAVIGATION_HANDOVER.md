@@ -31,7 +31,8 @@ lights, a title, the sidebar toggle — and no longer being modal.
 
 | Established | Not established |
 | --- | --- |
-| The help guide's sheet-to-window conversion works, and deleted code | **Everything about the `ConfigurationView` conversion on screen** — it builds clean, nothing has been looked at |
+| The help guide's sheet-to-window conversion works, and deleted code | Whether the deployment sheet's six sections fit beside a rail at the 960pt minimum |
+| **`ConfigurationView` as a window: confirmed on screen by the maintainer, 20 September 2026** — rail, four pages, setup cards and guide deep links | Whether its sections can take values rather than bindings without a rewrite |
 | `DeploymentConfigSheet` has six sections and numbers them itself | Whether a half-filled deployment window should survive being closed |
 | `ConfigurationView` is now a window with a four-item rail, and it compiles with no warnings | Whether the deployment sheet's content fits at the 960pt minimum with a rail |
 | `ActionBarComponents.swift` proves the value-not-binding pattern works | Whether the sheet's sections can take values without a rewrite |
@@ -89,6 +90,48 @@ fields do not need, since every one is `@AppStorage` and stored as it is typed.
 under the three credential pages when there is something to clear, and still empties both APIs
 wherever it is pressed.
 
+### Three layout traps it surfaced — read these before converting anything else
+
+The rehearsal was justified on the grounds that *"it will surface every layout problem the
+deployment sheet will hit"*. It did, and all three were shipped broken first, so they are worth
+more than the conversion itself.
+
+**1. The detail pane must be a `ScrollView`, not a `VStack`.** A window's content runs under the
+title bar. A `ScrollView` is inset for it automatically; a `VStack` is not, so a pinned header at
+the top of the detail column is drawn *behind the window's own title* — the page heading sat under
+the word "Settings". This is why `HelpPage` has looked right since the day the guide was converted:
+it is a `ScrollView` with `.padding(.top, 28)`. Copying the `NavigationSplitView` without copying
+what is inside it reproduces the bug.
+
+**2. A `NavigationSplitView` sidebar runs the full height of the window**, so the traffic lights
+float over its first row. A bare `List` loses its first item behind them — "General" was invisible
+and unclickable. Reserve the strip: `Color.clear.frame(height: 30)` above the list. The app already
+solved this twice by hand and both are worth reading — `ContentView`'s brand header carries
+`.padding(.top, 10)` with exactly this comment, and the guide's index header uses 14. **A header
+with padding is not a fix**; it only moves what collides, which was the second broken attempt.
+
+**3. Do not set `.navigationTitle` when the scene is already `Window("…", id:)`.** It drew a second
+copy of the title into the detail pane. Between the window title, the rail header and the page
+heading, the window showed the word "Settings" three times. The rail heading went; the window's own
+title bar is the one that stays.
+
+### Two things the maintainer asked for while reviewing it
+
+**"Platform" became "Jamf Platform"**, so it sits beside "Jamf Pro" and reads as what it is: a
+second Jamf system with a second credential. Its summary now says outright that the Jamf Pro client
+will not work there, which is the commonest setup mistake.
+
+**Every page explains how to set itself up.** Numbered steps condensed from the guide's own
+Markdown — `api-client.md`, `blueprints-integration.md`, `settings-files.md` — including the step
+that actually catches people out: the Jamf Account integration's scope level must be *platform
+environment*, because one scoped to a single tenant cannot reach those APIs.
+
+The steps are a summary, not a second copy: each card deep-links into the guide page it came from.
+**Those links are the first callers `HelpPresenter.request(_:)` has ever had** — `START_HERE.md`
+lists "deep links from module headers into the guide" as an open question on the grounds that the
+method existed and nothing called it. The pattern is now proven: `request(topic)` then
+`openWindow(id: HelpWindowID)`.
+
 ### What to look at
 
 - ⌘, and the sidebar footer both open **one** window, and bring it forward if it is already open.
@@ -105,6 +148,29 @@ wherever it is pressed.
 
 The rehearsal above is what the pattern looks like in this codebase. The deployment sheet is the
 case, and the risk: **it creates policies on a live tenant.**
+
+## Decided before 2b starts: start clean, and warn on close
+
+The roadmap asked whether a half-filled deployment window should come back as it was. **It should
+not** — it starts clean every time — **but closing one with work in it must ask first**, saying that
+what has been entered will be lost.
+
+Both halves matter. Starting clean on its own means a mis-click costs a filled-in deployment with no
+warning, which is worse than either answer taken alone.
+
+**It fires only when something was actually changed** (maintainer's call, 20 September 2026) —
+a category chosen, the name template edited, scope set, a version pinned. Opening the window and
+shutting it again closes silently. A warning on every close is the one you learn to dismiss without
+reading, and a confirmation nobody reads is worth nothing in front of something that writes to
+production. That means the window needs to know what "unchanged" looks like: compare against the
+defaults it opened with rather than tracking a dirty flag per control, which would drift the first
+time a control is added.
+
+**The trap:** SwiftUI gives a `Window` scene no `shouldClose` hook. `.onDisappear` fires after the
+window has gone, and `NSWindow.isDocumentEdited` only draws the dot in the close button — it does not
+prompt. Intercepting a close means reaching the `NSWindow` and installing a delegate, which is AppKit
+interop this app does not otherwise use outside `NSSavePanel`/`NSOpenPanel`. Settings needed none of
+this, so the rehearsal did not surface it; budget for it.
 
 ## The rule for `DeploymentConfigSheet`
 

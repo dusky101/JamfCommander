@@ -104,10 +104,23 @@ Not candidates: `CommanderConfirmation`, `OperationResultView`, `CategorySelecti
   went the other way for a related reason — it was a sheet on a sheet and could not be dismissed by
   clicking away, so it became an overlay.
 
-- **State outlives the window now.** A sheet's `@State` dies when it is dismissed. A window can be
-  closed and reopened, and anything held in a presenter or a store survives. Decide deliberately
-  whether a half-filled deployment sheet should come back as you left it or start clean — both are
-  defensible; silently doing one of them is not.
+- ~~**State outlives the window now.**~~ **Decided, 20 September 2026: start clean each time, and
+  warn before closing.** A half-filled deployment window does *not* come back as it was — but
+  closing one that has work in it asks first, saying plainly that what has been entered will be
+  lost. A window that silently discarded a part-configured deployment would be worse than either
+  option on its own.
+
+  The maintainer's words: *"have a popover warning saying if you close this window now you will
+  lose what you have added already. but yes, start clean each time"*. The warning fires **only when
+  something was actually changed** — opening the window and shutting it closes silently, because a
+  dialog on every close is one nobody reads.
+
+  **This is not free, and whoever builds it should know that before starting.** SwiftUI has no
+  `shouldClose` hook for a `Window` scene: `.onDisappear` fires after the decision is made, and
+  `isDocumentEdited` only draws the dot in the close button, it does not prompt. Intercepting the
+  close means reaching the `NSWindow` and installing a delegate — AppKit interop, in an app that
+  currently has none of it outside the save and open panels. Settings did not need this, so the
+  rehearsal did not surface it.
 - **The window minimum is 960pt and the header arithmetic is tight** — see `START_HERE.md` §4. A
   sheet gaining a 200pt rail loses that from its detail pane; the six sections' content has to still
   fit at the smallest window the app allows.
