@@ -237,13 +237,28 @@ struct DashboardView: View {
                 // When these counts were read. The Dashboard has no Refresh button of its own —
                 // Settings → General has the one that clears everything — so this is the only place
                 // it can say whether the tiles are this minute's truth or this morning's.
-                if let readAt = dashboardReadAt {
-                    HStack {
-                        Spacer()
+                HStack(spacing: 10) {
+                    Spacer()
+
+                    if let readAt = dashboardReadAt {
                         DataFreshnessLabel(readAt: readAt)
                     }
-                    .padding(.horizontal)
+
+                    // The Dashboard had no Refresh of its own — every other module does, and
+                    // Settings' "Refresh Data" is a long way to go to re-read the screen in front
+                    // of you. Bypasses the cache, like every other Refresh in the app.
+                    Button {
+                        Task { await refreshDashboard(bypassingCache: true) }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .frame(height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isLoading)
+                    .help("Read everything again from Jamf")
+                    .accessibilityLabel("Refresh dashboard")
                 }
+                .padding(.horizontal)
 
                 Divider().padding(.horizontal)
                 
@@ -504,7 +519,10 @@ struct DashboardView: View {
     ///   asked for *on this screen*: the `RefreshCoordinator` signal below. Replacing a Dashboard
     ///   somebody is looking at with a full-screen spinner because a write finished elsewhere is
     ///   worse than letting the numbers change under them a moment later.
-    func refreshDashboard(showingLoadingState: Bool = true) async {
+    /// - Parameter bypassingCache: `true` re-reads everything from Jamf. Passed by the Refresh
+    ///   button; left `false` when the Dashboard simply appears, which is the case the cache exists
+    ///   for.
+    func refreshDashboard(showingLoadingState: Bool = true, bypassingCache: Bool = false) async {
         if showingLoadingState {
             isLoading = true
             isLoadingInstallomator = true
@@ -515,12 +533,12 @@ struct DashboardView: View {
         // so one failure — a throttled request, or the Platform API refusing a Blueprints read —
         // left every tile reading zero. Now a section that could not be read shows "—" and the
         // rest of the dashboard still fills in.
-        async let fetchedComputers = api.fetchDashboardComputers()
-        async let fetchedProfiles = api.fetchProfiles()
-        async let fetchedScripts = api.fetchScripts()
-        async let fetchedPolicies = api.fetchPolicies()
-        async let fetchedCategories = api.fetchCategories()
-        async let fetchedPackages = api.fetchJamfPackages()
+        async let fetchedComputers = api.fetchDashboardComputers(bypassingCache: bypassingCache)
+        async let fetchedProfiles = api.fetchProfiles(bypassingCache: bypassingCache)
+        async let fetchedScripts = api.fetchScripts(bypassingCache: bypassingCache)
+        async let fetchedPolicies = api.fetchPolicies(bypassingCache: bypassingCache)
+        async let fetchedCategories = api.fetchCategories(bypassingCache: bypassingCache)
+        async let fetchedPackages = api.fetchJamfPackages(bypassingCache: bypassingCache)
 
         let comps = try? await fetchedComputers
         let profs = try? await fetchedProfiles
@@ -553,7 +571,8 @@ struct DashboardView: View {
         // The Unused count costs a scan of every policy in the tenant — tens of seconds on a large
         // instance, and the most expensive thing this app does. Awaiting it above would have moved
         // that cost onto every launch before anything was usable.
-        await loadHeadlineTiles(profiles: profs, packages: packages, categories: cats)
+        await loadHeadlineTiles(profiles: profs, packages: packages, categories: cats,
+                                bypassingCache: bypassingCache)
     }
 
     /// The two tiles that cannot be answered by a list fetch, loaded together once the rest of the
@@ -561,11 +580,13 @@ struct DashboardView: View {
     /// abandoned scan is waste, and the tiles are rebuilt on the way back in.
     private func loadHeadlineTiles(profiles: [ConfigProfile]?,
                                    packages: [JamfPackage]?,
-                                   categories: [Category]?) async {
+                                   categories: [Category]?,
+                                   bypassingCache: Bool = false) async {
         async let installomator: Void = loadInstallomatorTile()
         async let unused: Void = loadUnusedTile(profiles: profiles,
                                                 packages: packages,
-                                                categories: categories)
+                                                categories: categories,
+                                                bypassingCache: bypassingCache)
         _ = await (installomator, unused)
     }
 
@@ -592,7 +613,8 @@ struct DashboardView: View {
     /// with the module it links to would be worse than no headline.
     private func loadUnusedTile(profiles: [ConfigProfile]?,
                                 packages: [JamfPackage]?,
-                                categories: [Category]?) async {
+                                categories: [Category]?,
+                                bypassingCache: Bool = false) async {
         defer { isLoadingUnused = false }
 
         // Any of the three missing means the Dashboard's own read already failed. The tile says
@@ -605,7 +627,7 @@ struct DashboardView: View {
 
         // Widens Installomator detection past "the policy's script is called Installomator", as the
         // Unused module does. A failure here only narrows detection.
-        let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs()) ?? []
+        let knownScriptIDs = (try? await api.fetchInstallomatorScriptIDs(bypassingCache: bypassingCache)) ?? []
 
         // The running total, climbing as the scan reads each policy. A policy is decidable on its
         // own — disabled, or scoped to nobody — so counting one the moment it arrives is a fact, not
@@ -628,6 +650,7 @@ struct DashboardView: View {
         }
 
         guard let estate = try? await api.scanPolicyEstate(knownScriptIDs: knownScriptIDs,
+                                                           bypassingCache: bypassingCache,
                                                            onPolicy: bump) else {
             // The running total counted real policies, but the scan did not finish, so it is not an
             // answer. A dash says so; a half-count would read as one.

@@ -116,41 +116,68 @@ class JamfAPIService: ObservableObject {
         let basicProfiles = listResponse.os_x_configuration_profiles
         
         var richProfiles: [ConfigProfile] = []
-        
-        // 2. Hydrate in Parallel (Fetch Categories and Scoped Status)
-        // We limit concurrency to avoid slamming the API too hard (max 10-20 concurrent is usually safe)
-        await withTaskGroup(of: ConfigProfile?.self) { group in
-            for profile in basicProfiles {
-                group.addTask {
-                    do {
-                        // Fetch details for this specific profile ID
-                        let detail = try await self.fetchProfileScope(id: profile.id)
-                        // Capture computed property value before using it
-                        let activeStatus = detail.isActive
-                        var enrichedProfile = profile
-                        // Assign the category found in the details
-                        enrichedProfile.categoryName = detail.general.category?.name ?? "Uncategorised"
-                        // Assign scoped status based on scope
-                        enrichedProfile.isActive = activeStatus
-                        return enrichedProfile
-                    } catch {
-                        // If detail fetch fails, return the basic profile (better than nothing!) —
-                        // but say that its scope was never read, so nothing downstream mistakes the
-                        // default for a finding.
+
+        // 2. Hydrate in batches of 10 with 0.5s between them, three attempts each with exponential
+        //    backoff — the pacing `services-and-networking.md` requires of every bulk read, and the
+        //    same shape as `fetchPolicies` and `scanPolicyEstate`.
+        //
+        // **This used to fan out over every profile at once.** The comment said it limited
+        // concurrency; it did not — `group.addTask` was called once per profile, so a 152-profile
+        // tenant opened 152 simultaneous requests. Jamf throttled them, a varying number failed, and
+        // each failure dropped a profile out of the Unused audit. The audit answered 122, 126, 127
+        // and 130 for the same estate within a few minutes, and the highest was the closest to true.
+        // An audit that decides what nobody is using cannot depend on how many requests survived.
+        let batchSize = 10
+        let batches = stride(from: 0, to: basicProfiles.count, by: batchSize).map {
+            Array(basicProfiles[$0..<min($0 + batchSize, basicProfiles.count)])
+        }
+
+        for (batchIndex, batch) in batches.enumerated() {
+            await withTaskGroup(of: ConfigProfile.self) { group in
+                for profile in batch {
+                    group.addTask {
+                        for attempt in 1...3 {
+                            do {
+                                let detail = try await self.fetchProfileScope(id: profile.id)
+                                // Capture computed property value before using it
+                                let activeStatus = detail.isActive
+                                var enrichedProfile = profile
+                                // Assign the category found in the details
+                                enrichedProfile.categoryName = detail.general.category?.name ?? "Uncategorised"
+                                // Assign scoped status based on scope
+                                enrichedProfile.isActive = activeStatus
+                                return enrichedProfile
+                            } catch {
+                                // A cancelled request cannot succeed on a retry — see fetchPolicies.
+                                if Task.isCancelled || (error as NSError).code == NSURLErrorCancelled {
+                                    break
+                                }
+                                if attempt < 3 {
+                                    try? await Task.sleep(
+                                        nanoseconds: UInt64(0.5 * Double(1 << (attempt - 1)) * 1_000_000_000)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Kept, but marked: its scope was never read, so nothing downstream
+                        // mistakes the default for a finding.
                         var unread = profile
                         unread.scopeIsKnown = false
                         return unread
                     }
                 }
-            }
-            
-            for await result in group {
-                if let p = result {
-                    richProfiles.append(p)
+
+                for await result in group {
+                    richProfiles.append(result)
                 }
             }
+
+            if batchIndex < batches.count - 1 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
         }
-        
+
         return richProfiles.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
