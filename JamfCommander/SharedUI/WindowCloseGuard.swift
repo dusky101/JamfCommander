@@ -148,18 +148,30 @@ private struct WindowCloseInterceptor: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
-        // The view has no window until after this returns, which is why attaching is deferred
-        // rather than done here.
-        DispatchQueue.main.async {
-            context.coordinator.attach(to: view.window, shouldClose: shouldClose, onAttach: onAttach)
-        }
+        context.coordinator.refresh(shouldClose: shouldClose)
+        scheduleAttach(for: view, coordinator: context.coordinator)
         return view
     }
 
     func updateNSView(_ view: NSView, context: Context) {
-        // `shouldClose` closes over SwiftUI state, so it is stale the moment that state changes.
-        // Re-handing it on every update is what keeps the answer current.
-        context.coordinator.attach(to: view.window, shouldClose: shouldClose, onAttach: onAttach)
+        // Cheap and synchronous: `shouldClose` closes over SwiftUI state and is stale the moment
+        // that state changes, so it is re-handed on every update. This touches no AppKit.
+        context.coordinator.refresh(shouldClose: shouldClose)
+        scheduleAttach(for: view, coordinator: context.coordinator)
+    }
+
+    /// Installs the delegate, **never during a view update**.
+    ///
+    /// Attaching mutates the window, and both `makeNSView` and `updateNSView` can run inside a
+    /// layout pass — AppKit answers that with *"It's not legal to call -layoutSubtreeIfNeeded on a
+    /// view which is already being laid out"* in the console. Deferring puts the mutation between
+    /// passes instead. It is also the only way to reach the window at all from `makeNSView`, where
+    /// the view does not have one yet.
+    private func scheduleAttach(for view: NSView, coordinator: CloseGuardDelegate) {
+        guard !coordinator.isAttached else { return }
+        DispatchQueue.main.async {
+            coordinator.attach(to: view.window, onAttach: onAttach)
+        }
     }
 
     static func dismantleNSView(_ view: NSView, coordinator: CloseGuardDelegate) {
@@ -174,9 +186,17 @@ private final class CloseGuardDelegate: NSObject, NSWindowDelegate {
     private weak var previous: NSWindowDelegate?
     private var shouldClose: (() -> Bool)?
 
-    func attach(to window: NSWindow?, shouldClose: @escaping () -> Bool, onAttach: (NSWindow) -> Void) {
-        self.shouldClose = shouldClose
+    /// Whether this is already answering for a window, so the caller can stop scheduling attaches.
+    var isAttached: Bool { window != nil }
 
+    /// Re-hands the closure. Pure Swift — safe to call during a view update.
+    func refresh(shouldClose: @escaping () -> Bool) {
+        self.shouldClose = shouldClose
+    }
+
+    /// Takes over `windowShouldClose(_:)` for a window. **Must not run during a view update** —
+    /// see `WindowCloseInterceptor.scheduleAttach(for:coordinator:)`.
+    func attach(to window: NSWindow?, onAttach: (NSWindow) -> Void) {
         guard let window, window !== self.window else { return }
         onAttach(window)
         // A window this object has not seen before: remember whoever was answering for it.

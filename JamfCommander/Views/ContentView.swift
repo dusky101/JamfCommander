@@ -84,12 +84,22 @@ struct ContentView: View {
     /// Whether the first module has finished fetching. Set once, by the Dashboard.
     @State private var hasCompletedInitialLoad = false
 
-    /// The app is not ready to be used yet — either the saved session is still being restored, or it
-    /// has been and the Dashboard is still fetching. Only ever true when there is a connection to
-    /// wait on; somebody who has not connected yet should meet the login screen, not a curtain.
+    /// The app is connected but the Dashboard has not finished its first fetch.
+    ///
+    /// Only ever true when there is a connection to wait on; somebody who has not connected yet
+    /// should meet the login screen, not a curtain.
+    ///
+    /// **It deliberately does not cover the restore.** It used to also return `true` while the
+    /// saved session was being authenticated, which put the curtain up over a window that had no
+    /// sidebar in it yet — the modules only render once `isLoggedIn` flips, so the card arrived
+    /// first and the app assembled itself behind it. Waiting means the curtain appears over a
+    /// window that already looks like the app.
+    ///
+    /// Nothing is lost by waiting: the reason this blocks at all is that clicking through the
+    /// sidebar mid-fetch throws away a scan of the whole tenant, and during the restore the sidebar
+    /// has no modules to click — it shows "Restoring session…" instead.
     private var isPreparing: Bool {
         guard hasStoredCredentials else { return false }
-        if isBusy && !isLoggedIn { return true }
         return isLoggedIn && !hasCompletedInitialLoad
     }
     
