@@ -241,6 +241,40 @@ class ExportService {
         return false
     }
 
+    /// Save composed PDF bytes to a file with a save panel.
+    /// Returns true if saved successfully.
+    ///
+    /// The sibling of `saveCSVToFile(content:defaultName:)`, and deliberately the same shape: the
+    /// caller composes the whole document in memory and this is the one place that asks where it
+    /// goes, writes it, and reports. `NSSavePanel` is also what grants a sandboxed app the right to
+    /// write where the reader chose.
+    @discardableResult
+    static func savePDFToFile(data: Data, defaultName: String) -> Bool {
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.pdf]
+        savePanel.nameFieldStringValue = defaultName
+        savePanel.title = "Export to PDF"
+        savePanel.message = "Choose a location to save the PDF"
+
+        let response = savePanel.runModal()
+
+        guard response == .OK, let url = savePanel.url else { return false }
+
+        do {
+            try data.write(to: url, options: .atomic)
+            showNotification(title: "Export Successful", message: "File saved to \(url.lastPathComponent)")
+            return true
+        } catch {
+            showNotification(title: "Export Failed", message: error.localizedDescription)
+            return false
+        }
+    }
+
+    /// Report a failure that happened before there was anything to save.
+    static func reportExportFailure(message: String) {
+        showNotification(title: "Export Failed", message: message)
+    }
+
     /// Show macOS notification
     private static func showNotification(title: String, message: String) {
         let content = UNMutableNotificationContent()

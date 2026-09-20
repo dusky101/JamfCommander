@@ -63,6 +63,11 @@ struct HelpView: View {
         // A floor, not a target: the scene's `.defaultSize` decides how it opens and the reader
         // decides after that. Below this the index and a readable measure stop fitting side by side.
         .frame(minWidth: 860, minHeight: 560)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                HelpExportButton(topics: topics, selectedTopic: selectedTopic)
+            }
+        }
         // Search is an overlay, not a sheet.
         //
         // A sheet is modal: the only way out is a control inside it. Spotlight — which is what this

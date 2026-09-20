@@ -31,7 +31,11 @@ struct MarkdownView: View {
     ///
     /// A document that will not parse is returned verbatim — a formatting slip should cost the
     /// styling, never the sentence.
-    static func inline(_ source: String) -> AttributedString {
+    /// `codeFont` is a parameter because the PDF export sets its type in fixed points rather than in
+    /// semantic styles — see `HelpPDFTheme`. The knowledge that a code span has to be given a font
+    /// explicitly is what matters here, and it belongs in one place.
+    static func inline(_ source: String,
+                       codeFont: Font = .system(.callout, design: .monospaced)) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace)
         guard var attributed = try? AttributedString(markdown: source, options: options) else {
@@ -43,7 +47,7 @@ struct MarkdownView: View {
             codeRanges.append(run.range)
         }
         for range in codeRanges {
-            attributed[range].font = .system(.callout, design: .monospaced)
+            attributed[range].font = codeFont
         }
         return attributed
     }
@@ -217,7 +221,9 @@ private struct HelpBlockView: View {
     }
 }
 
-private extension HelpCallout {
+/// Shared with the PDF export, which keeps these hues and darkens them for white paper rather than
+/// inventing a second set — see `HelpPDFTheme.onWhite(_:)`.
+extension HelpCallout {
     var systemImage: String {
         switch self {
         case .note: return "info.circle"
