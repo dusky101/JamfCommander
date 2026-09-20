@@ -1,6 +1,6 @@
 # Start here — a new session on this project
 
-**Current as of 19 September 2026, app version 8.5.**
+**Current as of 20 September 2026, app version 9.0.**
 
 Hand this to a fresh Claude Code session in the JamfCommander repository. Read the files below in
 order before writing any code. None of it is optional.
@@ -117,16 +117,12 @@ Read `docs/README.md` and `.claude/rules/docs-workflow.md`. In short: a new idea
 the day work starts, never in advance.
 
 Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
-`docs/roadmap/MULTIPLE_ENVIRONMENTS.md`, `docs/roadmap/HELP_PDF_EXPORT.md`,
+`docs/roadmap/MULTIPLE_ENVIRONMENTS.md`, `docs/roadmap/POLICY_NAME_SUGGESTIONS.md`,
 `docs/roadmap/PROFILE_TO_BLUEPRINT.md`, `docs/roadmap/SHEET_NAVIGATION.md`.
 
-**The next session's work is written up in `docs/prompts/PDF_EXPORT_PROMPT.md`**, over
-`HELP_PDF_EXPORT_HANDOVER.md`. That prompt also lists what else is open, if the PDF is not what he
-wants next.
-
-`docs/prompts/CACHING_AND_SHEETS_PROMPT.md` is **superseded and stale** — its caching phase is built
-and two of its four sheet conversions are done. It should be deleted; it is kept only until the
-maintainer says so.
+**No prompt is waiting.** The most shovel-ready work is the two remaining sheet conversions in
+`SHEET_NAVIGATION.md` — `BlueprintEditorSheet` and `PackageUploadPage` — whose handover records every
+trap the first two conversions hit.
 
 Five handovers exist in `docs/handovers/`:
 
@@ -134,7 +130,10 @@ Five handovers exist in `docs/handovers/`:
   deployment window are converted and confirmed on screen; `BlueprintEditorSheet` and
   `PackageUploadPage` remain. Its handover records every layout trap the first two hit, so a third
   should be much cheaper.
-- **PDF export** — written up and not started. Begins from an empty file and a list of what not to do.
+- **PDF export** — **built and confirmed on screen, 20 September 2026.** Export a page, or the whole
+  guide, from the guide's toolbar. Its handover is mostly a list of **three things a `CGPDFContext`
+  gets wrong** that are invisible on screen — read it before touching any rendering that ends up in a
+  document.
 - **Caching** — **built, 20 September 2026.** A session cache over every Jamf Pro read, keyed by
   instance URL, cleared by Refresh and by any write, with a "Read … ago" stamp and a Live/Cached
   switch in Settings. Its handover has the proven/unproven table; `docs/roadmap/CACHING.md` has been
@@ -172,10 +171,15 @@ Five handovers exist in `docs/handovers/`:
   and the maintainer confirmed on screen that the search panel and the window both behave. The eight
   pages the guide started with were read end to end.
 
+- **The guide's PDF export** (20 September 2026). The exported *Privileges* page is black on white
+  and stamped "Jamf Commander 9.0", the save panel writes where the reader chooses, and the app's own
+  glass surfaces survived the change that made the figures render. Measured as well as seen: 291
+  blocks across all 20 topics render with the same contrast on paper as on screen, and all 14 figures
+  render identically across separate processes. Nobody has *printed* it.
+
 Not proven, and it is most of the guide: **the twelve pages and fourteen figures added afterwards
 have barely been looked at.** They build, they bundle, all twenty pages parse, every figure id
 resolves to a real view — but the maintainer now runs the app himself, so those sessions verified by
 script rather than by eye. Two figures were found wrong that way, by him, not by them. Treat the
 right-hand column of `docs/handovers/HELP_OVERHAUL_HANDOVER.md` as the real state.
 
-Also not built: **PDF export**. Attempted and removed — `docs/roadmap/HELP_PDF_EXPORT.md`.

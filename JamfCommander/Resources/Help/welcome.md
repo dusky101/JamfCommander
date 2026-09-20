@@ -32,6 +32,11 @@ sidebar
 ```
 
 - **⌘?** opens this guide from anywhere, and it is in the sidebar footer beside Settings.
+- **Export as PDF**, in the window’s toolbar, saves the page you are reading — or the whole guide —
+  for somebody who does not have the app. Hand the *Privileges* page to a security team before
+  anyone creates the API role. Choose the paper size there if you are sending it somewhere that
+  does not use yours. Every page carries the app version and the date it was exported, because a
+  PDF is a copy: it stops being true when the app moves on, and this guide does not.
 
 The illustrations are drawn with the app’s own code, so they show what you are actually running and
 cannot go stale.

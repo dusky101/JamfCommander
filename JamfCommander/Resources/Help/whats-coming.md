@@ -59,12 +59,6 @@ The intention is a named list of environments and a way to switch between them f
 without going through Settings and pasting a different client secret each time. Managed service
 providers are the obvious case; so is anyone with a test tenant beside their production one.
 
-## Saving this guide as a PDF
-
-So that a page can be handed to somebody who does not have the app — the *Privileges* page to a
-security team before anyone creates the API role, or the setup pages to a customer. Today the only
-way is a screenshot.
-
 ## Things that are deliberate, not missing
 
 Some absences are decisions rather than gaps:
