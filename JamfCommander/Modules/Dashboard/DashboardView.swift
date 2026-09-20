@@ -129,7 +129,18 @@ struct DashboardView: View {
     var body: some View {
         Group {
         if isLoading {
-            LoadingProgressView(message: "Loading Dashboard...")
+            // Not on the very first load. `PreparingOverlay` is already covering the window and
+            // saying the same thing, and this one sits behind its card — centred on the detail
+            // pane rather than the window, so it does not hide behind the card but pokes out
+            // beside it. Two spinners for one load, one of them half visible.
+            //
+            // Every later load still shows it: the overlay only appears while the app is starting
+            // up, so from then on this is the only thing that would say the Dashboard is busy.
+            if hasReportedInitialLoad {
+                LoadingProgressView(message: "Loading Dashboard...")
+            } else {
+                Color.clear
+            }
         } else {
         ScrollView {
             VStack(spacing: 24) {
