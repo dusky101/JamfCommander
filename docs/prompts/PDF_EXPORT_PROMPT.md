@@ -84,3 +84,7 @@ rough order of how ready each is:
 
 **Still unproven against the tenant: no policy has actually been created through the new deployment
 window.** The diff shows the writes are untouched, which is not the same as having watched one land.
+
+**One open console warning**, harmless but undiagnosed: `_NSDetectedLayoutRecursion` on the first
+open of the deployment window. See `SHEET_NAVIGATION_HANDOVER.md` — including the reason it is
+easily mistaken for fixed (AppKit logs it once per process, so only a fresh launch tests it).

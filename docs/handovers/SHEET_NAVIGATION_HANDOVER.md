@@ -248,6 +248,25 @@ out of the window behave identically.
 Worth remembering when converting the others: **a Cancel button is not a window close.** Anything
 relying on the guard has to go through `performClose`.
 
+### Open: a layout-recursion message on first open
+
+`_NSDetectedLayoutRecursion` — *"It's not legal to call -layoutSubtreeIfNeeded on a view which is
+already being laid out"* — appears in the console the first time the deployment window opens.
+
+**Not diagnosed, and not proven fixed.** `WindowCloseGuard` was the prime suspect: `updateNSView`
+was installing the window delegate synchronously, and mutating a window inside a view update is
+exactly what provokes this. That was split so the closure is refreshed synchronously and the
+delegate is only ever attached on a deferred turn — correct regardless — but the message appeared
+again afterwards.
+
+**The trap when testing it:** AppKit logs this **once per process**. Opening the window a second
+and third time in the same run is silent whether or not anything is fixed, so it can only be
+evaluated from a fresh launch. That is how it looked resolved when it was not.
+
+It is a console warning, not a visible fault: the window opens, behaves, and closes correctly. If
+the next session wants it, `_NSDetectedLayoutRecursion` is a symbolic breakpoint and the backtrace
+will name the real culprit — which may well not be this file.
+
 ### The close warning — built, and shared
 
 `SharedUI/WindowCloseGuard.swift`, applied to the deployment window as
