@@ -425,7 +425,16 @@ private struct SidebarHintCard: View {
                 .font(.caption)
                 .onChange(of: suppressed) {
                     UserDefaults.standard.set(!suppressed, forKey: hint.storageKey)
-                    if suppressed { onDismiss() }
+                    guard suppressed else { return }
+
+                    // Deferred by one runloop turn. Dismissing here tore the popover down from
+                    // inside the checkbox's own change handler — while AppKit was still committing
+                    // its animation — which is what produced "Invalid attempt to open a new
+                    // transaction during CA commit" and the `entangle context after pre-commit`
+                    // chatter beside it. A turn later the commit has finished and the popover can
+                    // be closed like anything else. The tick is still visibly ticked on the way out,
+                    // which is an improvement: it used to vanish mid-animation.
+                    DispatchQueue.main.async { onDismiss() }
                 }
                 .help("You can bring this back from Settings → General")
         }
