@@ -217,6 +217,34 @@ the authenticated session. `DeploymentPresenter.begin(with:api:)` hands over the
 receives it via `onReceive` and calls the same `deployPolicies(plan:)` it always did. Keeping the
 writes where they were is what makes this a layout change.
 
+### "Start clean" needed more than clearing the presenter
+
+Found on screen, 20 September 2026: cancel a deployment, pick a different label, and every answer
+from the previous one was still there — category, script, naming, scope, and the ticks in the rail.
+
+`DeploymentPresenter.begin(with:api:)` cleared the presenter's own properties, which is not where
+that state lives. **A `Window` scene reuses its content view rather than destroying it on close**,
+so all of `DeploymentConfigSheet`'s `@State` survived. A sheet's `@State` dies on dismissal; this is
+precisely the difference the roadmap flagged as *"state outlives the window now"*, and clearing the
+presenter looked like it addressed it without doing so.
+
+The fix is `DeploymentPresenter.sessionID` — a `UUID` renewed by `begin(with:api:)`, with
+`.id(presenter.sessionID)` on the view in `DeploymentWindowContent`. That discards the view and
+rebuilds it. **Any converted window that must start clean needs this**; clearing a presenter is not
+enough, and the symptom only appears on the second use.
+
+### Cancel was slipping past the close guard
+
+Same report: cancelling never asked, however much had been filled in.
+
+`Cancel` called `dismiss()`, and **`dismiss()` does not consult `windowShouldClose`** — only the red
+button and ⌘W do. So the one path most likely to be taken with a full form was the one path with no
+warning. Cancel now calls `NSApp.keyWindow?.performClose(nil)`, which does ask, so all three routes
+out of the window behave identically.
+
+Worth remembering when converting the others: **a Cancel button is not a window close.** Anything
+relying on the guard has to go through `performClose`.
+
 ### The close warning — built, and shared
 
 `SharedUI/WindowCloseGuard.swift`, applied to the deployment window as

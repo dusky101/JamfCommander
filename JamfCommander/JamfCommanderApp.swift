@@ -175,6 +175,9 @@ private struct DeploymentWindowContent: View {
                 },
                 onCancel: { dismiss() }
             )
+            // Rebuilt per deployment, so none of the window's `@State` carries over to the next
+            // one. See `DeploymentPresenter.sessionID`.
+            .id(presenter.sessionID)
         } else {
             // Reachable by reopening the window from the Window menu after a deployment finished.
             ContentUnavailableView(

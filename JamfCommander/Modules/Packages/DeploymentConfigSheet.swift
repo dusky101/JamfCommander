@@ -8,6 +8,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import Combine
+import AppKit
 
 // MARK: - Scope Configuration Model
 
@@ -131,6 +132,15 @@ final class DeploymentPresenter: ObservableObject {
     /// the window itself creates nothing.
     @Published var completedPlan: InstallomatorDeploymentPlan?
 
+    /// Identifies one deployment, and changes for the next.
+    ///
+    /// **This is what actually makes "start clean" true.** Clearing the properties above is not
+    /// enough: a `Window` scene reuses its content view rather than destroying it, so every piece
+    /// of `@State` in `DeploymentConfigSheet` — the chosen category, the script, the naming
+    /// template, the scope, the step you were on — survived the window being closed and came back
+    /// filled in for the next label. Hanging `.id(sessionID)` on the view is what discards it.
+    @Published private(set) var sessionID = UUID()
+
     /// Hand the window a fresh deployment to configure.
     ///
     /// Deliberately clears everything first: a deployment window **starts clean each time** rather
@@ -139,6 +149,8 @@ final class DeploymentPresenter: ObservableObject {
         pendingItems = items
         self.api = api
         completedPlan = nil
+        // A new identity, so the window is rebuilt rather than reused with the last one's answers.
+        sessionID = UUID()
     }
 }
 
@@ -572,8 +584,13 @@ struct DeploymentConfigSheet: View {
             Divider()
 
             HStack(spacing: 12) {
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.escape, modifiers: [])
+                // Asks the *window* to close rather than dismissing it directly. `dismiss()` does
+                // not consult `windowShouldClose`, so Cancel used to slip past the discard warning
+                // that the red button and ⌘W both get — the one path that most deserved it.
+                Button("Cancel") {
+                    NSApp.keyWindow?.performClose(nil)
+                }
+                .keyboardShortcut(.escape, modifiers: [])
 
                 Spacer()
 
