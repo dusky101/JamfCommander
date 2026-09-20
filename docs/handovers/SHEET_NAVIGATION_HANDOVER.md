@@ -172,6 +172,74 @@ prompt. Intercepting a close means reaching the `NSWindow` and installing a dele
 interop this app does not otherwise use outside `NSSavePanel`/`NSOpenPanel`. Settings needed none of
 this, so the rehearsal did not surface it; budget for it.
 
+## `DeploymentConfigSheet` — converted, 20 September 2026. **Unproven.**
+
+A window with a **seven-step rail**, the seventh being *Review & Deploy*. The maintainer's shape:
+*"a step process. with the last step being show what the policy will do and the ability to push the
+policy to jamf."* That answers roadmap open questions 1 and 2 — a stepper, not peers, and the
+Deploy button lives in the last step rather than in a footer that follows you down the form.
+
+Clickable as well as sequential: Back and Next make the order plain, the rail keeps any step one
+click away. The sheet was genuinely used both ways and both paths stayed short.
+
+**What moved, and what did not.** `body` was replaced. Nothing else was. Verified by diff rather
+than asserted: `toScopeXML`, `requestDeployment`, `plannedPolicies`, `resolvedName`, `loadData`,
+`createCategory`, `isScopeValid`, `pinningIssues`, `plannedVariants`, `summaryText` and
+`pinnedVersions` are untouched, and every removed line is view code. The existing sub-views —
+`nameReview`, `iconChooser`, `versionPinningSection`, `scopeComputerPicker`, `scopeGroupPicker`,
+`preflightBanner` — were re-sited, not rewritten.
+
+**The one condition that was rewritten**, and it gates a production write, so here it is in full:
+
+```swift
+// before
+.disabled(selectedCategory == nil || selectedScriptID == nil || !isScopeValid
+          || policyNameTemplate.isEmpty || !pinningIssues.isEmpty)
+
+// after
+private var canDeploy: Bool {
+    selectedCategory != nil && selectedScriptID != nil && isScopeValid
+        && !policyNameTemplate.isEmpty && pinningIssues.isEmpty
+}
+.disabled(!canDeploy)
+```
+
+De Morgan, term for term. It was named so the rail's ticks and warning marks derive from the same
+expression the button does, and therefore cannot disagree with it.
+
+**The presenter carries the service, where Settings' did not.** Settings can own a `JamfAPIService`
+of its own because its only Jamf call reads credentials from `@AppStorage`. This window lists the
+tenant's categories, scripts, computers and groups and then creates policies — all of which need
+the authenticated session. `DeploymentPresenter.begin(with:api:)` hands over the instance
+`ContentView` already owns.
+
+**The window produces a plan; the module still does the deploying.** `PackagesDashboardView`
+receives it via `onReceive` and calls the same `deployPolicies(plan:)` it always did. Keeping the
+writes where they were is what makes this a layout change.
+
+### Not done yet, and asked for
+
+**The close warning.** The decision above is start-clean *and* warn before closing when something
+was changed. The start-clean half is done — `begin(with:api:)` clears everything and `step` opens
+at the first. **The warning is not built.** It needs the `NSWindow` delegate interop described
+above, and it was left until the new shape has been seen on screen, because a warning attached to a
+layout that then changes is wasted work.
+
+### What to look at — and none of it has been
+
+The Settings conversion was shipped twice with layout the maintainer could see was broken at a
+glance. This one has only been compiled.
+
+- The rail's first step clear of the traffic lights, and the step heading not behind the window title.
+- **Against a non-production tenant first.** The README says so and this is the path it means.
+- Every step reachable both by Next and by clicking the rail.
+- Ticks in the rail matching what the Deploy button allows — they share `canDeploy`, so a
+  disagreement means that sharing is broken.
+- The Review step listing every policy name that will be created, and the pre-flight banner.
+- Version pinning with a single label, and with several — the second shows the existing
+  explanation rather than the editor.
+- The window at its 940pt minimum, where the scope pickers and the pinning editor have least room.
+
 ## The rule for `DeploymentConfigSheet`
 
 **It creates policies on a live tenant.** This is a layout change that must not become a behaviour
