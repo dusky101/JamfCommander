@@ -92,12 +92,19 @@ private struct WindowCloseGuard: ViewModifier {
             )
             .alert(title, isPresented: $isAsking) {
                 Button("Keep Editing", role: .cancel) { }
-                Button(discardTitle, role: .destructive) {
+                Button(role: .destructive) {
                     onDiscard?()
                     isClosingDeliberately = true
                     // The window refused the first close, so it has to be asked again — and this
                     // time the guard above lets it through.
                     NSApp.keyWindow?.close()
+                } label: {
+                    // White, explicitly. A `.destructive` button in this app renders its label in
+                    // red *on* the red fill, which is legible in a screenshot and not on a screen.
+                    // The role stays — it is what tells VoiceOver this is the destructive choice,
+                    // and what puts the button where macOS expects it.
+                    Text(discardTitle)
+                        .foregroundStyle(.white)
                 }
             } message: {
                 Text(message)
