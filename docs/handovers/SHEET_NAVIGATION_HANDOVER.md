@@ -217,13 +217,36 @@ the authenticated session. `DeploymentPresenter.begin(with:api:)` hands over the
 receives it via `onReceive` and calls the same `deployPolicies(plan:)` it always did. Keeping the
 writes where they were is what makes this a layout change.
 
-### Not done yet, and asked for
+### The close warning — built, and shared
 
-**The close warning.** The decision above is start-clean *and* warn before closing when something
-was changed. The start-clean half is done — `begin(with:api:)` clears everything and `step` opens
-at the first. **The warning is not built.** It needs the `NSWindow` delegate interop described
-above, and it was left until the new shape has been seen on screen, because a warning attached to a
-layout that then changes is wasted work.
+`SharedUI/WindowCloseGuard.swift`, applied to the deployment window as
+`.confirmWindowClose(when:title:message:discardTitle:onDiscard:)`.
+
+**`.alert` and the delegate are not alternatives; it needs both.** The alert shows the question, and
+that is all it can do — every SwiftUI lifecycle hook fires once the window has already gone, so by
+`onDisappear` there is nothing left to warn about. macOS asks exactly one question before closing a
+window, `NSWindowDelegate.windowShouldClose(_:)`, and there is no SwiftUI spelling of it. That one
+question is the whole of the AppKit; the dialogue above it is an ordinary `.alert`.
+`NSWindow.isDocumentEdited` is not a third option — it draws the dot in the close button and prompts
+for nothing.
+
+**The delegate is chained, not replaced.** A `Window` scene already has a delegate of SwiftUI's own
+and taking it over breaks what SwiftUI uses it for, so `CloseGuardDelegate` answers
+`windowShouldClose(_:)` itself and forwards every other message through `forwardingTarget(for:)`.
+
+**It fires only when something was actually changed**, compared against the values the window opens
+with rather than a dirty flag per control — a flag has to be remembered every time a control is
+added, and the one that gets forgotten is the one that loses somebody's work. `overrides` is not
+checked directly because the editor that changes it only exists while `isPinningVersions` is on, so
+that flag already covers it. `defaultPolicyNameTemplate` is a `static let` shared by the comparison
+and the `@State` that holds it, so the two cannot drift.
+
+**Shared on purpose.** `BlueprintEditorSheet` and `PackageUploadPage` are the next two conversions
+in the roadmap and both hold work worth losing. Neither will need to know any of the above.
+
+*Unproven:* nothing about it has been seen on screen. Worth checking that a window opened and shut
+untouched closes silently, that ⌘W and the red button both ask once changes exist, and that Keep
+Editing leaves the window as it was.
 
 ### What to look at — and none of it has been
 

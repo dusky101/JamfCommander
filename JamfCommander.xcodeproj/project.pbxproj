@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		900CAFB62F1B01F7008B9F32 /* JamfCommander.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JamfCommander.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		900CAFB62F1B01F7008B9F32 /* JamfCommander.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = JamfCommander.app; path = "Jamf Commander.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */

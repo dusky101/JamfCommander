@@ -177,7 +177,7 @@ struct DeploymentConfigSheet: View {
     @State private var searchText = ""
     
     // Policy Naming
-    @State private var policyNameTemplate = "Install {appName}"
+    @State private var policyNameTemplate = DeploymentConfigSheet.defaultPolicyNameTemplate
     @State private var showNameReview = false
 
     // Version pinning (single-label runs only)
@@ -393,6 +393,15 @@ struct DeploymentConfigSheet: View {
         .frame(minWidth: 940, minHeight: 640)
         .appBackground()
         .commanderConfirmation(data: $confirmation)
+        // A half-configured deployment does not survive being closed — that is the decision, and
+        // this is the other half of it. See SHEET_NAVIGATION_HANDOVER.md, 20 September 2026.
+        .confirmWindowClose(
+            when: hasUnsavedChanges,
+            title: "Discard this deployment?",
+            message: "Nothing has been sent to Jamf. What you have set up here — the category, the naming, the scope and any pinned versions — is not kept, and the window starts empty next time.",
+            discardTitle: "Discard",
+            onDiscard: onCancel
+        )
         .sheet(isPresented: $showIconPicker) {
             SelfServiceIconPickerView(
                 api: api,
@@ -598,6 +607,36 @@ struct DeploymentConfigSheet: View {
         }
         .background(.ultraThinMaterial)
     }
+
+    /// Whether anything has been entered that closing the window would throw away.
+    ///
+    /// Compared against the values this window opens with, rather than a dirty flag set by each
+    /// control: a flag has to be remembered every time a control is added, and the one that is
+    /// forgotten is the one that silently loses somebody's work.
+    ///
+    /// Deliberately false for a window that was opened and not touched. A warning on every close is
+    /// the one people learn to dismiss without reading, and this one stands in front of a form that
+    /// creates policies on a live tenant.
+    ///
+    /// `overrides` is not checked directly: the editor that changes it only exists while
+    /// `isPinningVersions` is on, so that flag already covers it.
+    private var hasUnsavedChanges: Bool {
+        selectedCategory != nil
+            || selectedScriptID != nil
+            || policyNameTemplate != Self.defaultPolicyNameTemplate
+            || featureOnMainPage
+            || !displayInSelfServiceCategory
+            || selectedIcon != nil
+            || scopeConfig.scopeType != .allComputers
+            || !scopeConfig.selectedComputerIDs.isEmpty
+            || !scopeConfig.selectedGroupIDs.isEmpty
+            || isPinningVersions
+            || !versionsText.isEmpty
+    }
+
+    /// The template the window opens with. A constant so `hasUnsavedChanges` and the `@State` that
+    /// holds it cannot drift apart — the comparison is only as good as the two agreeing.
+    static let defaultPolicyNameTemplate = "Install {appName}"
 
     /// Exactly the condition the sheet's Deploy button carried, named so the rail can use it too.
     private var canDeploy: Bool {
