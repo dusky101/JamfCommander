@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import Combine
 
 // MARK: - Scope Configuration Model
 
@@ -105,6 +106,42 @@ struct InstallomatorDeploymentPlan {
     var variants: [InstallomatorPolicyVariant] = [.unpinned]
 }
 
+/// Carries a deployment into its window, and the finished plan back out.
+///
+/// The window is opened with `openWindow(id: DeploymentWindowID)`; this holds what it is
+/// configuring and what it produced. `SettingsPresenter` and `HelpPresenter` have the same shape.
+///
+/// **It carries the service, where Settings did not.** Settings can own a `JamfAPIService` of its
+/// own because the only Jamf call it makes reads credentials straight from `@AppStorage`. This
+/// window cannot: it lists the tenant's categories, scripts, computers and groups, and then creates
+/// policies, all of which need the authenticated session the app already holds. A fresh service
+/// would have no token and every read would fail.
+@MainActor
+final class DeploymentPresenter: ObservableObject {
+    static let shared = DeploymentPresenter()
+    private init() {}
+
+    /// The labels being deployed. Set immediately before the window is opened.
+    @Published private(set) var pendingItems: [InstallomatorItem] = []
+
+    /// The app's authenticated service — the same instance `ContentView` owns, not a copy.
+    @Published private(set) var api: JamfAPIService?
+
+    /// The plan the window produced. The module that opened it picks this up and does the work;
+    /// the window itself creates nothing.
+    @Published var completedPlan: InstallomatorDeploymentPlan?
+
+    /// Hand the window a fresh deployment to configure.
+    ///
+    /// Deliberately clears everything first: a deployment window **starts clean each time** rather
+    /// than coming back part-filled from last time (the maintainer's call, 20 September 2026).
+    func begin(with items: [InstallomatorItem], api: JamfAPIService) {
+        pendingItems = items
+        self.api = api
+        completedPlan = nil
+    }
+}
+
 struct DeploymentConfigSheet: View {
     @ObservedObject var api: JamfAPIService
 
@@ -129,6 +166,10 @@ struct DeploymentConfigSheet: View {
 
     // Confirmation before writing to the live tenant
     @State private var confirmation: ConfirmationData?
+
+    /// Which step is showing. Starts at the beginning every time — the window does not come back
+    /// part-filled, by decision (SHEET_NAVIGATION_HANDOVER.md, 20 September 2026).
+    @State private var step: DeploymentStep = .category
 
     // Selection State
     @State private var selectedCategory: Category?
@@ -280,292 +321,76 @@ struct DeploymentConfigSheet: View {
         }
     }
     
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("Deployment Configuration")
-                    .font(.headline)
-                Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.escape, modifiers: [])
+    // MARK: - Steps
+
+    /// The deployment, as the sequence it always was.
+    ///
+    /// The sheet numbered its own sections "1." to "6." in a single scroll, which was the right
+    /// instinct and also the tell: a form that has to number itself so you can find your way back
+    /// up it wants navigation. The numbers are the rail's job now.
+    ///
+    /// Clickable as well as sequential. The sheet was genuinely used both ways — accept every
+    /// default and deploy, or go straight to scope — so Back and Next make the order plain while
+    /// the rail keeps any step one click away.
+    enum DeploymentStep: Int, CaseIterable, Identifiable {
+        case category, script, naming, selfService, scope, pinning, review
+
+        var id: Int { rawValue }
+
+        var title: String {
+            switch self {
+            case .category: "Category"
+            case .script: "Installomator Script"
+            case .naming: "Policy Names"
+            case .selfService: "Self Service"
+            case .scope: "Scope"
+            case .pinning: "Version Pinning"
+            case .review: "Review & Deploy"
             }
-            .padding()
-            .background(Color(nsColor: .windowBackgroundColor))
-            
-            Divider()
-            
+        }
+
+        var icon: String {
+            switch self {
+            case .category: "folder"
+            case .script: "applescript"
+            case .naming: "textformat"
+            case .selfService: "app.badge"
+            case .scope: "target"
+            case .pinning: "pin"
+            case .review: "checkmark.seal"
+            }
+        }
+
+        /// What this step is for, under its heading.
+        var summary: String {
+            switch self {
+            case .category: "Where these policies are filed in Jamf, and where they appear in Self Service."
+            case .script: "The Installomator script in your tenant that these policies will run."
+            case .naming: "What each policy is called. Jamf allows duplicate names, so this is worth reading."
+            case .selfService: "How the policies present themselves to the people using them."
+            case .scope: "Which Macs the policies reach. Nothing installs anywhere you do not name here."
+            case .pinning: "Advanced. Install a specific version rather than whatever Installomator finds today."
+            case .review: "Everything these policies will do, before anything is sent to Jamf."
+            }
+        }
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        Group {
             if isLoading {
                 ProgressView("Loading Jamf Data...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if loadFailed {
                 loadErrorView
             } else {
-                HStack(spacing: 0) {
-                    // Left: Category Picker
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("1. Select Target Category")
-                            .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
-                            .padding(8)
-                        
-                        List(selection: $selectedCategory) {
-                            ForEach(filteredCategories) { category in
-                                HStack {
-                                    Image(systemName: "folder")
-                                    Text(category.name)
-                                    Spacer()
-                                    if selectedCategory?.id == category.id {
-                                        Image(systemName: "checkmark").foregroundColor(.blue)
-                                    }
-                                }
-                                .tag(category)
-                            }
-                        }
-                        .searchable(text: $searchText)
-                        
-                        Divider()
-                        
-                        // New Category Input
-                        if isCreatingCategory {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    TextField("Name", text: $newCategoryName)
-                                        .textFieldStyle(.roundedBorder)
-                                    Button("Save") { createCategory() }
-                                        .disabled(newCategoryName.isEmpty || isSavingCategory)
-                                    Button(action: {
-                                        isCreatingCategory = false
-                                        categoryError = nil
-                                    }) {
-                                        Image(systemName: "xmark")
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel("Cancel new category")
-                                }
-
-                                if let categoryError {
-                                    Label(categoryError, systemImage: "exclamationmark.triangle.fill")
-                                        .font(.caption)
-                                        .foregroundColor(.orange)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                            .padding(8)
-                        } else {
-                            Button(action: { isCreatingCategory = true }) {
-                                Label("New Category", systemImage: "plus")
-                            }
-                            .buttonStyle(.plain)
-                            .padding(10)
-                        }
-                    }
-                    .frame(width: 220)
-                    
-                    Divider()
-                    
-                    // Right: Script, Options & Scope
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            
-                            // Script Section
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("2. Select Installomator Script")
-                                    .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
-                                
-                                if scripts.isEmpty {
-                                    Text("No scripts found in Jamf.")
-                                        .foregroundColor(.red)
-                                } else {
-                                    Picker("", selection: $selectedScriptID) {
-                                        Text("Select a script...").tag(String?.none)
-                                        ForEach(scripts) { script in
-                                            Text(script.name).tag(Optional(script.id))
-                                        }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .labelsHidden()
-                                }
-                            }
-                            
-                            Divider()
-                            
-                            // Policy Naming
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("3. Policy Name Template")
-                                    .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
-                                
-                                TextField("e.g. Install {appName}", text: $policyNameTemplate)
-                                    .textFieldStyle(.roundedBorder)
-                                
-                                Text("Use **{appName}** for the application name, and **{version}** when pinning versions below.")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                                
-                                if !policyNameTemplate.isEmpty, let first = plannedPolicies.first {
-                                    HStack(spacing: 4) {
-                                        Text("Preview:")
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                        Text(first.name)
-                                            .font(.caption2)
-                                            .foregroundColor(.blue)
-                                            .italic()
-                                    }
-                                }
-
-                                nameReview
-                            }
-                            
-                            Divider()
-                            
-                            // Self Service Options
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("4. Self Service Options")
-                                    .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
-                                
-                                Toggle("Feature on Main Page", isOn: $featureOnMainPage)
-                                    .toggleStyle(.switch)
-                                
-                                Toggle("Display in '\(selectedCategory?.name ?? "Selected Category")'", isOn: $displayInSelfServiceCategory)
-                                    .toggleStyle(.switch)
-                                    .disabled(selectedCategory == nil)
-
-                                iconChooser
-                            }
-
-                            Divider()
-                            
-                            // Scope Section
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("5. Deployment Scope")
-                                    .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
-                                
-                                // Scope Type Picker
-                                Picker("Scope", selection: $scopeConfig.scopeType) {
-                                    ForEach(DeploymentScopeType.allCases) { type in
-                                        Label(type.rawValue, systemImage: type.icon)
-                                            .tag(type)
-                                    }
-                                }
-                                .pickerStyle(.segmented)
-                                .labelsHidden()
-                                .onChange(of: scopeConfig.scopeType) {
-                                    scopeSearchText = ""
-                                    scopeConfig.selectedGroupIDs.removeAll()
-                                }
-                                
-                                // Scope Target Selection
-                                switch scopeConfig.scopeType {
-                                case .allComputers:
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "checkmark.shield.fill")
-                                            .foregroundColor(.green)
-                                        Text("Policy will be scoped to all managed computers.")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .padding(8)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.green.opacity(0.08))
-                                    .cornerRadius(8)
-                                    
-                                case .specificComputers:
-                                    scopeComputerPicker
-                                    
-                                case .smartComputerGroups, .staticComputerGroups:
-                                    scopeGroupPicker
-                                }
-                            }
-                            
-                            Divider()
-
-                            versionPinningSection
-
-                            Divider()
-
-                            // Summary Box
-                            if let scriptID = selectedScriptID,
-                               let script = scripts.first(where: { $0.id == scriptID }) {
-                                
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Summary:")
-                                        .font(.caption).bold()
-                                    
-                                    Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 5) {
-                                        GridRow {
-                                            Text("Script:").foregroundColor(.secondary)
-                                            Text(script.name).bold()
-                                        }
-                                        GridRow {
-                                            Text("Naming:").foregroundColor(.secondary)
-                                            Text(policyNameTemplate).bold()
-                                        }
-                                        GridRow {
-                                            Text("Self Service:").foregroundColor(.secondary)
-                                            Text(featureOnMainPage ? "Featured" : "Standard")
-                                        }
-                                        GridRow {
-                                            Text("Icon:").foregroundColor(.secondary)
-                                            HStack(spacing: 6) {
-                                                if let iconImage {
-                                                    Image(nsImage: iconImage)
-                                                        .resizable()
-                                                        .interpolation(.high)
-                                                        .aspectRatio(contentMode: .fit)
-                                                        .frame(width: 18, height: 18)
-                                                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                                                }
-                                                Text(iconSummaryText).bold()
-                                            }
-                                        }
-                                        GridRow {
-                                            Text("Scope:").foregroundColor(.secondary)
-                                            Text(scopeConfig.summaryText).bold()
-                                        }
-                                    }
-                                    .font(.caption)
-                                    .padding()
-                                    .liquidGlassRect(cornerRadius: 12)
-                                }
-                            }
-                        }
-                        .padding()
-                    }
-                }
+                stepper
             }
-            
-            Divider()
-
-            preflightBanner
-
-            // Footer
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("\(pendingItems.count) \(pendingItems.count == 1 ? "label" : "labels") selected")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    if plannedPolicies.count != pendingItems.count {
-                        Text("\(plannedPolicies.count) policies will be created")
-                            .font(.caption2)
-                            .foregroundColor(.blue)
-                    }
-                }
-
-                Spacer()
-
-                Button("Deploy Policies", action: requestDeployment)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(selectedCategory == nil || selectedScriptID == nil || !isScopeValid
-                              || policyNameTemplate.isEmpty || !pinningIssues.isEmpty)
-            }
-            .padding()
-            .background(Color(nsColor: .windowBackgroundColor))
         }
-        // Six steps no longer fit a fixed 620 pt, so the sheet opens roomier and can be resized —
-        // the right-hand column scrolls either way, but pinning previews deserve the space.
-        .frame(minWidth: 780, idealWidth: 880, maxWidth: .infinity,
-               minHeight: 620, idealHeight: 760, maxHeight: .infinity)
+        // A floor, not a target. The rail takes 230 of it, and the scope pickers and the pinning
+        // editor are the two that need what is left.
+        .frame(minWidth: 940, minHeight: 640)
         .appBackground()
         .commanderConfirmation(data: $confirmation)
         .sheet(isPresented: $showIconPicker) {
@@ -584,6 +409,436 @@ struct DeploymentConfigSheet: View {
             )
         }
         .onAppear(perform: loadData)
+    }
+
+    private var stepper: some View {
+        NavigationSplitView {
+            stepRail
+                .navigationSplitViewColumnWidth(min: 230, ideal: 250, max: 300)
+        } detail: {
+            stepDetail
+        }
+    }
+
+    // MARK: - Rail
+
+    private var stepRail: some View {
+        VStack(spacing: 0) {
+            // The sidebar runs the full height of the window, so the traffic lights float over its
+            // first row — see SHEET_NAVIGATION_HANDOVER.md, which records this costing two attempts
+            // on the Settings window. This reserves the strip they occupy.
+            Color.clear
+                .frame(height: 30)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pendingItems.count == 1 ? "1 label" : "\(pendingItems.count) labels")
+                    .font(.headline)
+                if plannedPolicies.count != pendingItems.count {
+                    Text("\(plannedPolicies.count) policies")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 10)
+
+            Divider()
+
+            List(DeploymentStep.allCases, selection: Binding(
+                get: { step },
+                set: { if let new = $0 { step = new } }
+            )) { option in
+                HStack(spacing: 10) {
+                    // The number the section headings used to carry. It belongs here now: it says
+                    // where you are in the sequence rather than repeating itself inside every page.
+                    Text("\(option.rawValue + 1)")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
+                        .frame(width: 16)
+                        .foregroundColor(.secondary)
+
+                    Label(option.title, systemImage: option.icon)
+
+                    Spacer()
+
+                    if let issue = issue(for: option) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundColor(.orange)
+                            .help(issue)
+                    } else if isComplete(option) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                    }
+                }
+                .tag(option)
+                .help(option.summary)
+            }
+            .listStyle(.sidebar)
+        }
+    }
+
+    /// Whether a step has been answered, for the tick in the rail.
+    ///
+    /// Only the steps that *must* be answered can be incomplete; the optional ones read as done
+    /// because their defaults are a real answer. Deliberately derived from the same values the
+    /// Deploy button is disabled on, so the rail and the button can never disagree.
+    private func isComplete(_ option: DeploymentStep) -> Bool {
+        switch option {
+        case .category: selectedCategory != nil
+        case .script: selectedScriptID != nil
+        case .naming: !policyNameTemplate.isEmpty
+        case .selfService: true
+        case .scope: isScopeValid
+        case .pinning: pinningIssues.isEmpty
+        case .review: canDeploy
+        }
+    }
+
+    /// Why a step is blocking deployment, if it is.
+    private func issue(for option: DeploymentStep) -> String? {
+        switch option {
+        case .scope:
+            isScopeValid ? nil : "Choose at least one target, or scope to all computers."
+        case .pinning:
+            pinningIssues.isEmpty ? nil : pinningIssues.map(\.message).joined(separator: "\n")
+        default:
+            nil
+        }
+    }
+
+    // MARK: - Detail
+
+    /// One step at a time, in a `ScrollView`.
+    ///
+    /// A `ScrollView` rather than a `VStack`, because a window's detail pane runs under the title
+    /// bar and only a scroll view is inset for it — the Settings conversion drew its page heading
+    /// behind the window title by getting this wrong.
+    private var stepDetail: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(step.title)
+                        .font(.title)
+                        .fontWeight(.bold)
+
+                    Text(step.summary)
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                stepContent
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .safeAreaInset(edge: .bottom) { footer }
+    }
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch step {
+        case .category: categoryStep
+        case .script: scriptStep
+        case .naming: namingStep
+        case .selfService: selfServiceStep
+        case .scope: scopeStep
+        case .pinning: versionPinningSection
+        case .review: reviewStep
+        }
+    }
+
+    // MARK: - Footer
+
+    /// Back, Next, and — on the last step only — Deploy.
+    ///
+    /// The sheet carried "Deploy Policies" in a footer that followed you down every section, so it
+    /// was always one click away from a half-read form. It now lives where the maintainer asked for
+    /// it: at the end, next to the summary of what it is about to do.
+    private var footer: some View {
+        VStack(spacing: 0) {
+            Divider()
+
+            HStack(spacing: 12) {
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.escape, modifiers: [])
+
+                Spacer()
+
+                Button {
+                    if let previous = DeploymentStep(rawValue: step.rawValue - 1) {
+                        step = previous
+                    }
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+                .disabled(step == .category)
+
+                if step == .review {
+                    Button("Deploy Policies", action: requestDeployment)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(!canDeploy)
+                } else {
+                    Button {
+                        if let next = DeploymentStep(rawValue: step.rawValue + 1) {
+                            step = next
+                        }
+                    } label: {
+                        Label("Next", systemImage: "chevron.right")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding()
+        }
+        .background(.ultraThinMaterial)
+    }
+
+    /// Exactly the condition the sheet's Deploy button carried, named so the rail can use it too.
+    private var canDeploy: Bool {
+        selectedCategory != nil && selectedScriptID != nil && isScopeValid
+            && !policyNameTemplate.isEmpty && pinningIssues.isEmpty
+    }
+
+    // MARK: - The steps themselves
+
+    private var categoryStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            List(selection: $selectedCategory) {
+                ForEach(filteredCategories) { category in
+                    HStack {
+                        Image(systemName: "folder")
+                        Text(category.name)
+                        Spacer()
+                        if selectedCategory?.id == category.id {
+                            Image(systemName: "checkmark").foregroundColor(.blue)
+                        }
+                    }
+                    .tag(category)
+                }
+            }
+            .searchable(text: $searchText)
+            .frame(height: 320)
+
+            Divider()
+
+            if isCreatingCategory {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        TextField("Name", text: $newCategoryName)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Save") { createCategory() }
+                            .disabled(newCategoryName.isEmpty || isSavingCategory)
+                        Button(action: {
+                            isCreatingCategory = false
+                            categoryError = nil
+                        }) {
+                            Image(systemName: "xmark")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Cancel new category")
+                    }
+
+                    if let categoryError {
+                        Label(categoryError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(8)
+            } else {
+                Button(action: { isCreatingCategory = true }) {
+                    Label("New Category", systemImage: "plus")
+                }
+                .buttonStyle(.plain)
+                .padding(10)
+            }
+        }
+        .liquidGlassRect(cornerRadius: 12)
+    }
+
+    private var scriptStep: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if scripts.isEmpty {
+                Text("No scripts found in Jamf.")
+                    .foregroundColor(.red)
+            } else {
+                Picker("", selection: $selectedScriptID) {
+                    Text("Select a script...").tag(String?.none)
+                    ForEach(scripts) { script in
+                        Text(script.name).tag(Optional(script.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+            }
+        }
+    }
+
+    private var namingStep: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("e.g. Install {appName}", text: $policyNameTemplate)
+                .textFieldStyle(.roundedBorder)
+
+            Text("Use **{appName}** for the application name, and **{version}** when pinning versions.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            if !policyNameTemplate.isEmpty, let first = plannedPolicies.first {
+                HStack(spacing: 4) {
+                    Text("Preview:")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    Text(first.name)
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                        .italic()
+                }
+            }
+
+            nameReview
+        }
+    }
+
+    private var selfServiceStep: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle("Feature on Main Page", isOn: $featureOnMainPage)
+                .toggleStyle(.switch)
+
+            Toggle("Display in '\(selectedCategory?.name ?? "Selected Category")'", isOn: $displayInSelfServiceCategory)
+                .toggleStyle(.switch)
+                .disabled(selectedCategory == nil)
+
+            iconChooser
+        }
+    }
+
+    private var scopeStep: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Scope", selection: $scopeConfig.scopeType) {
+                ForEach(DeploymentScopeType.allCases) { type in
+                    Label(type.rawValue, systemImage: type.icon)
+                        .tag(type)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .onChange(of: scopeConfig.scopeType) {
+                scopeSearchText = ""
+                scopeConfig.selectedGroupIDs.removeAll()
+            }
+
+            switch scopeConfig.scopeType {
+            case .allComputers:
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .foregroundColor(.green)
+                    Text("Policy will be scoped to all managed computers.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.green.opacity(0.08))
+                .cornerRadius(8)
+
+            case .specificComputers:
+                scopeComputerPicker
+
+            case .smartComputerGroups, .staticComputerGroups:
+                scopeGroupPicker
+            }
+        }
+    }
+
+    // MARK: - Review
+
+    /// What these policies will do, before anything is sent.
+    ///
+    /// The sheet had a summary box buried under section six and a pre-flight banner above the
+    /// footer. Both belong here — the maintainer asked for a last step that shows what the policy
+    /// will do and deploys it, and this is that step.
+    private var reviewStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            preflightBanner
+
+            if let scriptID = selectedScriptID,
+               let script = scripts.first(where: { $0.id == scriptID }) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Each policy will")
+                        .font(.headline)
+
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                        GridRow {
+                            Text("Run script").foregroundColor(.secondary)
+                            Text(script.name).bold()
+                        }
+                        GridRow {
+                            Text("Be filed under").foregroundColor(.secondary)
+                            Text(selectedCategory?.name ?? "—").bold()
+                        }
+                        GridRow {
+                            Text("Be named").foregroundColor(.secondary)
+                            Text(policyNameTemplate).bold()
+                        }
+                        GridRow {
+                            Text("In Self Service").foregroundColor(.secondary)
+                            Text(featureOnMainPage ? "Featured on the main page" : "Standard listing")
+                        }
+                        GridRow {
+                            Text("Icon").foregroundColor(.secondary)
+                            HStack(spacing: 6) {
+                                if let iconImage {
+                                    Image(nsImage: iconImage)
+                                        .resizable()
+                                        .interpolation(.high)
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 18, height: 18)
+                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                }
+                                Text(iconSummaryText).bold()
+                            }
+                        }
+                        GridRow {
+                            Text("Reach").foregroundColor(.secondary)
+                            Text(scopeConfig.summaryText).bold()
+                        }
+                    }
+                    .font(.callout)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .liquidGlassRect(cornerRadius: 12)
+            }
+
+            // The names themselves, because a template and a count are not the same as seeing what
+            // will exist in Jamf afterwards.
+            VStack(alignment: .leading, spacing: 8) {
+                Text(plannedPolicies.count == 1
+                     ? "1 policy will be created"
+                     : "\(plannedPolicies.count) policies will be created")
+                    .font(.headline)
+
+                ForEach(Array(plannedPolicies.enumerated()), id: \.offset) { _, planned in
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.badge.plus")
+                            .foregroundColor(.secondary)
+                        Text(planned.name)
+                            .font(.callout)
+                        Spacer()
+                    }
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .liquidGlassRect(cornerRadius: 12)
+        }
     }
 
     // MARK: - Load Failure
@@ -625,9 +880,6 @@ struct DeploymentConfigSheet: View {
     @ViewBuilder
     private var versionPinningSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("6. Version Pinning (Advanced)")
-                .font(.caption).fontWeight(.bold).foregroundColor(.secondary)
-
             if !supportsVersionPinning {
                 HStack(spacing: 8) {
                     Image(systemName: "info.circle")
