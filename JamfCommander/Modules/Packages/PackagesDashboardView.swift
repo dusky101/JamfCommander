@@ -6,10 +6,13 @@
 //
 
 import SwiftUI
+import Combine
 
 struct PackagesDashboardView: View {
     @ObservedObject var api: JamfAPIService
     @ObservedObject private var refreshCoordinator = RefreshCoordinator.shared
+    @ObservedObject private var deployment = DeploymentPresenter.shared
+    @Environment(\.openWindow) private var openWindow
 
     /// The Installomator script last deployed with, remembered so a policy running it is recognised
     /// as an Installomator deployment even when the script isn't named "Installomator".
@@ -50,7 +53,6 @@ struct PackagesDashboardView: View {
     @State private var isRemovingPolicies = false
     @State private var isUpdatingPolicies = false
     @State private var statusMessage = ""
-    @State private var showConfigSheet = false
     @State private var showResultsSheet = false
     @State private var operationResults: [OperationResult] = []
     /// The results sheet serves both flows, so it is told which one it is reporting.
@@ -194,18 +196,12 @@ struct PackagesDashboardView: View {
             guard !isBusy, !isLoading else { return }
             Task { await loadData() }
         }
-        .sheet(isPresented: $showConfigSheet) {
-            DeploymentConfigSheet(
-                api: api,
-                pendingItems: selectedAvailableItems,
-                onConfirm: { plan in
-                    showConfigSheet = false
-                    deployPolicies(plan: plan)
-                },
-                onCancel: {
-                    showConfigSheet = false
-                }
-            )
+        // The deployment window hands back a plan; the deploying still happens here, exactly as it
+        // did when this was a sheet. `onReceive` rather than `onChange` because a plan is not
+        // `Equatable` and does not need to be — this only cares that one arrived.
+        .onReceive(deployment.$completedPlan.compactMap { $0 }) { plan in
+            deployment.completedPlan = nil
+            deployPolicies(plan: plan)
         }
         .sheet(isPresented: $showResultsSheet) {
             OperationResultView(
@@ -246,15 +242,72 @@ struct PackagesDashboardView: View {
     
     // MARK: - Header
     
+    /// Title on the left, controls on the right — until there is not room, and then the title goes
+    /// above them.
+    ///
+    /// **Measured, not estimated** (`START_HERE.md` §4 says so, and the numbers here were taken with
+    /// `NSFont.preferredFont(forTextStyle: .title2)` in bold):
+    ///
+    /// | | width |
+    /// | --- | --- |
+    /// | "Installomator Manager", one line | **184.0pt** |
+    /// | "Installomator", the longer of the two words | **108.4pt** |
+    /// | group picker · view picker · Refresh · three 16pt gaps · 16pt padding either side | 726.5pt |
+    ///
+    /// So the row needs **910.5pt** on one line and **838.5pt** on two — the first figure being
+    /// exactly the one `START_HERE.md` records. Under that, nothing shrinks gracefully: `Text` has
+    /// no minimum and will happily compress to one character per line, which is what turned the
+    /// title into "In-stal-lo-ma-tor Man-ager".
+    ///
+    /// `ViewThatFits` picks the first of the three that fits, so the degradation is title on one
+    /// line → title on two → title on its own row above the controls. Two lines beside the controls
+    /// is the shape the maintainer confirmed reads well; below that the controls keep their width
+    /// and the title takes the space it needs.
     var headerView: some View {
-        HStack(spacing: 16) {
-            Text("Installomator Manager")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Spacer()
-            
-            if !allItems.isEmpty {
+        ViewThatFits(in: .horizontal) {
+            // 1. Everything on one line.
+            HStack(spacing: 16) {
+                headerTitle
+                    .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
+                headerControls
+            }
+
+            // 2. The title wrapped to two lines, controls still beside it. 112 rather than 108.4 so
+            //    the longer word is not sitting flush against its own bounds.
+            HStack(spacing: 16) {
+                headerTitle
+                    .frame(width: 112, alignment: .leading)
+                Spacer(minLength: 0)
+                headerControls
+            }
+
+            // 3. Too narrow for both: the title takes its own row.
+            VStack(alignment: .leading, spacing: 12) {
+                headerTitle
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                headerControls
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    /// Two lines at most, wherever it ends up. Past that the row grows taller instead of the text
+    /// getting smaller, and a header that pushes the list down the window is its own problem.
+    private var headerTitle: some View {
+        Text("Installomator Manager")
+            .font(.title2)
+            .fontWeight(.bold)
+            .lineLimit(2)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    @ViewBuilder
+    private var headerControls: some View {
+        if !allItems.isEmpty {
+            HStack(spacing: 16) {
                 // Group mode picker
                 Picker("Group", selection: $groupMode) {
                     ForEach(PackageGroupMode.allCases) { mode in
@@ -264,7 +317,7 @@ struct PackagesDashboardView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .frame(width: 140)
-                
+
                 // View mode picker
                 Picker("View", selection: $viewMode) {
                     Text("Deployed (\(deployedCount))").tag(PackageViewMode.deployed)
@@ -280,7 +333,7 @@ struct PackagesDashboardView: View {
                     selection.removeAll()
                     lastSelectedID = nil
                 }
-                
+
                 Button(action: {
                     Task { await loadData(bypassingCache: true) }
                 }) {
@@ -290,10 +343,8 @@ struct PackagesDashboardView: View {
                 .disabled(isLoading)
             }
         }
-        .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
     }
-    
+
     // MARK: - Search Bar
     
     var searchBar: some View {
@@ -471,7 +522,10 @@ struct PackagesDashboardView: View {
                     .help("Deletes the selected install policies from Jamf and Self Service. Applications already installed on a Mac are left alone.")
                 }
                 
-                Button(action: { showConfigSheet = true }) {
+                Button(action: {
+                    DeploymentPresenter.shared.begin(with: selectedAvailableItems, api: api)
+                    openWindow(id: DeploymentWindowID)
+                }) {
                     if isCreatingPolicies {
                         ProgressView().controlSize(.small)
                     } else {
