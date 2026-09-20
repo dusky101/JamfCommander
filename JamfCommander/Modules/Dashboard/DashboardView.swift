@@ -863,13 +863,31 @@ struct StatCard: View {
                         TileSpinner()
                     }
                     if !isLoading || count != nil {
-                        Text(countText)
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundColor(count == nil ? .secondary : .primary)
-                            .scaleEffect(isPulsing ? 1.18 : 1.0)
+                        // The number reserves the width of three digits and is right-aligned
+                        // inside it, so a climbing count does not drag the spinner sideways.
+                        //
+                        // The tile is trailing-aligned, so anything left of the number moves as the
+                        // number grows. The Unused count restarts near 50 on a refresh and climbs
+                        // past 100, crossing the two-to-three digit boundary, and the spinner walked
+                        // across the card with it. `monospacedDigit` alone was not enough — the
+                        // widths that differ are the digit *counts*, not the digits.
+                        //
+                        // A hidden "000" rather than a measured constant: it reserves exactly three
+                        // digits of whatever this font is, and a four-digit count simply grows the
+                        // stack rather than being clipped by a number that was too small.
+                        ZStack(alignment: .trailing) {
+                            Text("000").hidden()
+                            Text(countText)
+                                .foregroundColor(count == nil ? .secondary : .primary)
+                                .scaleEffect(isPulsing ? 1.18 : 1.0)
+                        }
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .monospacedDigit()
                     }
                 }
-                .padding(.trailing, isLoading ? 4 : 0)
+                // Constant, not `isLoading ? 4 : 0` — that shifted the whole group sideways the
+                // moment the count stopped, which is the other half of what made it look restless.
+                .padding(.trailing, 4)
             }
             
             VStack(alignment: .leading, spacing: 2) {

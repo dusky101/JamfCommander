@@ -79,8 +79,32 @@ rough order of how ready each is:
 - **The Installomator deployment is a stepped window** — seven steps ending in Review & Deploy,
   rebuilt per deployment, with a shared `confirmWindowClose` guard. **Its requests are unchanged:**
   every XML builder, validation path and throttle was verified untouched by diff.
-- **Reset Window Size** (⌃⌘0), and the Installomator header no longer collapses when narrowed.
+- **Reset Window Size** (⌃⌘0), a **Refresh button on the Dashboard**, and the Installomator header
+  no longer collapses when narrowed.
 - The app menu reads **Jamf Commander** rather than JamfCommander.
+
+### The Unused audit was giving a different answer every time — fixed, and worth reading
+
+It reported 120, 122, 124, 125, 126, 127, 128, 130 for the same estate within minutes. It now
+reports 133 consistently, and **133 was always the truth** — every lower number was a lost profile.
+
+Three faults, found by elimination from the maintainer's own screenshots (only the *Not scoped*
+figure moved; policies and packages were constant, which put it entirely in profiles):
+
+1. **`fetchProfiles` fanned out over every profile at once** — `group.addTask` per profile, 152
+   simultaneous requests, no batching, no delay, no retry, under a comment claiming it limited
+   concurrency. Jamf throttled it and a varying number failed. **This was the cause.** It is now
+   batches of 10 with 0.5s gaps and three attempts, as `services-and-networking.md` requires of
+   every bulk read. *If another count ever wanders, look for this shape first.*
+2. **A failed hydration was indistinguishable from an answer.** `ConfigProfile.isActive` defaults to
+   `true`, so an unread profile was silently counted as scoped. `ConfigProfile.scopeIsKnown` now
+   records whether the scope was ever read, `RedundantAudit` refuses to judge a profile without it,
+   and `fetchProfiles` will not cache a list with holes in it.
+3. **The Dashboard tile's progressive count kept counting after the total was final.** Its bumps are
+   fire-and-forget tasks and the late ones landed on the finished figure. A run token discards them.
+
+**The lesson for anything similar:** an audit that decides what nothing uses must distinguish
+*unknown* from *unused*, and must not depend on how many requests happened to survive.
 
 **Still unproven against the tenant: no policy has actually been created through the new deployment
 window.** The diff shows the writes are untouched, which is not the same as having watched one land.
