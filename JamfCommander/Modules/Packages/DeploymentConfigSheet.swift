@@ -194,7 +194,6 @@ struct DeploymentConfigSheet: View {
     
     // Policy Naming
     @State private var policyNameTemplate = DeploymentConfigSheet.defaultPolicyNameTemplate
-    @State private var showNameReview = false
 
     // Version pinning (single-label runs only)
     @State private var isPinningVersions = false
@@ -782,29 +781,110 @@ struct DeploymentConfigSheet: View {
         }
     }
 
+    /// The template, and then the names it actually produces — out in the open.
+    ///
+    /// The names used to live behind a "Review policy names (n)" disclosure, shut by default, in
+    /// `.caption`. That is the wrong way round: the template is the control, but **the name is the
+    /// thing being decided**, and it is what will exist in Jamf afterwards. It is now the largest
+    /// thing on the step and updates as the template is typed.
+    ///
+    /// The check it always did is kept and made louder: a label that is still one unbroken word —
+    /// `acroniscyberprotectconnectagent` — becomes a policy name nobody can read, and amber says so
+    /// per row as well as in the heading.
     private var namingStep: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextField("e.g. Install {appName}", text: $policyNameTemplate)
-                .textFieldStyle(.roundedBorder)
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("e.g. Install {appName}", text: $policyNameTemplate)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.title3)
 
-            Text("Use **{appName}** for the application name, and **{version}** when pinning versions.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+                Text("Use **{appName}** for the application name, and **{version}** when pinning versions.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
 
-            if !policyNameTemplate.isEmpty, let first = plannedPolicies.first {
-                HStack(spacing: 4) {
-                    Text("Preview:")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text(first.name)
-                        .font(.caption2)
-                        .foregroundColor(.blue)
-                        .italic()
+            if !pendingItems.isEmpty {
+                policyNamePreview
+            }
+        }
+    }
+
+    private var policyNamePreview: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text(plannedPolicies.count == 1 ? "Policy Name" : "Policy Names")
+                    .font(.headline)
+
+                Text("\(plannedPolicies.count)")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                if !itemsWithAwkwardNames.isEmpty {
+                    Label(
+                        itemsWithAwkwardNames.count == 1
+                            ? "1 to check"
+                            : "\(itemsWithAwkwardNames.count) to check",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.15))
+                    .foregroundColor(.orange)
+                    .cornerRadius(6)
                 }
             }
 
-            nameReview
+            if policyNameTemplate.isEmpty {
+                Text("A policy must have a name.")
+                    .font(.callout)
+                    .foregroundColor(.red)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(plannedPolicies) { planned in
+                        let needsChecking = InstallomatorLabelFormatter.looksUnsegmented(planned.item.displayName)
+
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Image(systemName: needsChecking ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                .foregroundColor(needsChecking ? .orange : .green)
+
+                            // The name, at a size that matches its importance. Wraps rather than
+                            // truncating: a name too long to show is exactly the one worth reading.
+                            Text(planned.name)
+                                .font(.title3)
+                                .fontWeight(.medium)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Spacer(minLength: 12)
+
+                            Text(planned.item.label)
+                                .font(.caption)
+                                .fontDesign(.monospaced)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(needsChecking
+                            ? "\(planned.name) — check this name"
+                            : planned.name)
+                    }
+                }
+            }
+
+            if !itemsWithAwkwardNames.isEmpty {
+                Text("Names come from the Installomator label. The ones marked in amber are still one unbroken word — worth reading before they become policy names.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .liquidGlassRect(cornerRadius: 12)
     }
 
     private var selfServiceStep: some View {
@@ -1130,55 +1210,6 @@ struct DeploymentConfigSheet: View {
     /// it exists in Jamf. Installomator labels are lowercase and unpunctuated, and the app can only
     /// tidy the ones it recognises — so the names it is least sure about are marked for a look.
     @ViewBuilder
-    private var nameReview: some View {
-        if !pendingItems.isEmpty {
-            DisclosureGroup(isExpanded: $showNameReview) {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(plannedPolicies) { planned in
-                        let needsChecking = InstallomatorLabelFormatter.looksUnsegmented(planned.item.displayName)
-                        HStack(spacing: 6) {
-                            Image(systemName: needsChecking ? "exclamationmark.triangle.fill" : "checkmark.circle")
-                                .font(.caption2)
-                                .foregroundColor(needsChecking ? .orange : .green.opacity(0.7))
-                            Text(planned.name)
-                                .font(.caption)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer(minLength: 6)
-                            Text(planned.item.label)
-                                .font(.caption2)
-                                .fontDesign(.monospaced)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel(needsChecking
-                            ? "\(planned.name) — check this name"
-                            : planned.name)
-                    }
-                }
-                .padding(.top, 4)
-                .frame(maxHeight: 120)
-                .fixedSize(horizontal: false, vertical: true)
-            } label: {
-                HStack(spacing: 6) {
-                    Text("Review policy names (\(plannedPolicies.count))")
-                        .font(.caption)
-                    if !itemsWithAwkwardNames.isEmpty {
-                        Text("\(itemsWithAwkwardNames.count) to check")
-                            .font(.caption2)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundColor(.orange)
-                            .cornerRadius(4)
-                    }
-                }
-            }
-            .help("Names come from the Installomator label. Anything marked in amber is still one unbroken word — worth reading before it becomes a policy name.")
-        }
-    }
-
     // MARK: - Self Service Icon
 
     /// One icon for the whole run: no icon (the default), a local image uploaded to Jamf's icon

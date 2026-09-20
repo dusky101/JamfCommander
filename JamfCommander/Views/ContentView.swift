@@ -234,7 +234,8 @@ struct ContentView: View {
             DashboardView(
                 api: api,
                 currentModule: currentModule,
-                onInitialLoadFinished: { hasCompletedInitialLoad = true }
+                onInitialLoadFinished: { hasCompletedInitialLoad = true },
+                isStartupOverlayShowing: isPreparing
             )
 
         case .policies:

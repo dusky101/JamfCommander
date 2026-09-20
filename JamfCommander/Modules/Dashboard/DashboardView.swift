@@ -20,6 +20,15 @@ struct DashboardView: View {
     /// until then, so this must fire on every path out of that first refresh.
     var onInitialLoadFinished: () -> Void = {}
 
+    /// Whether `ContentView`'s startup curtain is currently over the window.
+    ///
+    /// Passed in rather than worked out here. The Dashboard used to infer it from its own
+    /// `hasReportedInitialLoad`, which is close but not the same thing: there is a moment after the
+    /// view appears and before its `.task` runs where that flag says one thing and the curtain says
+    /// another, and whatever the Dashboard drew in that moment showed through the dim beside the
+    /// card. Being told leaves no window to get wrong.
+    var isStartupOverlayShowing: Bool = false
+
     @State private var hasReportedInitialLoad = false
     
     // Stats State. Optional, not zero: a section of Jamf that could not be read shows "—" on its
@@ -128,19 +137,16 @@ struct DashboardView: View {
     
     var body: some View {
         Group {
-        if isLoading {
-            // Not on the very first load. `PreparingOverlay` is already covering the window and
-            // saying the same thing, and this one sits behind its card — centred on the detail
-            // pane rather than the window, so it does not hide behind the card but pokes out
-            // beside it. Two spinners for one load, one of them half visible.
-            //
-            // Every later load still shows it: the overlay only appears while the app is starting
-            // up, so from then on this is the only thing that would say the Dashboard is busy.
-            if hasReportedInitialLoad {
-                LoadingProgressView(message: "Loading Dashboard...")
-            } else {
-                Color.clear
-            }
+        if isStartupOverlayShowing {
+            // Nothing at all while the curtain is up — not a spinner, and not a half-built
+            // dashboard either. `PreparingOverlay` is already saying this, and anything drawn here
+            // shows through its dim *beside* the card, because the card is centred on the window
+            // and this pane is not.
+            Color.clear
+        } else if isLoading {
+            // Every later load still shows this: the curtain only appears while the app is
+            // starting up, so from then on it is the only thing saying the Dashboard is busy.
+            LoadingProgressView(message: "Loading Dashboard...")
         } else {
         ScrollView {
             VStack(spacing: 24) {
