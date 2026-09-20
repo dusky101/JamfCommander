@@ -1,9 +1,12 @@
 # Handover — windows instead of sheets
 
-**State at handover:** 20 September 2026, app version 9.0. **`ConfigurationView` is converted — the
-rehearsal is done.** `DeploymentConfigSheet`, `BlueprintEditorSheet` and `PackageUploadPage` are
-untouched. Read `docs/roadmap/SHEET_NAVIGATION.md` first for the intent; this file is what is true
-about the code.
+**State at handover:** 20 September 2026, app version 9.0. **Two of the four candidates are
+converted and confirmed on screen: `ConfigurationView` and `DeploymentConfigSheet`.**
+`BlueprintEditorSheet` and `PackageUploadPage` are untouched. Read
+`docs/roadmap/SHEET_NAVIGATION.md` first for the intent; this file is what is true about the code.
+
+**The pattern is now established and its traps are recorded below.** A third conversion should be
+much cheaper than the first two were — nearly every problem those hit is written down here.
 
 ---
 
@@ -272,9 +275,15 @@ and the `@State` that holds it, so the two cannot drift.
 **Shared on purpose.** `BlueprintEditorSheet` and `PackageUploadPage` are the next two conversions
 in the roadmap and both hold work worth losing. Neither will need to know any of the above.
 
-*Unproven:* nothing about it has been seen on screen. Worth checking that a window opened and shut
-untouched closes silently, that ⌘W and the red button both ask once changes exist, and that Keep
-Editing leaves the window as it was.
+**Proven on screen, 20 September 2026** — after two bugs the maintainer found:
+
+- It closed `NSApp.keyWindow`, which while an alert is showing is *the alert*. It dismissed the
+  warning and left the window standing. It now holds the window it attached to and closes that.
+- It wrote the window into `@State` from `updateNSView`, which is "Modifying state during view
+  update" — SwiftUI said so in the console and was right. The window now lives in a reference box;
+  writing through a stable reference is not a state change. **Anything reaching AppKit from an
+  `NSViewRepresentable` will hit this; do not mirror what the coordinator already holds into
+  `@State`.**
 
 ### What to look at — and none of it has been
 

@@ -539,7 +539,10 @@ struct DeploymentConfigSheet: View {
         switch option {
         case .category: selectedCategory != nil
         case .script: selectedScriptID != nil
-        case .naming: !policyNameTemplate.isEmpty
+        // A name that needs checking is not a finished step. It does not *block* deployment —
+        // `canDeploy` is unchanged, and Jamf will accept "Install 4 Kvideodownloaderplus" quite
+        // happily — but the rail should not call it done while the step itself is flagging it.
+        case .naming: !policyNameTemplate.isEmpty && itemsWithAwkwardNames.isEmpty
         case .selfService: selectedIcon != nil
         case .scope: isScopeValid
         case .pinning: pinningIssues.isEmpty
@@ -564,7 +567,11 @@ struct DeploymentConfigSheet: View {
             switch option {
             case .category: return "Choose a category, or create one."
             case .script: return "Choose the Installomator script to run."
-            case .naming: return "The policy name cannot be empty."
+            case .naming:
+                if policyNameTemplate.isEmpty { return "The policy name cannot be empty." }
+                return itemsWithAwkwardNames.count == 1
+                    ? "One name is still an unbroken word — worth reading before it becomes a policy."
+                    : "\(itemsWithAwkwardNames.count) names are still unbroken words — worth reading before they become policies."
             case .selfService: return "No icon chosen. The policies will deploy without one, but they will have no artwork in Self Service."
             case .scope: return "Choose at least one target, or scope to all computers."
             case .pinning: return pinningIssues.map(\.message).joined(separator: "\n")

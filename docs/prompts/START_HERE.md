@@ -120,17 +120,26 @@ Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
 `docs/roadmap/MULTIPLE_ENVIRONMENTS.md`, `docs/roadmap/HELP_PDF_EXPORT.md`,
 `docs/roadmap/PROFILE_TO_BLUEPRINT.md`, `docs/roadmap/SHEET_NAVIGATION.md`.
 
-**The next session's work is already written up:** `docs/prompts/CACHING_AND_SHEETS_PROMPT.md`,
-over `CACHING_HANDOVER.md` and `SHEET_NAVIGATION_HANDOVER.md`. **Its caching phase is done** (20
-September 2026) — start at the sheet-navigation phase, then the PDF export.
+**The next session's work is written up in `docs/prompts/PDF_EXPORT_PROMPT.md`**, over
+`HELP_PDF_EXPORT_HANDOVER.md`. That prompt also lists what else is open, if the PDF is not what he
+wants next.
+
+`docs/prompts/CACHING_AND_SHEETS_PROMPT.md` is **superseded and stale** — its caching phase is built
+and two of its four sheet conversions are done. It should be deleted; it is kept only until the
+maintainer says so.
 
 Five handovers exist in `docs/handovers/`:
 
+- **Sheet navigation** — **two of four done, 20 September 2026.** Settings and the Installomator
+  deployment window are converted and confirmed on screen; `BlueprintEditorSheet` and
+  `PackageUploadPage` remain. Its handover records every layout trap the first two hit, so a third
+  should be much cheaper.
+- **PDF export** — written up and not started. Begins from an empty file and a list of what not to do.
 - **Caching** — **built, 20 September 2026.** A session cache over every Jamf Pro read, keyed by
   instance URL, cleared by Refresh and by any write, with a "Read … ago" stamp and a Live/Cached
   switch in Settings. Its handover has the proven/unproven table; `docs/roadmap/CACHING.md` has been
   trimmed to the five things still undone.
-- **Sheet navigation** — written 19 September 2026, **no code yet**; it says so in its first line.
+
 
 
 - **Help overhaul** — **complete**, 19 September 2026. Twenty pages and fourteen figures, each
