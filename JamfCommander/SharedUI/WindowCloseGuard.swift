@@ -72,19 +72,24 @@ private struct WindowCloseGuard: ViewModifier {
     let onDiscard: (() -> Void)?
 
     @State private var isAsking = false
-    /// Set while the reader's answer is being acted on, so the close this modifier performs itself
-    /// is not intercepted a second time and asked about again.
-    @State private var isClosingDeliberately = false
+    /// The window being guarded.
+    ///
+    /// Held because `NSApp.keyWindow` is the wrong answer at the moment it is needed: while the
+    /// alert is up, *the alert* is the key window, so closing it dismissed the warning and left the
+    /// window it was warning about standing open.
+    @State private var guardedWindow: NSWindow?
 
     func body(content: Content) -> some View {
         content
             .background(
                 WindowCloseInterceptor(
                     shouldClose: {
-                        // Nothing to lose, or the reader has already said to discard it.
-                        guard isEnabled, !isClosingDeliberately else { return true }
+                        guard isEnabled else { return true }   // Nothing to lose.
                         isAsking = true
                         return false
+                    },
+                    onAttach: { window in
+                        guardedWindow = window
                     }
                 )
                 .frame(width: 0, height: 0)
@@ -94,10 +99,9 @@ private struct WindowCloseGuard: ViewModifier {
                 Button("Keep Editing", role: .cancel) { }
                 Button(role: .destructive) {
                     onDiscard?()
-                    isClosingDeliberately = true
-                    // The window refused the first close, so it has to be asked again — and this
-                    // time the guard above lets it through.
-                    NSApp.keyWindow?.close()
+                    // `close()` rather than `performClose(_:)`: it does not consult the delegate,
+                    // so the window goes without being asked about a second time.
+                    guardedWindow?.close()
                 } label: {
                     // White, explicitly. A `.destructive` button in this app renders its label in
                     // red *on* the red fill, which is legible in a screenshot and not on a screen.
@@ -118,6 +122,9 @@ private struct WindowCloseGuard: ViewModifier {
 /// `windowShouldClose(_:)` on its behalf.
 private struct WindowCloseInterceptor: NSViewRepresentable {
     let shouldClose: () -> Bool
+    /// Hands the window back, so the modifier can close *this* one rather than whichever happens
+    /// to be key when the reader answers.
+    let onAttach: (NSWindow) -> Void
 
     func makeCoordinator() -> CloseGuardDelegate {
         CloseGuardDelegate()
@@ -128,7 +135,7 @@ private struct WindowCloseInterceptor: NSViewRepresentable {
         // The view has no window until after this returns, which is why attaching is deferred
         // rather than done here.
         DispatchQueue.main.async {
-            context.coordinator.attach(to: view.window, shouldClose: shouldClose)
+            context.coordinator.attach(to: view.window, shouldClose: shouldClose, onAttach: onAttach)
         }
         return view
     }
@@ -136,7 +143,7 @@ private struct WindowCloseInterceptor: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) {
         // `shouldClose` closes over SwiftUI state, so it is stale the moment that state changes.
         // Re-handing it on every update is what keeps the answer current.
-        context.coordinator.attach(to: view.window, shouldClose: shouldClose)
+        context.coordinator.attach(to: view.window, shouldClose: shouldClose, onAttach: onAttach)
     }
 
     static func dismantleNSView(_ view: NSView, coordinator: CloseGuardDelegate) {
@@ -151,10 +158,11 @@ private final class CloseGuardDelegate: NSObject, NSWindowDelegate {
     private weak var previous: NSWindowDelegate?
     private var shouldClose: (() -> Bool)?
 
-    func attach(to window: NSWindow?, shouldClose: @escaping () -> Bool) {
+    func attach(to window: NSWindow?, shouldClose: @escaping () -> Bool, onAttach: (NSWindow) -> Void) {
         self.shouldClose = shouldClose
 
         guard let window, window !== self.window else { return }
+        onAttach(window)
         // A window this object has not seen before: remember whoever was answering for it.
         if window.delegate !== self {
             previous = window.delegate

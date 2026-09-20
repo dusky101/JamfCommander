@@ -183,6 +183,10 @@ struct DeploymentConfigSheet: View {
     /// part-filled, by decision (SHEET_NAVIGATION_HANDOVER.md, 20 September 2026).
     @State private var step: DeploymentStep = .category
 
+    /// Which steps have been opened. Drives the orange "nobody has looked at this" mark, which is
+    /// the only thing the form knows that its values do not.
+    @State private var visitedSteps: Set<DeploymentStep> = [.category]
+
     // Selection State
     @State private var selectedCategory: Category?
     @State private var selectedScriptID: String?
@@ -439,6 +443,7 @@ struct DeploymentConfigSheet: View {
         } detail: {
             stepDetail
         }
+        .onChange(of: step) { visitedSteps.insert(step) }
     }
 
     // MARK: - Rail
@@ -484,14 +489,10 @@ struct DeploymentConfigSheet: View {
 
                     Spacer()
 
-                    if let issue = issue(for: option) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundColor(.orange)
-                            .help(issue)
-                    } else if isComplete(option) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                    }
+                    let state = status(for: option)
+                    Image(systemName: state.icon)
+                        .foregroundColor(state.tint)
+                        .help(statusDescription(for: option))
                 }
                 .tag(option)
                 .help(option.summary)
@@ -500,32 +501,76 @@ struct DeploymentConfigSheet: View {
         }
     }
 
-    /// Whether a step has been answered, for the tick in the rail.
+    /// How a step is getting on, for the mark beside it in the rail.
     ///
-    /// Only the steps that *must* be answered can be incomplete; the optional ones read as done
-    /// because their defaults are a real answer. Deliberately derived from the same values the
-    /// Deploy button is disabled on, so the rail and the button can never disagree.
-    private func isComplete(_ option: DeploymentStep) -> Bool {
+    /// Three states rather than two, because "not done" was doing two jobs and neither well: a step
+    /// nobody has opened yet and a step that was opened and left unfinished are different problems,
+    /// and the old tick called both of them done.
+    enum StepStatus {
+        /// Opened, and everything it asks for has been answered.
+        case complete
+        /// Opened and left unfinished, or holding something that will not deploy.
+        case needsAttention
+        /// Not opened yet. Says nothing about whether it is right — only that nobody has looked.
+        case notVisited
+
+        var icon: String {
+            switch self {
+            case .complete: "checkmark.circle.fill"
+            case .needsAttention: "exclamationmark.circle.fill"
+            case .notVisited: "circle.dashed"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .complete: .green
+            case .needsAttention: .red
+            case .notVisited: .orange
+            }
+        }
+    }
+
+    /// Whether a step has everything it asks for.
+    ///
+    /// Deliberately derived from the same values the Deploy button is disabled on, so the rail and
+    /// the button cannot disagree — with one addition: an icon is not required to deploy, but a
+    /// Self Service policy without one is not finished either, so the rail says so.
+    private func isSatisfied(_ option: DeploymentStep) -> Bool {
         switch option {
         case .category: selectedCategory != nil
         case .script: selectedScriptID != nil
         case .naming: !policyNameTemplate.isEmpty
-        case .selfService: true
+        case .selfService: selectedIcon != nil
         case .scope: isScopeValid
         case .pinning: pinningIssues.isEmpty
         case .review: canDeploy
         }
     }
 
-    /// Why a step is blocking deployment, if it is.
-    private func issue(for option: DeploymentStep) -> String? {
-        switch option {
-        case .scope:
-            isScopeValid ? nil : "Choose at least one target, or scope to all computers."
-        case .pinning:
-            pinningIssues.isEmpty ? nil : pinningIssues.map(\.message).joined(separator: "\n")
-        default:
-            nil
+    private func status(for option: DeploymentStep) -> StepStatus {
+        // The step you are on counts as visited the moment you arrive.
+        guard visitedSteps.contains(option) || option == step else { return .notVisited }
+        return isSatisfied(option) ? .complete : .needsAttention
+    }
+
+    /// What the mark beside a step means, on hover.
+    private func statusDescription(for option: DeploymentStep) -> String {
+        switch status(for: option) {
+        case .notVisited:
+            return "Not looked at yet."
+        case .complete:
+            return "Ready."
+        case .needsAttention:
+            switch option {
+            case .category: return "Choose a category, or create one."
+            case .script: return "Choose the Installomator script to run."
+            case .naming: return "The policy name cannot be empty."
+            case .selfService: return "No icon chosen. The policies will deploy without one, but they will have no artwork in Self Service."
+            case .scope: return "Choose at least one target, or scope to all computers."
+            case .pinning: return pinningIssues.map(\.message).joined(separator: "\n")
+            case .review: return "Something earlier is unfinished — the steps above say which."
+            }
         }
     }
 
