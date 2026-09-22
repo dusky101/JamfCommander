@@ -14,15 +14,28 @@ struct BasicComputerRecord: Codable, Identifiable {
     let username: String?
     let realname: String?
     let email: String?
-    
+    /// When Jamf last heard from this Mac, as Jamf reports it — ISO 8601, or `nil` for a machine
+    /// that has never checked in.
+    ///
+    /// It arrives in the `GENERAL` section this fetch already asks for, and `ComputerGeneral` has
+    /// always decoded it. It was simply not copied here, which is why the Dashboard's Device Status
+    /// section had no date to work from and drew every machine as "Active" regardless. Nothing extra
+    /// is requested to carry it: see `DeviceContact` for what is made of it.
+    let lastContactTime: String?
+
     init(from computer: ComputerInventoryRecord) {
         self.id = computer.intId
         self.name = computer.general?.name ?? "Unknown"
         self.username = computer.userAndLocation?.username
         self.realname = computer.userAndLocation?.realname
         self.email = computer.userAndLocation?.email
+        self.lastContactTime = computer.general?.lastContactTime
     }
     
+    /// How long ago Jamf last heard from this Mac, and therefore which state it is in.
+    var contactAge: TimeInterval? { DeviceContactClock.age(since: lastContactTime) }
+    var contactState: DeviceContactState { DeviceContactState.state(forAge: contactAge) }
+
     // Extract email domain for grouping
     var emailDomain: String {
         guard let email = email, !email.isEmpty else {
