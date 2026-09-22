@@ -77,7 +77,7 @@ enum HelpPDFExportService {
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: "-")
-        return "JamfCommander_\(slug)_\(formatter.string(from: date)).pdf"
+        return "\(AppIdentity.fileNameStem)_\(slug)_\(formatter.string(from: date)).pdf"
     }
 
     // MARK: - The stamp
@@ -90,15 +90,13 @@ enum HelpPDFExportService {
     struct Stamp {
         let date: Date
 
-        var version: String {
-            Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-        }
+        var version: String { AppIdentity.version }
 
         var text: String {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_GB")
             formatter.dateFormat = "d MMMM yyyy"
-            return "Jamf Commander \(version) · exported \(formatter.string(from: date))"
+            return "\(AppIdentity.name) \(version) · exported \(formatter.string(from: date))"
         }
     }
 

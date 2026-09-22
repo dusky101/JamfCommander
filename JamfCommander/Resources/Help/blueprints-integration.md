@@ -19,7 +19,7 @@ APIs work at that level, which is why the scope level matters below.
 ## Making it
 
 1. Sign in to **Jamf Account** and choose **Integrations** in the left-hand navigation.
-2. Choose **Create integration**, and give it a name — “Jamf Commander”, for example — and
+2. Choose **Create integration**, and give it a name — “Commander”, for example — and
    optionally a description.
 3. Set the **scope level** to **platform environment**. This is the step that decides whether it
    works: an integration scoped to a single tenant cannot reach the platform APIs.
@@ -37,7 +37,7 @@ Jamf’s own instructions, with screenshots, are at
 
 > **Warning:** The client secret is shown once. If you lose it you must generate a new one.
 
-## Putting it into Jamf Commander
+## Putting it into Commander
 
 Open **Settings → Jamf Connections** and find **Platform API — Blueprints**.
 

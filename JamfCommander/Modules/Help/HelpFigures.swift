@@ -54,7 +54,7 @@ nonisolated enum HelpFigures {
     static func accessibilityLabel(for id: String) -> String {
         switch id {
         case "app-identity":
-            return "The Jamf Commander icon, name and the version you are running."
+            return "The app's icon, name and the version you are running."
         case "help-index":
             return "The guide's index: a search button at the top, then collapsible sections of topics."
         case "sidebar":
@@ -208,17 +208,16 @@ struct MarkedRow<Content: View>: View {
 
 /// The app's own icon, name and version.
 ///
-/// The icon comes from `NSApplication.shared.applicationIconImage` and the version from the bundle,
-/// so this is the icon and the number you are actually running — not a copy of either.
+/// The icon comes from `NSApplication.shared.applicationIconImage` and the name and version from the
+/// bundle, so this is the icon, the name and the number you are actually running — not a copy of any
+/// of them. The name in particular: it is not settled, and a figure that hard-coded it would be the
+/// first thing to go stale when it changes. See `AppIdentity`.
 private struct AppIdentityFigure: View {
     private var appIcon: NSImage { NSApplication.shared.applicationIconImage ?? NSImage() }
 
     private var version: String {
-        let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "—"
-        let build = info?["CFBundleVersion"] as? String
-        guard let build, build != short else { return "Version \(short)" }
-        return "Version \(short) (\(build))"
+        guard let build = AppIdentity.build else { return "Version \(AppIdentity.version)" }
+        return "Version \(AppIdentity.version) (\(build))"
     }
 
     var body: some View {
@@ -227,7 +226,7 @@ private struct AppIdentityFigure: View {
                 .resizable()
                 .frame(width: 96, height: 96)
 
-            Text("Jamf Commander")
+            Text(AppIdentity.name)
                 .font(.title2)
                 .fontWeight(.semibold)
 
@@ -318,7 +317,7 @@ private struct HelpIndexFigure: View {
             )
 
             sectionHeader(.gettingStarted, isOpen: true)
-            topic("Welcome to Jamf Commander", isSelected: true)
+            topic("Welcome to Commander", isSelected: true)
             topic("Prerequisites", isSelected: false)
 
             sectionHeader(.modules, isOpen: false)

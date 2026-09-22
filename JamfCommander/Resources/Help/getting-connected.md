@@ -1,6 +1,6 @@
 # Getting connected
 
-Jamf Commander signs in to your Jamf Pro tenant with OAuth client credentials — an API Client created
+Commander signs in to your Jamf Pro tenant with OAuth client credentials — an API Client created
 in Jamf, not your own admin login. You need three things:
 
 - The Jamf instance URL, for example `https://yourcompany.jamfcloud.com`

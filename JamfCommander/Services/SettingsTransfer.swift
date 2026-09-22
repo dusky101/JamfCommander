@@ -143,7 +143,7 @@ enum SettingsTransfer {
                 File saved to:
                 \(url.path)
 
-                Share this file with team members to quickly configure their Jamf Commander app.
+                Share this file with team members to quickly configure their Commander app.
                 """
             )
             return .exported(outcome)

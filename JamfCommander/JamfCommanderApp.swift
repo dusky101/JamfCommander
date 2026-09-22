@@ -62,7 +62,7 @@ struct JamfCommanderApp: App {
             // Replace the default Help item so ⌘? opens the app's own help rather than looking for
             // a help book that doesn't exist.
             CommandGroup(replacing: .help) {
-                Button("Jamf Commander Help") {
+                Button("Commander Help") {
                     openWindow(id: HelpWindowID)
                 }
                 .keyboardShortcut("?", modifiers: .command)
@@ -83,7 +83,7 @@ struct JamfCommanderApp: App {
         //
         // `.restorationBehavior(.disabled)` so a guide left open does not reopen on the next launch
         // in front of the app it is meant to sit beside.
-        Window("Jamf Commander Guide", id: HelpWindowID) {
+        Window("Commander Guide", id: HelpWindowID) {
             HelpView()
         }
         .defaultSize(WindowDefaultSize.help)

@@ -188,7 +188,7 @@ struct HelpView: View {
     /// The sheet has no title bar of its own, so without this the guide opens as an anonymous panel
     /// whose only label is a Done button.
     private var header: some View {
-        Text("Jamf Commander Guide")
+        Text("Commander Guide")
             .font(.title3)
             .fontWeight(.semibold)
             .frame(maxWidth: .infinity, alignment: .leading)

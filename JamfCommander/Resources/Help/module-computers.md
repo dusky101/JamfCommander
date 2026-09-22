@@ -22,5 +22,5 @@ does not have the ID list in front of them.
 That lookup needs **Read** on Buildings and Departments. Without it the record still loads; the two
 fields simply show nothing.
 
-> **Note:** This module covers Macs only. Jamf Commander does not manage iPhones or iPads today — see
+> **Note:** This module covers Macs only. Commander does not manage iPhones or iPads today — see
 > *What is coming*.

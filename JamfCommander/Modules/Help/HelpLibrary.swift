@@ -32,7 +32,7 @@ nonisolated enum HelpLibrary {
 
         HelpTopic(
             id: "welcome",
-            title: "Welcome to Jamf Commander",
+            title: "Welcome to Commander",
             section: .gettingStarted,
             summary: "The app, the version, and how to use this guide.",
             keywords: ["overview", "introduction", "start", "getting started", "first time",
@@ -80,7 +80,7 @@ nonisolated enum HelpLibrary {
             id: "api-client",
             title: "Creating the API client in Jamf Pro",
             section: .gettingStarted,
-            summary: "Make the API role and client that Jamf Commander signs in with.",
+            summary: "Make the API role and client that Commander signs in with.",
             keywords: ["api client", "api role", "api roles and clients", "new client",
                        "generate client secret", "access token lifetime", "enable", "jamf pro",
                        "setup", "set up", "create"]),

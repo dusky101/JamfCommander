@@ -1,4 +1,4 @@
-# Welcome to Jamf Commander
+# Welcome to Commander
 
 ```figure
 app-identity
@@ -45,5 +45,5 @@ cannot go stale.
 > is permanent from this app’s point of view. Rehearse a bulk action against a non-production
 > instance before you run it against the one your fleet is enrolled in.
 
-Jamf Commander is not affiliated with Jamf. It uses the documented Jamf Pro APIs with credentials you
+Commander is not affiliated with Jamf. It uses the documented Jamf Pro APIs with credentials you
 create yourself, and it can only do what the API role you grant it allows.

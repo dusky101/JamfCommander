@@ -252,7 +252,7 @@ struct HelpPDFCover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Jamf Commander")
+            Text(AppIdentity.name)
                 .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(HelpPDFTheme.ink)
             Text("The complete guide")

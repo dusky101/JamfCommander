@@ -152,7 +152,7 @@ class ExportService {
             try redundantCSV.write(to: tempDir.appendingPathComponent("Unused_\(dateString).csv"), atomically: true, encoding: .utf8)
 
             // Create ZIP archive
-            let zipURL = tempDir.appendingPathComponent("JamfCommander_Export_\(dateString).zip")
+            let zipURL = tempDir.appendingPathComponent("\(AppIdentity.fileNameStem)_Export_\(dateString).zip")
             try await createZipArchive(from: tempDir, to: zipURL)
 
             progress?.markComplete()
@@ -160,7 +160,7 @@ class ExportService {
             // Present save panel
             let savePanel = NSSavePanel()
             savePanel.allowedContentTypes = [.zip]
-            savePanel.nameFieldStringValue = "JamfCommander_Export_\(dateString).zip"
+            savePanel.nameFieldStringValue = "\(AppIdentity.fileNameStem)_Export_\(dateString).zip"
             savePanel.title = "Export All Data"
             savePanel.message = "Save complete Jamf data export"
 

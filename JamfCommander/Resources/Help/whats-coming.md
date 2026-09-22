@@ -8,7 +8,7 @@ What this app cannot do today, and what is intended next.
 
 ## Mobile devices
 
-Jamf Commander manages **Macs only**. iPhones and iPads enrolled in the same tenant are not listed,
+Commander manages **Macs only**. iPhones and iPads enrolled in the same tenant are not listed,
 not counted on the Dashboard, and not covered by any of the bulk actions.
 
 That is the largest single gap, and extending the app to mobile devices is the intention. It is not a

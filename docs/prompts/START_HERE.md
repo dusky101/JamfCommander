@@ -177,9 +177,18 @@ Five handovers exist in `docs/handovers/`:
   blocks across all 20 topics render with the same contrast on paper as on screen, and all 14 figures
   render identically across separate processes. Nobody has *printed* it.
 
-Not proven, and it is most of the guide: **the twelve pages and fourteen figures added afterwards
-have barely been looked at.** They build, they bundle, all twenty pages parse, every figure id
-resolves to a real view — but the maintainer now runs the app himself, so those sessions verified by
-script rather than by eye. Two figures were found wrong that way, by him, not by them. Treat the
-right-hand column of `docs/handovers/HELP_OVERHAUL_HANDOVER.md` as the real state.
+Still open, and it is most of the guide — but **split it in two, because the halves have different
+answers**:
+
+- **The pages render correctly.** Proven on 20 September 2026, as a by-product of the PDF export:
+  every block of all twenty pages draws with the same contrast on paper as on screen, every figure
+  draws its content and draws it identically across separate processes, and every figure id resolves
+  to a real view.
+- **Whether they *say the right thing* is unverified**, for the twelve pages and fourteen figures
+  added after 19 September 2026. Nobody has read them against the app. Two figures were found wrong
+  exactly this way — by the maintainer, on screen, not by any of the scripts that confirmed they
+  rendered. A figure can draw perfectly and still show a control that no longer exists.
+
+So a rendering check is not a correctness check, and no amount of the first substitutes for the
+second. Treat the right-hand column of `docs/handovers/HELP_OVERHAUL_HANDOVER.md` as the real state.
 

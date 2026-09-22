@@ -9,7 +9,7 @@ import Foundation
 import AppKit
 import UniformTypeIdentifiers
 
-/// Service for importing and exporting Jamf Commander settings
+/// Service for importing and exporting Commander settings
 /// Creates .jamfconfig files that can be shared between team members
 struct SettingsService {
     
@@ -203,7 +203,7 @@ struct SettingsService {
             case .readFailed:
                 return "Failed to read configuration file."
             case .invalidFileFormat:
-                return "Invalid file format. This doesn't appear to be a Jamf Commander configuration file."
+                return "Invalid file format. This doesn't appear to be a Commander configuration file."
             case .invalidSignature:
                 return "Invalid file signature. This file may have been created by a different version."
             case .userCancelled:

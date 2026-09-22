@@ -1,6 +1,6 @@
 # Prerequisites
 
-Two of the nine modules need something that exists outside Jamf Commander. Nothing on this page is
+Two of the nine modules need something that exists outside Commander. Nothing on this page is
 needed to connect the app, and nothing on it is needed for the other seven modules — skip it if you
 are not using Installomator or Blueprints.
 
@@ -52,7 +52,7 @@ back. A **blueprint** is how Jamf packages those declarations for delivery.
 
 ### Why this app needs it
 
-Jamf Commander has **no graphical blueprint builder**. Blueprints are
+Commander has **no graphical blueprint builder**. Blueprints are
 authored as JSON and brought here — you build the declaration in DDM Explorer, copy the payload, and
 paste it into the Blueprints editor, which wraps it into a complete blueprint for you.
 

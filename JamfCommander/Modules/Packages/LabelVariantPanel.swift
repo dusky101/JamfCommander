@@ -71,7 +71,7 @@ struct LabelVariantPanel: View {
                     behaviourSection(source)
                     detailSection(source)
 
-                    Text("Read from \(source.sourcePath) in the Installomator repository. This is a description of the label, not a setting — nothing here changes what JamfCommander writes to Jamf.")
+                    Text("Read from \(source.sourcePath) in the Installomator repository. This is a description of the label, not a setting — nothing here changes what Commander writes to Jamf.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
