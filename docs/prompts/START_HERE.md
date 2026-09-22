@@ -1,9 +1,16 @@
 # Start here — a new session on this project
 
-**Current as of 20 September 2026, app version 9.0.**
+**Current as of 22 September 2026, app version 9.0.**
 
 Hand this to a fresh Claude Code session in the JamfCommander repository. Read the files below in
 order before writing any code. None of it is optional.
+
+**The app is called Commander.** "Jamf" was removed from its own name on 22 September 2026 — it is a
+trademark the app has no claim on, and a public release could not carry it. *Jamf's* names stay
+wherever they are correct: Jamf Pro, Jamf Account, "your Jamf instance". **The repository, the target,
+the scheme and the bundle identifier are all still `JamfCommander`** and are deliberately unchanged,
+so the build command below is not a mistake. `Shared/AppIdentity.swift` reads the name from the
+bundle, and its header lists what a further rename has to touch.
 
 `CLAUDE.md` already points a new session here, so this should happen on its own. To be explicit, the
 maintainer's opening message is kept in **`docs/prompts/NEW_SESSION_PROMPT.md`**, ready to copy — it
@@ -124,7 +131,7 @@ Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
 `SHEET_NAVIGATION.md` — `BlueprintEditorSheet` and `PackageUploadPage` — whose handover records every
 trap the first two conversions hit.
 
-Five handovers exist in `docs/handovers/`:
+Seven handovers exist in `docs/handovers/`:
 
 - **Sheet navigation** — **two of four done, 20 September 2026.** Settings and the Installomator
   deployment window are converted and confirmed on screen; `BlueprintEditorSheet` and
@@ -138,8 +145,10 @@ Five handovers exist in `docs/handovers/`:
   instance URL, cleared by Refresh and by any write, with a "Read … ago" stamp and a Live/Cached
   switch in Settings. Its handover has the proven/unproven table; `docs/roadmap/CACHING.md` has been
   trimmed to the five things still undone.
-
-
+- **Dashboard** — **built and confirmed on screen, 22 September 2026.** Device Status now reads real
+  check-in data. Worth reading for what it replaced rather than for what it is: the section
+  fabricated a green "Active" badge on every row and had no date in the record at all. It is the
+  clearest example in this project of a false report that does not look like an error.
 
 - **Help overhaul** — **complete**, 19 September 2026. Twenty pages and fourteen figures, each
   figure instantiating the view its module actually uses. Its proven/unproven table is current, and
@@ -172,10 +181,18 @@ Five handovers exist in `docs/handovers/`:
   pages the guide started with were read end to end.
 
 - **The guide's PDF export** (20 September 2026). The exported *Privileges* page is black on white
-  and stamped "Jamf Commander 9.0", the save panel writes where the reader chooses, and the app's own
+  and stamped with the app's name and version — it read "Jamf Commander 9.0" that day and reads
+  "Commander 9.0" since the rename — the save panel writes where the reader chooses, and the app's own
   glass surfaces survived the change that made the figures render. Measured as well as seen: 291
   blocks across all 20 topics render with the same contrast on paper as on screen, and all 14 figures
   render identically across separate processes. Nobody has *printed* it.
+
+- **The Dashboard's Device Status** (22 September 2026). It used to draw a hard-coded green "Active"
+  on every row of an unsorted twenty, under a heading reading "Recent Check-ins", with no date in the
+  record at all — a Mac last seen in June sat in that list marked Active. It now reads
+  `lastContactTime`, which Jamf was already returning in a section the Dashboard already fetched.
+  Confirmed on screen by the maintainer, and by 19 checks of the arithmetic. See
+  `docs/handovers/DASHBOARD_HANDOVER.md`.
 
 Still open, and it is most of the guide — but **split it in two, because the halves have different
 answers**:
