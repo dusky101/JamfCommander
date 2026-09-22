@@ -127,9 +127,14 @@ Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
 `docs/roadmap/MULTIPLE_ENVIRONMENTS.md`, `docs/roadmap/POLICY_NAME_SUGGESTIONS.md`,
 `docs/roadmap/PROFILE_TO_BLUEPRINT.md`, `docs/roadmap/SHEET_NAVIGATION.md`.
 
-**No prompt is waiting.** The most shovel-ready work is the two remaining sheet conversions in
-`SHEET_NAVIGATION.md` — `BlueprintEditorSheet` and `PackageUploadPage` — whose handover records every
-trap the first two conversions hit.
+**The next session's work is written up in `docs/prompts/PROFILE_TO_BLUEPRINT_PROMPT.md`**, over
+`docs/roadmap/PROFILE_TO_BLUEPRINT.md` — telling an administrator which of their configuration
+profiles Apple now expects to be declarations. The maintainer calls it a game changer; the prompt
+frames the first session as a **spike, not a build**, because the mapping the feature rests on does
+not exist anywhere yet. That prompt also lists what else is open.
+
+`docs/roadmap/SCRIPT_USAGE.md` is **not wanted** — the maintainer said on 22 September 2026 that it is
+not a useful feature. It is kept only until he says to delete it; do not offer it as next work.
 
 Seven handovers exist in `docs/handovers/`:
 
