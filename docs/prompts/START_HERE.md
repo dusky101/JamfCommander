@@ -129,9 +129,11 @@ Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
 
 **The next session's work is written up in `docs/prompts/PROFILE_TO_BLUEPRINT_PROMPT.md`**, over
 `docs/roadmap/PROFILE_TO_BLUEPRINT.md` — telling an administrator which of their configuration
-profiles Apple now expects to be declarations. The maintainer calls it a game changer; the prompt
-frames the first session as a **spike, not a build**, because the mapping the feature rests on does
-not exist anywhere yet. That prompt also lists what else is open.
+profiles Apple now expects to be declarations. The maintainer calls it a game changer, and the data it
+needs turned out to be published: **Apple's own schema at `github.com/apple/device-management` marks a
+profile payload deprecated per OS version**, so the first useful answer — "37 of your 152 profiles use
+a payload Apple deprecated in macOS 27.0" — needs no hand-authored mapping at all. Read on
+22 September 2026, not assumed. That prompt also lists what else is open.
 
 `docs/roadmap/SCRIPT_USAGE.md` is **not wanted** — the maintainer said on 22 September 2026 that it is
 not a useful feature. It is kept only until he says to delete it; do not offer it as next work.

@@ -22,41 +22,50 @@ Then read these, in this order:
 The goal: in the Profiles module, tell an administrator which of their configuration
 profiles Apple now expects to be declarations, and which are fine where they are.
 
-**Do not write the feature in this session.** Write the spike described below, get an
-answer, and bring me a recommendation. The roadmap entry says the mapping IS the feature,
-and it does not exist anywhere in the codebase — so the first question is not how to
-display it, it is whether the data to build it on exists at all.
+**Build the smallest honest version first, and stop there for review.** The roadmap entry
+says the mapping IS the feature — that was written before anybody read Apple's schema, and
+it is now only half true. Apple states the deprecation itself, so the first useful answer
+needs no mapping. Do that one, show me, and we will scope the rest from what it finds.
 
-Phase 1, and possibly the whole session: find out where the catalogue comes from.
+Phase 1: the smallest true thing, which needs no mapping at all.
 
-A payload-to-declaration table compiled into this app is stale the week after WWDC, and a
-stale recommendation is worse than none — it will confidently tell somebody there is no
-declarative equivalent when there has been one for a year. So a hand-authored table in
-Swift is not an acceptable answer, however quick.
+**The catalogue question is answered.** Apple publishes its own MDM and DDM schema at
+github.com/apple/device-management — MIT licensed, Apple-maintained, no pull requests
+accepted, branch `release`. Verified 22 September 2026 by reading it:
 
-The candidate is Apple's own published device-management schema — the data DDM Explorer
-reads, in Apple's `device-management` repository on GitHub. **I have not verified it.**
-Find out, and answer these:
+  - `mdm/profiles/<payloadtype>.yaml` is filed BY PAYLOAD TYPE. A profile in the tenant
+    matches by direct lookup — e.g. com.apple.mobiledevice.passwordpolicy.yaml. It carries
+    `payload.supportedOS.macOS.deprecated: '27.0'` where Apple has deprecated it, and
+    `introduced` where it has not.
+  - `declarative/declarations/configurations/*.yaml` each carry a `declarationtype`
+    (com.apple.configuration.passcode.settings), `payload.supportedOS.macOS.introduced`,
+    and — this is the valuable part — a `supportedOS` on INDIVIDUAL `payloadkeys`.
+  - Raw files fetch from raw.githubusercontent.com, unauthenticated, exactly like the
+    Installomator label list this app already reads.
 
-  - Is there a machine-readable list of declaration types, and of profile payload types?
-  - Does it carry per-key OS availability? That decides whether the advice can say
-    "should move" rather than only "has an equivalent" — see the roadmap's second trap.
-  - Can a payload → declaration mapping be DERIVED from it, or does somebody still have
-    to author the correspondence by hand? If the latter, how much of it, and where does
-    it live so it can be updated without shipping a build?
-  - Is it licensed and stable enough to depend on?
+So do NOT start with a payload-to-declaration mapping. Start with the one thing Apple
+states outright:
 
-The app already has the pattern and the network path for exactly this: it reads the
-Installomator label list off raw.githubusercontent.com unauthenticated. See
-JamfAPIService+InstallomatorLabels.swift — copy that shape, including its failure
-behaviour. Nothing about this feature may require the Jamf credentials.
+    "37 of your 152 profiles use a payload Apple deprecated in macOS 27.0."
 
-If the answer is no — no usable published catalogue — say so plainly and stop. That is a
-successful session: it saves a feature that would lie every autumn. Put the finding in
-the roadmap entry and leave it there.
+Read each profile's PayloadType, look up the file of that name, read one key. Entirely
+mechanical, no editorial judgement, no table to go stale — and already the answer nothing
+else in a Jamf administrator's toolkit will give them. Get that on screen and correct
+before anything cleverer.
 
-If the answer is yes, bring me the four decisions the roadmap lists as open questions 1
-to 4, with a recommendation on each, and THEN we scope the build.
+What is genuinely still open, for later phases and for me to decide:
+
+  - **Pairing a deprecated payload to the declaration that replaces it.** Apple does not
+    state the correspondence. The deprecation flag narrows it from "every payload" to "the
+    deprecated ones", and the names are close (passwordpolicy → passcode.settings) with
+    overlapping key names to corroborate against (forcePIN → RequirePasscode). Propose how,
+    and how confident it can honestly claim to be, before building it.
+  - **The OS floor.** Per-key `supportedOS` is what lets the advice say the replacement
+    needs macOS 13.1 and four Macs do not run it. That couples Profiles to fleet OS data
+    the Computers module fetches and Profiles cannot reach today. Worth it, but it is a
+    second phase, not the first.
+  - Where it is surfaced (roadmap question 1), and whether it ever drafts a declaration
+    (question 2). Bring me a recommendation; do not guess.
 
 Build after every phase. There is no test target — do not claim tests ran. I run the app
 myself, so do not launch it; tell me what to look at. Hand me any file you produce.
@@ -108,8 +117,10 @@ Save the session from re-deriving these.
 
 `docs-workflow.md` asks for a handover alongside the prompt. There is deliberately none: a handover
 records **what is proven against the live tenant versus what merely compiles**, and nothing is built.
-Write `docs/handovers/PROFILE_TO_BLUEPRINT_HANDOVER.md` when the spike concludes, because that is the
-first moment there is any state to hand over — starting with whether the catalogue exists.
+Write `docs/handovers/PROFILE_TO_BLUEPRINT_HANDOVER.md` when phase 1 lands, because that is the first
+moment there is any state to hand over. Its first proven row is already written for it: **Apple's
+schema carries per-OS deprecation on profile payloads and per-key OS availability on declarations —
+read on 22 September 2026, not assumed.**
 
 ## If he would rather do something else
 
