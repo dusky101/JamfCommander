@@ -125,7 +125,8 @@ the day work starts, never in advance.
 
 Open roadmap entries: `docs/roadmap/CACHING.md`, `docs/roadmap/SCRIPT_USAGE.md`,
 `docs/roadmap/MULTIPLE_ENVIRONMENTS.md`, `docs/roadmap/POLICY_NAME_SUGGESTIONS.md`,
-`docs/roadmap/PROFILE_TO_BLUEPRINT.md`, `docs/roadmap/SHEET_NAVIGATION.md`.
+`docs/roadmap/PROFILE_TO_BLUEPRINT.md`, `docs/roadmap/SHEET_NAVIGATION.md`,
+`docs/roadmap/SELF_SERVICE_SETUP.md`, `docs/roadmap/APP_STORE.md`.
 
 **The next session's work is written up in `docs/prompts/PROFILE_TO_BLUEPRINT_PROMPT.md`**, over
 `docs/roadmap/PROFILE_TO_BLUEPRINT.md` — telling an administrator which of their configuration
